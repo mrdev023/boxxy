@@ -28,7 +28,8 @@ pub async fn sync_memories_to_markdown(db: Arc<Mutex<Option<Db>>>) -> anyhow::Re
 
         writeln!(file, "# 🧠 Boxxy-Claw Long-term Memories")?;
         writeln!(file, "This file is a mirror of your agent's brain. You can edit it manually.")?;
-        writeln!(file, "Each bullet point MUST be in the format: `- key: content`")?;
+        writeln!(file, "Each bullet point MUST be in the format: `- [project_path] key: content`")?;
+        writeln!(file, "Use `[global]` if the memory applies everywhere.")?;
         writeln!(file, "Add the 📌 emoji anywhere in the line to permanently pin a memory to the context.")?;
         writeln!(file, "")?;
 
@@ -48,7 +49,8 @@ pub async fn sync_memories_to_markdown(db: Arc<Mutex<Option<Db>>>) -> anyhow::Re
             writeln!(file, "The agent implicitly extracted these facts. Move them to Active Memories below to verify, or delete them.")?;
             for mem in unverified {
                 let pin = if mem.pinned.unwrap_or(false) { " 📌" } else { "" };
-                writeln!(file, "- {}:{}{}", mem.key, pin, mem.content)?;
+                let path = if mem.project_path.is_empty() { "global" } else { &mem.project_path };
+                writeln!(file, "- [{}] {}:{}{}", path, mem.key, pin, mem.content)?;
             }
             writeln!(file, "")?;
         }
@@ -56,7 +58,8 @@ pub async fn sync_memories_to_markdown(db: Arc<Mutex<Option<Db>>>) -> anyhow::Re
         writeln!(file, "## 🟢 Active Memories")?;
         for mem in verified {
             let pin = if mem.pinned.unwrap_or(false) { " 📌" } else { "" };
-            writeln!(file, "- {}:{} {}", mem.key, pin, mem.content)?;
+            let path = if mem.project_path.is_empty() { "global" } else { &mem.project_path };
+            writeln!(file, "- [{}] {}:{} {}", path, mem.key, pin, mem.content)?;
         }
         
         debug!("Mirrored {} memories to MEMORY.md", memories.len());
@@ -96,7 +99,17 @@ pub async fn sync_markdown_to_db(db: Arc<Mutex<Option<Db>>>) -> anyhow::Result<(
             }
 
             if line.starts_with("- ") {
-                let parts: Vec<&str> = line[2..].splitn(2, ':').collect();
+                let mut line_content = &line[2..];
+                let mut project_path = "global".to_string();
+
+                if line_content.starts_with('[') {
+                    if let Some(end_idx) = line_content.find(']') {
+                        project_path = line_content[1..end_idx].trim().to_string();
+                        line_content = line_content[end_idx + 1..].trim();
+                    }
+                }
+
+                let parts: Vec<&str> = line_content.splitn(2, ':').collect();
                 if parts.len() == 2 {
                     let key = parts[0].trim();
                     let mut val = parts[1].trim().to_string();
@@ -110,7 +123,8 @@ pub async fn sync_markdown_to_db(db: Arc<Mutex<Option<Db>>>) -> anyhow::Result<(
                     if !key.is_empty() && !val.is_empty() {
                         // Any memory manually placed/left in Active Memories is verified
                         let verified = !is_pending_section;
-                        let _ = store.add_memory(key, None, &val, Some("manual_sync"), verified, pinned).await;
+                        let path_opt = if project_path == "global" { None } else { Some(project_path.as_str()) };
+                        let _ = store.add_memory(key, path_opt, &val, Some("manual_sync"), verified, pinned).await;
                     }
                 }
             }
