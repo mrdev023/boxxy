@@ -361,9 +361,11 @@
                                 </child>
                                 <child>
                                   <object class="AdwActionRow" id="row_reset_regex">
-                                    <child type="prefix">
+                                    <property name="title" translatable="yes">Reset to Default</property>
+                                    <child type="suffix">
                                       <object class="GtkButton" id="reset_regex_btn">
-                                        <property name="label" translatable="yes">Reset to Default</property>
+                                        <property name="label" translatable="yes">Reset</property>
+                                        <property name="valign">center</property>
                                       </object>
                                     </child>
                                   </object>
