@@ -487,21 +487,20 @@ impl TerminalWidget {
         self.imp().search(crate::engine::index::Direction::Left);
     }
 
-    pub async fn get_text_snapshot(&self, max_lines: usize) -> Option<String> {
+    pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let sent = if let Some(backend) = self.imp().backend.borrow().as_ref() {
-            backend.notifier.0.send(crate::engine::event_loop::Msg::GetTextSnapshot(max_lines, tx)).is_ok()
+            backend.notifier.0.send(crate::engine::event_loop::Msg::GetTextSnapshot(max_lines, offset_lines, tx)).is_ok()
         } else {
             false
         };
-        
+
         if sent {
             rx.await.ok()
         } else {
             None
         }
     }
-
     pub fn set_vadjustment(&self, adjustment: Option<&gtk4::Adjustment>) {
         let imp = self.imp();
 

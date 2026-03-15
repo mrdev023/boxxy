@@ -47,7 +47,7 @@ pub(super) fn setup_claw(
                 let pane = inner.borrow().terminal.clone();
                 let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
                 gtk::glib::spawn_future_local(async move {
-                    if let Some(snapshot) = pane.get_text_snapshot(100).await {
+                    if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                         let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
                             
                             message: reply,
@@ -154,7 +154,7 @@ pub(super) fn setup_claw(
                         gtk::glib::spawn_future_local(async move {
                             let pane = inner.borrow().terminal.clone();
                             let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                            if let Some(snapshot) = pane.get_text_snapshot(100).await {
+                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                                 let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
                                     message: reply_text,
                                     snapshot,
@@ -197,7 +197,7 @@ pub(super) fn setup_claw(
                         gtk::glib::spawn_future_local(async move {
                             let pane = inner.borrow().terminal.clone();
                             let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                            if let Some(snapshot) = pane.get_text_snapshot(100).await {
+                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                                 let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
                                     message: reply_text,
                                     snapshot,
@@ -229,7 +229,7 @@ pub(super) fn setup_claw(
                         gtk::glib::spawn_future_local(async move {
                             let pane = inner.borrow().terminal.clone();
                             let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                            if let Some(snapshot) = pane.get_text_snapshot(100).await {
+                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                                 let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
                                     message: reply_text,
                                     snapshot,
@@ -247,6 +247,22 @@ pub(super) fn setup_claw(
                             crate::ClawProposal::Command(command.clone())
                         );
                     }
+                }
+                boxxy_claw::engine::ClawEngineEvent::RequestScrollback { max_lines, offset_lines, reply } => {
+                    let pane = inner_for_events.borrow().terminal.clone();
+                    let max_lines = *max_lines;
+                    let offset_lines = *offset_lines;
+                    let reply = reply.clone();
+                    gtk::glib::spawn_future_local(async move {
+                        let mut sender_opt = reply.lock().await;
+                        if let Some(sender) = sender_opt.take() {
+                            if let Some(snapshot) = pane.get_text_snapshot(max_lines, offset_lines).await {
+                                let _ = sender.send(snapshot);
+                            } else {
+                                let _ = sender.send("Error: Failed to fetch scrollback.".to_string());
+                            }
+                        }
+                    });
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposalResolved => {
                     popover_event_clone.hide();

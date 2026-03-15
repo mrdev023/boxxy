@@ -240,9 +240,9 @@ impl TerminalPaneComponent {
         self.inner.borrow().pid
     }
 
-    pub async fn get_text_snapshot(&self, max_lines: usize) -> Option<String> {
-        let terminal = self.inner.borrow().terminal.clone();
-        terminal.get_text_snapshot(max_lines).await
+    pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
+        let terminal = self.terminal().clone();
+        terminal.get_text_snapshot(max_lines, offset_lines).await
     }
 
     pub fn inject_text(&self, text: &str) {

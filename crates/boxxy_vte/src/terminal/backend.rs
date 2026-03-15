@@ -309,9 +309,9 @@ impl TerminalBackend {
         let _ = self.notifier.0.send(Msg::Search(query, direction, case_insensitive));
     }
 
-    pub async fn get_text_snapshot(&self, max_lines: usize) -> Option<String> {
+    pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        if self.notifier.0.send(Msg::GetTextSnapshot(max_lines, tx)).is_ok() {
+        if self.notifier.0.send(Msg::GetTextSnapshot(max_lines, offset_lines, tx)).is_ok() {
             rx.await.ok()
         } else {
             None

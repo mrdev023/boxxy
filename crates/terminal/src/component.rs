@@ -140,7 +140,7 @@ impl TerminalComponent {
         self.inner.borrow().panes.values().filter_map(|p| p.controller.get_pid()).collect()
     }
 
-    pub async fn get_text_snapshot(&self, max_lines: usize) -> Option<String> {
+    pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
         let active_id = self.inner.borrow().active_pane_id.clone();
         let pane = {
             let inner = self.inner.borrow();
@@ -148,7 +148,7 @@ impl TerminalComponent {
         };
         
         if let Some(pane) = pane {
-            pane.get_text_snapshot(max_lines).await
+            pane.get_text_snapshot(max_lines, offset_lines).await
         } else {
             None
         }

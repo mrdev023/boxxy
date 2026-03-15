@@ -47,7 +47,7 @@ pub enum Msg {
     ClearSelection,
     CopySelection(ClipboardType),
     Search(String, Direction, bool),
-    GetTextSnapshot(usize, tokio::sync::oneshot::Sender<String>),
+    GetTextSnapshot(usize, usize, tokio::sync::oneshot::Sender<String>),
 }
 
 /// The main event loop.
@@ -250,21 +250,32 @@ where
                                     }
                                 }
                             },
-                            Ok(Msg::GetTextSnapshot(max_lines, sender)) => {
+                            Ok(Msg::GetTextSnapshot(max_lines, offset_lines, sender)) => {
                                 use crate::engine::grid::Dimensions;
+                                use crate::engine::index::{Line, Column};
                                 let total_lines = self.terminal.total_lines();
-                                let lines_to_fetch = std::cmp::min(max_lines, total_lines);
-                                
+
                                 let bottom = self.terminal.bottommost_line();
-                                let start_line = bottom - lines_to_fetch.saturating_sub(1);
-                                
-                                let start_point = Point::new(start_line, Column(0));
-                                let end_point = Point::new(bottom, self.terminal.last_column());
+                                let mut start_line_idx = bottom.0 - offset_lines as i32;
+
+                                // Ensure start_line_idx doesn't go below the topmost line
+                                let topmost = self.terminal.topmost_line().0;
+                                if start_line_idx < topmost {
+                                    start_line_idx = topmost;
+                                }
+
+                                let mut lines_to_fetch = max_lines as i32;
+                                let mut end_line_idx = start_line_idx + lines_to_fetch.saturating_sub(1);
+                                if end_line_idx > bottom.0 {
+                                    end_line_idx = bottom.0;
+                                }
+
+                                let start_point = Point::new(Line(start_line_idx), Column(0));
+                                let end_point = Point::new(Line(end_line_idx), self.terminal.last_column());
 
                                 let text = self.terminal.semantic_bounds_to_string(start_point, end_point);
                                 let _ = sender.send(text);
-                            },
-                            Ok(Msg::Shutdown) | Err(_) => {
+                            },                            Ok(Msg::Shutdown) | Err(_) => {
                                 break 'event_loop;
                             }
                         }

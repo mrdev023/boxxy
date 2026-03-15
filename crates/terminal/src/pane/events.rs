@@ -67,7 +67,7 @@ pub(super) fn wire_terminal_events(
             let pane = inner_for_osc.borrow().terminal.clone();
             let cwd = inner_for_osc.borrow().working_dir.clone().unwrap_or_default();
             gtk::glib::spawn_future_local(async move {
-                if let Some(snapshot) = pane.get_text_snapshot(100).await {
+                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                     let _ = tx.send(boxxy_claw::engine::ClawMessage::CommandFinished {
                         
                         exit_code: code,
@@ -90,7 +90,7 @@ pub(super) fn wire_terminal_events(
         let pane = inner_for_query.borrow().terminal.clone();
         let cwd = inner_for_query.borrow().working_dir.clone().unwrap_or_default();
         gtk::glib::spawn_future_local(async move {
-            if let Some(snapshot) = pane.get_text_snapshot(100).await {
+            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                 let _ = tx.send(boxxy_claw::engine::ClawMessage::ClawQuery {
                     
                     query,

@@ -3,6 +3,7 @@ pub mod memory;
 pub mod terminal;
 pub mod skills;
 pub mod workspace;
+pub mod scrollback;
 
 use rig::tool::Tool;
 use rig::completion::ToolDefinition;

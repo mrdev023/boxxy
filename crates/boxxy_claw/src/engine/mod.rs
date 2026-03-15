@@ -69,4 +69,11 @@ pub enum ClawEngineEvent {
     LazyErrorIndicator,
     /// Emitted when a proposal is rejected, dismissed, or otherwise resolved so UIs can sync state.
     ProposalResolved,
+    /// Emitted when the agent requests older lines from the terminal's scrollback buffer.
+    #[allow(clippy::type_complexity)]
+    RequestScrollback {
+        max_lines: usize,
+        offset_lines: usize,
+        reply: std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>,
+    },
 }

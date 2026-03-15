@@ -1,0 +1,70 @@
+use rig::tool::Tool;
+use rig::completion::ToolDefinition;
+use serde::{Deserialize, Serialize};
+use crate::engine::ClawEngineEvent;
+
+#[derive(Deserialize)]
+pub struct ReadScrollbackArgs {
+    pub max_lines: usize,
+    pub offset_lines: usize,
+}
+
+#[derive(Serialize)]
+pub struct ReadScrollbackOutput {
+    pub text: String,
+}
+
+pub struct ReadScrollbackTool {
+    pub tx_ui: async_channel::Sender<ClawEngineEvent>,
+}
+
+impl Tool for ReadScrollbackTool {
+    const NAME: &'static str = "read_scrollback_page";
+
+    type Error = std::io::Error;
+    type Args = ReadScrollbackArgs;
+    type Output = ReadScrollbackOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Read older lines from your terminal's scrollback history. \
+            By default you only see the last 100 lines. Use this tool if an error or context \
+            you need to analyze happened further up in the terminal history. \
+            Provides structured semantic blocks (PROMPT, COMMAND, OUTPUT).".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "max_lines": {
+                        "type": "integer",
+                        "description": "The number of lines to fetch."
+                    },
+                    "offset_lines": {
+                        "type": "integer",
+                        "description": "How many lines back from the bottom to start reading. e.g. 0 is the absolute bottom, 100 reads lines ending 100 lines above the bottom."
+                    }
+                },
+                "required": ["max_lines", "offset_lines"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        
+        let req = ClawEngineEvent::RequestScrollback {
+            max_lines: args.max_lines,
+            offset_lines: args.offset_lines,
+            reply: std::sync::Arc::new(tokio::sync::Mutex::new(Some(reply_tx))),
+        };
+
+        if let Err(e) = self.tx_ui.send(req).await {
+            return Err(std::io::Error::other(format!("Failed to send scrollback request: {e}")));
+        }
+
+        match reply_rx.await {
+            Ok(text) => Ok(ReadScrollbackOutput { text }),
+            Err(e) => Err(std::io::Error::other(format!("Failed to receive scrollback: {e}"))),
+        }
+    }
+}
