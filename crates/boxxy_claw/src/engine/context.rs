@@ -44,10 +44,14 @@ pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_p
 
         let model = settings.memory_model.as_ref().unwrap_or(&settings.claw_model);
         
+        let creds = boxxy_ai_core::AiCredentials::new(
+            settings.api_keys.clone(),
+            settings.ollama_base_url.clone(),
+        );
+
         let agent = boxxy_ai_core::create_agent(
             model,
-            &settings.gemini_api_key,
-            &settings.ollama_base_url,
+            &creds,
             "You are a search optimizer. Output only comma-separated keywords."
         );
 
@@ -118,7 +122,13 @@ pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_p
     String::new()
 }
 
-pub async fn summarize_and_store(db: &Option<boxxy_db::Db>, user_query: &str, assistant_response: &str, project_path: &str) {
+pub async fn summarize_and_store(
+    db: &Option<boxxy_db::Db>, 
+    user_query: &str, 
+    assistant_response: &str, 
+    project_path: &str,
+    creds: boxxy_ai_core::AiCredentials
+) {
     let settings = boxxy_preferences::Settings::load();
     
     let data = gtk4::gio::resources_lookup_data("/play/mii/Boxxy/prompts/memory_summarizer.md", gtk4::gio::ResourceLookupFlags::NONE)
@@ -132,8 +142,7 @@ pub async fn summarize_and_store(db: &Option<boxxy_db::Db>, user_query: &str, as
     // We use a simple agent call for summarization
     let agent = boxxy_ai_core::create_agent(
         &settings.claw_model,
-        &settings.gemini_api_key,
-        &settings.ollama_base_url,
+        &creds,
         "You are a concise summarizer. Output only the summary."
     );
 

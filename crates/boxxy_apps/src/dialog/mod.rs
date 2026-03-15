@@ -278,8 +278,10 @@ impl CreateAppDialog {
         let c = self.clone();
         
         let settings = boxxy_preferences::Settings::load();
-        let api_key = settings.gemini_api_key;
-        let ollama_url = settings.ollama_base_url;
+        let creds = boxxy_ai_core::AiCredentials::new(
+            settings.api_keys.clone(),
+            settings.ollama_base_url.clone(),
+        );
 
         let data = gtk::gio::resources_lookup_data("/play/mii/Boxxy/prompts/boxxy_app_generator.md", gtk::gio::ResourceLookupFlags::NONE)
             .expect("Failed to load app generator prompt resource");
@@ -288,7 +290,7 @@ impl CreateAppDialog {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         let handle = tokio::spawn(async move {
-            let agent = boxxy_ai_core::create_agent(&provider, &api_key, &ollama_url, &system_prompt);
+            let agent = boxxy_ai_core::create_agent(&provider, &creds, &system_prompt);
             let res = agent.prompt(&prompt).await;
             let _ = tx.send(res);
         });

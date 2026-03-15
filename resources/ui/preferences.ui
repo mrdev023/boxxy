@@ -331,14 +331,9 @@
                         <property name="child">
                           <object class="AdwPreferencesPage" id="page_apis">
                             <child>
-                              <object class="AdwPreferencesGroup" id="group_gemini_api">
-                                <property name="title" translatable="yes">Gemini API</property>
-                                <property name="description" translatable="yes">Configure Google Gemini AI settings.</property>
-                                <child>
-                                  <object class="AdwPasswordEntryRow" id="api_key_entry">
-                                    <property name="title" translatable="yes">API Key</property>
-                                  </object>
-                                </child>
+                              <object class="AdwPreferencesGroup" id="dynamic_apis_group">
+                                <property name="title" translatable="yes">AI Providers</property>
+                                <property name="description" translatable="yes">Configure API keys for your AI providers.</property>
                               </object>
                             </child>
                             <child>

@@ -10,14 +10,12 @@ pub async fn extract_implicit_memory(
     user_prompt: String,
     assistant_response: String,
     memory_model: ModelProvider,
-    gemini_key: String,
-    ollama_url: String,
+    creds: boxxy_ai_core::AiCredentials,
     project_path: String,
 ) {
     let agent = boxxy_ai_core::create_agent(
         &memory_model,
-        &gemini_key,
-        &ollama_url,
+        &creds,
         "You are a background memory observer. Your job is to silently extract permanent facts, preferences, and project-specific paths from the conversation. \
         Output ONLY valid JSON. \
         If the user stated a permanent fact, return a JSON array under the key 'facts', with each object containing 'key' (snake_case) and 'content' (the fact). \

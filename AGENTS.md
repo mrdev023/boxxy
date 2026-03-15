@@ -43,10 +43,16 @@ Manages the split-pane terminal environment. Features a deep modular architectur
 Host Privileged Agent. Bypasses Flatpak sandboxing to handle PTY management and host-level system administration via D-Bus IPC.
 
 ### 5. `boxxy-claw` (Library Crate)
-Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Handles context synthesis, tool execution, and LLM communication via a modular dispatcher. Features a **Hybrid Memory System** for both explicit tool-based storage and implicit background fact extraction. It utilizes OSC 133 semantic prompt tracking and Dynamic Scrollback Paging from the VTE to autonomously pull structured history context to the AI on-demand, preventing hallucinations and reducing token usage.
+Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Handles context synthesis, tool execution, and LLM communication via a modular dispatcher. Features a **Hybrid Memory System** for both explicit tool-based storage and implicit background fact extraction. It utilizes OSC 133 semantic prompt tracking and Dynamic Scrollback Paging from the VTE to autonomously pull structured history context to the AI on-demand. The agent pipeline is provider-agnostic, leveraging `AiCredentials` map for seamless scaling.
 
 ### 6. `boxxy-vte` (Library Crate)
 Headless pure-Rust terminal emulator. Renders via GSK Snapshot and supports Kittygraphics natively. OSC 7/8/133 support. Features native semantic prompt tracking (`Flags::SEMANTIC_*`) embedded directly into the terminal cell grid to provide structured context blocks (`[PROMPT]`, `[COMMAND]`, `[OUTPUT]`).
+
+### 9. `boxxy-ai-core` (Library Crate)
+Unified AI interface layer. Abstracts multiple providers (Gemini, Anthropic, Ollama) behind a single `BoxxyAgent` interface. Manages `AiCredentials` mapping and the global multi-threaded Tokio runtime.
+
+### 10. `boxxy-model-selection` (Library Crate)
+Data-driven model configuration UI. Uses a registry pattern to dynamically build selection dialogs and dropdowns based on registered `AiProvider` traits. Decouples AI capability discovery from the main application window.
 
 ### 7. `boxxy-sidebar` (Library Crate)
 Modular AI Chat sidebar component (`AiSidebarComponent`). Scoped into `commands`, `markdown`, `widgets`, and `types`.

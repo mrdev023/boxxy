@@ -10,8 +10,7 @@ pub async fn flush_history(
     db: Arc<Mutex<Option<Db>>>,
     history: &mut Vec<Message>,
     claw_model: &ModelProvider,
-    gemini_key: &str,
-    ollama_url: &str,
+    creds: &boxxy_ai_core::AiCredentials,
     project_path: &str,
 ) -> anyhow::Result<()> {
     if history.len() < 15 {
@@ -51,8 +50,7 @@ pub async fn flush_history(
 
     let agent = boxxy_ai_core::create_agent(
         claw_model,
-        gemini_key,
-        ollama_url,
+        creds,
         "You are a concise memory extraction system. Output only valid JSON."
     );
 

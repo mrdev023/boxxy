@@ -38,7 +38,7 @@ You can now type `? help me to debug my audio not working` to message `boxxy-cla
 
 ## Model Selection
 
-Boxxy currently supports [Gemini](https://aistudio.google.com/) and local Ollama connections, but more providers will come. However Boxxy for now is strongly tested and optimized for the Gemini family. From Preferences -> APIs, add your connection strings. Then, press `Ctrl+Shift+P` to open the Command Palette. Type "models" and in the Model Selection dialog select the model you want to use for both Claw, AI Chat and Memories.
+Boxxy currently supports [Gemini](https://aistudio.google.com/), [Claude](https://platform.claude.com/) and local Ollama connections, but more providers will come. However Boxxy for now is strongly tested and optimized for the Gemini family. From Preferences -> APIs, add your connection strings. Then, press `Ctrl+Shift+P` to open the Command Palette. Type "models" and in the Model Selection dialog select the model you want to use for both Claw, AI Chat and Memories.
 
 Memories is an extra model that can match prompt queries to SQL FTS; Use a fast model like Gemini Flash Lite with "Minimal" thinking level.  
 

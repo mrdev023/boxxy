@@ -13,5 +13,6 @@ The crate uses a modern, declarative UI approach:
 ## Key Features
 - **Categorized Navigation**: Settings are grouped into Appearance, Previews, APIs, and Advanced sections.
 - **Real-Time Search**: A global search entry in the sidebar filters both categories and individual setting rows dynamically.
+- **Dynamic API Support**: The APIs section automatically generates `PasswordEntryRow`s for any provider registered in `boxxy-model-selection` that requires a key. Keys are stored in a flexible `HashMap`.
 - **Automatic Persistence**: All changes are immediately saved to disk and broadcasted through the `SETTINGS_EVENT_BUS`.
 - **UI Decoupling**: Logic is separated from the UI layout by using GResource-based XML templates.

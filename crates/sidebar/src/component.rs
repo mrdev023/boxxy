@@ -377,9 +377,11 @@ impl AiSidebarComponent {
         drop(inner);
 
         let settings = boxxy_preferences::Settings::load();
-        let api_key = settings.gemini_api_key;
-        let ollama_url = settings.ollama_base_url;
-        
+        let creds = boxxy_ai_core::AiCredentials::new(
+            settings.api_keys.clone(),
+            settings.ollama_base_url.clone(),
+        );
+
         let data = gtk::gio::resources_lookup_data("/play/mii/Boxxy/prompts/ai_chat.md", gtk::gio::ResourceLookupFlags::NONE)
             .expect("Failed to load ai_chat prompt resource");
         let system_prompt = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
@@ -388,8 +390,7 @@ impl AiSidebarComponent {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         let handle = tokio::spawn(async move {
-            let agent = boxxy_ai_core::create_agent(&provider, &api_key, &ollama_url, &system_prompt);
-            let res = agent.chat(&prompt, history_to_send).await;
+            let agent = boxxy_ai_core::create_agent(&provider, &creds, &system_prompt);            let res = agent.chat(&prompt, history_to_send).await;
             let _ = tx.send(res);
         });
 

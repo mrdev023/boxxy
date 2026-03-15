@@ -353,10 +353,14 @@ fn spawn_turn(
             .replace("{{current_dir}}", &cwd_clone)
             .replace("{{workspace_radar}}", &radar);
 
+        let creds = boxxy_ai_core::AiCredentials::new(
+            settings.api_keys.clone(),
+            settings.ollama_base_url.clone(),
+        );
+
         let agent = crate::engine::agent::create_claw_agent(
             &settings.claw_model,
-            &settings.gemini_api_key,
-            &settings.ollama_base_url,
+            &creds,
             &system_prompt,
             &claw_proxy,
             &cwd_clone,
@@ -385,12 +389,16 @@ fn spawn_turn(
                 state_lock.history.push(rig::message::Message::assistant(response.clone()));
 
                 // Optional: Trigger Memory Flush if history is too long
+                let creds = boxxy_ai_core::AiCredentials::new(
+                    settings.api_keys.clone(),
+                    settings.ollama_base_url.clone(),
+                );
+
                 let _ = crate::memories::flush::flush_history(
                     db.clone(),
                     &mut state_lock.history,
                     &settings.claw_model,
-                    &settings.gemini_api_key,
-                    &settings.ollama_base_url,
+                    &creds,
                     &cwd_clone,
                 ).await;
                 
@@ -400,13 +408,15 @@ let resp_for_db = response.clone();
 let db_for_summary = db.clone();
 let cwd_for_db = cwd_clone.clone();
 let mem_model = settings.memory_model.clone().unwrap_or(settings.claw_model.clone());
-let gemini_key = settings.gemini_api_key.clone();
-let ollama_url = settings.ollama_base_url.clone();
+let creds = boxxy_ai_core::AiCredentials::new(
+    settings.api_keys.clone(),
+    settings.ollama_base_url.clone(),
+);
 
 tokio::spawn(async move {
     let db_guard = db_for_summary.lock().await;
     if db_guard.is_some() {
-        summarize_and_store(&*db_guard, &prompt_for_db, &resp_for_db, &cwd_for_db).await;
+        summarize_and_store(&*db_guard, &prompt_for_db, &resp_for_db, &cwd_for_db, creds.clone()).await;
     }
     drop(db_guard);
 
@@ -415,8 +425,7 @@ tokio::spawn(async move {
         prompt_for_db,
         resp_for_db,
         mem_model,
-        gemini_key,
-        ollama_url,
+        creds,
         cwd_for_db,
     ).await;
 });
