@@ -643,6 +643,60 @@ impl<T> Term<T> {
         res.strip_suffix('\n').map(str::to_owned).unwrap_or(res)
     }
 
+    /// Convert range between two points to a String, including semantic boundary tags.
+    pub fn semantic_bounds_to_string(&self, start: Point, end: Point) -> String {
+        let mut res = String::new();
+        let mut current_semantic: Option<u32> = None;
+
+        for line in (start.line.0..=end.line.0).map(Line::from) {
+            let start_col = if line == start.line { start.column } else { Column(0) };
+            let end_col = if line == end.line { end.column } else { self.last_column() };
+
+            let grid_line = &self.grid[line];
+            let line_length = cmp::min(grid_line.line_length(), end_col + 1);
+
+            let mut tab_mode = false;
+            for column in (start_col.0..line_length.0).map(Column::from) {
+                let cell = &grid_line[column];
+                
+                let cell_semantic = cell.flags.bits() & (Flags::SEMANTIC_PROMPT.bits() | Flags::SEMANTIC_CMD.bits() | Flags::SEMANTIC_OUTPUT.bits());
+                if current_semantic != Some(cell_semantic) {
+                    if current_semantic.is_some() && current_semantic.unwrap() != 0 {
+                        res.push_str("\n```\n");
+                    }
+                    if cell_semantic != 0 {
+                        if cell_semantic == Flags::SEMANTIC_PROMPT.bits() { res.push_str("\n[PROMPT]\n```text\n"); }
+                        else if cell_semantic == Flags::SEMANTIC_CMD.bits() { res.push_str("\n[COMMAND]\n```bash\n"); }
+                        else if cell_semantic == Flags::SEMANTIC_OUTPUT.bits() { res.push_str("\n[OUTPUT]\n```text\n"); }
+                    }
+                    current_semantic = Some(cell_semantic);
+                }
+
+                if tab_mode {
+                    if self.tabs[column] || cell.c != ' ' { tab_mode = false; } else { continue; }
+                }
+                if cell.c == '\t' { tab_mode = true; }
+
+                if !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+                    res.push(cell.c);
+                    for c in cell.zerowidth().into_iter().flatten() {
+                        res.push(*c);
+                    }
+                }
+            }
+
+            if end_col >= self.columns() - 1 && (line_length.0 == 0 || !grid_line[line_length - 1].flags.contains(Flags::WRAPLINE)) {
+                res.push('\n');
+            }
+        }
+        
+        if current_semantic.is_some() && current_semantic.unwrap() != 0 {
+            res.push_str("\n```\n");
+        }
+
+        res.strip_suffix('\n').map(str::to_owned).unwrap_or(res)
+    }
+
     /// Convert a single line in the grid to a String.
     fn line_to_string(
         &self,
@@ -2314,21 +2368,28 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn osc_133_a(&mut self) {
+        self.grid.cursor.template.flags.remove(crate::engine::term::cell::Flags::SEMANTIC_CMD | crate::engine::term::cell::Flags::SEMANTIC_OUTPUT);
+        self.grid.cursor.template.flags.insert(crate::engine::term::cell::Flags::SEMANTIC_PROMPT);
         self.event_proxy.send_event(Event::Osc133A);
     }
 
     #[inline]
     fn osc_133_b(&mut self) {
+        self.grid.cursor.template.flags.remove(crate::engine::term::cell::Flags::SEMANTIC_PROMPT | crate::engine::term::cell::Flags::SEMANTIC_OUTPUT);
+        self.grid.cursor.template.flags.insert(crate::engine::term::cell::Flags::SEMANTIC_CMD);
         self.event_proxy.send_event(Event::Osc133B);
     }
 
     #[inline]
     fn osc_133_c(&mut self) {
+        self.grid.cursor.template.flags.remove(crate::engine::term::cell::Flags::SEMANTIC_PROMPT | crate::engine::term::cell::Flags::SEMANTIC_CMD);
+        self.grid.cursor.template.flags.insert(crate::engine::term::cell::Flags::SEMANTIC_OUTPUT);
         self.event_proxy.send_event(Event::Osc133C);
     }
 
     #[inline]
     fn osc_133_d(&mut self, exit_code: Option<i32>) {
+        self.grid.cursor.template.flags.remove(crate::engine::term::cell::Flags::SEMANTIC_PROMPT | crate::engine::term::cell::Flags::SEMANTIC_CMD | crate::engine::term::cell::Flags::SEMANTIC_OUTPUT);
         self.event_proxy.send_event(Event::Osc133D(exit_code));
     }
 

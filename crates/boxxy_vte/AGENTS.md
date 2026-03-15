@@ -69,6 +69,7 @@ The `TerminalWidget` GObject wrapper.
 - **Advanced Regex Search:** Uses `regex-automata` 0.4 with full Unicode support. Features zero-cost wrap-around, look-behind context for word boundaries (`\b`), and automatic viewport scrolling to matches.
 - **OSC 8 Hyperlinks:** Hover-only underlines and native URI support.
 - **OSC 7 CWD Tracking:** Robust, event-driven directory tracking.
+- **OSC 133 Semantic Prompt Tracking:** Native support for shell integration markers. The terminal engine automatically tracks semantic boundaries (Prompt, Command, Output) directly within the cell grid (`Flags::SEMANTIC_*`), enabling structured context extraction for AI agents.
 - **Kitty Graphics Protocol:** Natively supports Kitty images (`_G` APC sequences) including zero-copy shared memory (`t=s`) rendering for raw RGB/RGBA buffers, `z-index` background/foreground layer ordering, image deletion, and High-DPI scaling directly through GTK4 memory textures.
 - **GSK Rendering:** Optimized GTK4 scene graph snapshots for high-performance text rendering.
 - **Keyboard Protocols:** Supports modern terminal keyboard protocols including CSI u.

@@ -12,7 +12,7 @@ use crate::engine::ansi::{Color, Hyperlink as VteHyperlink, NamedColor};
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-    pub struct Flags: u16 {
+    pub struct Flags: u32 {
         const INVERSE                   = 0b0000_0000_0000_0001;
         const BOLD                      = 0b0000_0000_0000_0010;
         const ITALIC                    = 0b0000_0000_0000_0100;
@@ -31,6 +31,11 @@ bitflags! {
         const DOTTED_UNDERLINE          = 0b0010_0000_0000_0000;
         const DASHED_UNDERLINE          = 0b0100_0000_0000_0000;
         const GRAPHICS_ATTACHMENT       = 0b1000_0000_0000_0000;
+        
+        const SEMANTIC_PROMPT           = 0b0000_0000_0000_0001_0000_0000_0000_0000;
+        const SEMANTIC_CMD              = 0b0000_0000_0000_0010_0000_0000_0000_0000;
+        const SEMANTIC_OUTPUT           = 0b0000_0000_0000_0100_0000_0000_0000_0000;
+
         const ALL_UNDERLINES            = Self::UNDERLINE.bits() | Self::DOUBLE_UNDERLINE.bits()
                                         | Self::UNDERCURL.bits() | Self::DOTTED_UNDERLINE.bits()
                                         | Self::DASHED_UNDERLINE.bits();

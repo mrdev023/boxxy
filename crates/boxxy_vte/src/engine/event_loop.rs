@@ -261,7 +261,7 @@ where
                                 let start_point = Point::new(start_line, Column(0));
                                 let end_point = Point::new(bottom, self.terminal.last_column());
 
-                                let text = self.terminal.bounds_to_string(start_point, end_point);
+                                let text = self.terminal.semantic_bounds_to_string(start_point, end_point);
                                 let _ = sender.send(text);
                             },
                             Ok(Msg::Shutdown) | Err(_) => {

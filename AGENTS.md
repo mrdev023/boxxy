@@ -43,10 +43,10 @@ Manages the split-pane terminal environment. Features a deep modular architectur
 Host Privileged Agent. Bypasses Flatpak sandboxing to handle PTY management and host-level system administration via D-Bus IPC.
 
 ### 5. `boxxy-claw` (Library Crate)
-Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Handles context synthesis, tool execution, and LLM communication via a modular dispatcher. Features a **Hybrid Memory System** for both explicit tool-based storage and implicit background fact extraction.
+Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Handles context synthesis, tool execution, and LLM communication via a modular dispatcher. Features a **Hybrid Memory System** for both explicit tool-based storage and implicit background fact extraction. It utilizes OSC 133 semantic prompt tracking from the VTE to provide highly structured history context to the AI, preventing hallucinations.
 
 ### 6. `boxxy-vte` (Library Crate)
-Headless pure-Rust terminal emulator. Renders via GSK Snapshot and supports Kittygraphics natively. OSC 7/8/133 support.
+Headless pure-Rust terminal emulator. Renders via GSK Snapshot and supports Kittygraphics natively. OSC 7/8/133 support. Features native semantic prompt tracking (`Flags::SEMANTIC_*`) embedded directly into the terminal cell grid to provide structured context blocks (`[PROMPT]`, `[COMMAND]`, `[OUTPUT]`).
 
 ### 7. `boxxy-sidebar` (Library Crate)
 Modular AI Chat sidebar component (`AiSidebarComponent`). Scoped into `commands`, `markdown`, `widgets`, and `types`.
