@@ -1,4 +1,3 @@
-use boxxy_about::AboutComponent;
 use boxxy_sidebar::AiSidebarComponent;
 use boxxy_app_menu::AppMenuComponent;
 use boxxy_apps::BoxxyAppsComponent;
@@ -91,7 +90,6 @@ pub struct AppWindowInner {
     pub ai_chat: AiSidebarComponent,
     pub claw: ClawSidebarComponent,
     pub theme_selector: boxxy_themes::ThemeSelectorComponent,
-    pub about: AboutComponent,
     pub command_palette: CommandPaletteComponent,
     pub current_settings: Settings,
     pub app_state: AppState,

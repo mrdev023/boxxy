@@ -194,7 +194,8 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, msg: AppInput) {
             inner.preferences.show(&inner.window.clone().upcast());
         }
         AppInput::OpenAbout => {
-            inner.about.show(&inner.window.clone().upcast());
+            inner.preferences.show_page("about");
+            inner.preferences.show(&inner.window.clone().upcast());
         }
         AppInput::ShowAppMenu(x, y) => {
             let rect = gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1);

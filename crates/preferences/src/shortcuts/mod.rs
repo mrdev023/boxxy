@@ -3,7 +3,7 @@ use libadwaita as adw;
 use adw::prelude::*;
 
 #[allow(deprecated)]
-pub fn populate_shortcuts_page(page: &adw::PreferencesPage) -> Vec<(adw::PreferencesGroup, Vec<adw::ActionRow>)> {
+pub fn populate_shortcuts_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> bool> {
     let categories = boxxy_keybindings::get_shortcuts_by_category();
     let mut elements = Vec::new();
 
@@ -33,5 +33,19 @@ pub fn populate_shortcuts_page(page: &adw::PreferencesPage) -> Vec<(adw::Prefere
         elements.push((group, rows));
     }
     
-    elements
+    Box::new(move |query: &str| {
+        let mut page_visible = false;
+        for (group, rows) in &elements {
+            let mut group_visible = false;
+            for row in rows {
+                let title = row.title().to_lowercase();
+                let m = query.is_empty() || title.contains(query);
+                row.set_visible(m);
+                if m { group_visible = true; }
+            }
+            group.set_visible(group_visible);
+            if group_visible { page_visible = true; }
+        }
+        page_visible
+    })
 }

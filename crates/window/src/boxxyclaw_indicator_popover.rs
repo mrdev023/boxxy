@@ -19,18 +19,12 @@ impl BoxxyclawIndicatorPopover {
         on_terminal_toggled: F3,
     ) -> Self {
         let popover = gtk::Popover::new();
-        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        
+        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
         vbox.set_margin_start(12);
         vbox.set_margin_end(12);
-
-        let title = gtk::Label::builder()
-            .label("Claw Agent Options")
-            .css_classes(["heading"])
-            .halign(gtk::Align::Start)
-            .build();
-        vbox.append(&title);
 
         let list_box = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::None)
@@ -38,10 +32,11 @@ impl BoxxyclawIndicatorPopover {
             .build();
 
         // 1. Enable Toggle
+        let enable_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
         let enable_row = adw::ActionRow::builder()
             .title("Enable Claw Agent")
+            .activatable_widget(&enable_btn)
             .build();
-        let enable_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
         enable_row.add_suffix(&enable_btn);
         
         let on_enable_rc = Rc::new(on_enable_toggled);
@@ -52,11 +47,12 @@ impl BoxxyclawIndicatorPopover {
         list_box.append(&enable_row);
 
         // 2. Proactive Toggle
+        let proactive_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
         let proactive_row = adw::ActionRow::builder()
             .title("Proactive Mode")
             .subtitle("Analyze background commands")
+            .activatable_widget(&proactive_btn)
             .build();
-        let proactive_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
         proactive_row.add_suffix(&proactive_btn);
 
         let on_proactive_rc = Rc::new(on_proactive_toggled);
@@ -67,11 +63,12 @@ impl BoxxyclawIndicatorPopover {
         list_box.append(&proactive_row);
 
         // 3. On Terminal Toggle
+        let terminal_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
         let terminal_row = adw::ActionRow::builder()
             .title("On Terminal")
             .subtitle("Show suggestions in terminal")
+            .activatable_widget(&terminal_btn)
             .build();
-        let terminal_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
         terminal_row.add_suffix(&terminal_btn);
 
         let on_terminal_rc = Rc::new(on_terminal_toggled);

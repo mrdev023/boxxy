@@ -472,15 +472,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "boxxy-about"
-version = "0.0.22"
-dependencies = [
- "gdk-pixbuf",
- "gtk4",
- "libadwaita",
-]
-
-[[package]]
 name = "boxxy-agent"
 version = "0.0.22"
 dependencies = [
@@ -746,7 +737,6 @@ version = "0.0.22"
 dependencies = [
  "anyhow",
  "async-channel",
- "boxxy-about",
  "boxxy-ai-core",
  "boxxy-app-menu",
  "boxxy-apps",

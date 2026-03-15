@@ -7,7 +7,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use boxxy_about::AboutComponent;
 use boxxy_sidebar::AiSidebarComponent;
 use boxxy_app_menu::AppMenuComponent;
 use boxxy_claw::ClawSidebarComponent;
@@ -98,7 +97,6 @@ impl AppWindow {
         });
         theme_selector.select_theme(current_settings.theme.as_str());
 
-        let about = AboutComponent::new();
         let command_palette = CommandPaletteComponent::new();
 
         let window = adw::ApplicationWindow::builder()
@@ -115,11 +113,6 @@ impl AppWindow {
         let tx_cp = tx.clone();
         command_palette.widget().connect_closed(move |_| {
             let _ = tx_cp.send_blocking(AppInput::FocusActiveTerminal);
-        });
-
-        let tx_ab = tx.clone();
-        about.widget().connect_closed(move |_| {
-            let _ = tx_ab.send_blocking(AppInput::FocusActiveTerminal);
         });
 
         let tx_pref_close = tx.clone();
@@ -248,7 +241,6 @@ impl AppWindow {
             ai_chat,
             claw,
             theme_selector,
-            about,
             command_palette,
             current_settings,
             app_state,

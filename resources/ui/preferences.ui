@@ -107,6 +107,20 @@
                                 </property>
                               </object>
                             </child>
+                            <child>
+                              <object class="GtkListBoxRow" id="nav_about">
+                                <property name="child">
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">About</property>
+                                    <property name="xalign">0</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="margin-end">12</property>
+                                    <property name="margin-top">10</property>
+                                    <property name="margin-bottom">10</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
                           </object>
                         </property>
                       </object>
@@ -202,13 +216,14 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="AdwSwitchRow" id="cursor_color_switch">
-                                    <property name="title" translatable="yes">Custom Color</property>
-                                  </object>
-                                </child>
-                                <child>
                                   <object class="AdwActionRow" id="cursor_color_row">
-                                    <property name="title" translatable="yes">Color</property>
+                                    <property name="title" translatable="yes">Custom Color</property>
+                                    <property name="activatable-widget">cursor_color_switch</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="cursor_color_switch">
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                                 <child>
@@ -427,6 +442,16 @@
                                 </child>
                               </object>
                             </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="AdwViewStackPage">
+                        <property name="name">about</property>
+                        <property name="child">
+                          <object class="AdwPreferencesPage" id="page_about">
                           </object>
                         </property>
                       </object>
