@@ -632,6 +632,7 @@ name = "boxxy-preferences"
 version = "0.0.22"
 dependencies = [
  "anyhow",
+ "boxxy-keybindings",
  "boxxy-model-selection",
  "boxxy-themes",
  "cairo-rs",
@@ -642,15 +643,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "boxxy-shortcuts"
-version = "0.0.22"
-dependencies = [
- "boxxy-keybindings",
- "gtk4",
- "libadwaita",
 ]
 
 [[package]]
@@ -763,7 +755,6 @@ dependencies = [
  "boxxy-keybindings",
  "boxxy-model-selection",
  "boxxy-preferences",
- "boxxy-shortcuts",
  "boxxy-sidebar",
  "boxxy-terminal",
  "boxxy-themes",

@@ -80,6 +80,20 @@
                               </object>
                             </child>
                             <child>
+                              <object class="GtkListBoxRow" id="nav_shortcuts">
+                                <property name="child">
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">Shortcuts</property>
+                                    <property name="xalign">0</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="margin-end">12</property>
+                                    <property name="margin-top">10</property>
+                                    <property name="margin-bottom">10</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
                               <object class="GtkListBoxRow" id="nav_advanced">
                                 <property name="child">
                                   <object class="GtkLabel">
@@ -323,6 +337,16 @@
                                 </child>
                               </object>
                             </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="AdwViewStackPage">
+                        <property name="name">shortcuts</property>
+                        <property name="child">
+                          <object class="AdwPreferencesPage" id="page_shortcuts">
                           </object>
                         </property>
                       </object>

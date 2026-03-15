@@ -10,6 +10,9 @@ use std::cell::RefCell;
 #[derive(Clone)]
 pub struct PreferencesComponent {
     dialog: adw::Dialog,
+    stack: adw::ViewStack,
+    nav_shortcuts: gtk::ListBoxRow,
+    search_entry: gtk::SearchEntry,
     theme_row: adw::ActionRow,
     chat_width_spin: adw::SpinRow,
     settings_rc: Rc<RefCell<Settings>>,
@@ -53,9 +56,11 @@ impl PreferencesComponent {
         nav_previews.set_widget_name("nav_previews");
         let nav_apis: gtk::ListBoxRow = builder.object("nav_apis").unwrap();
         nav_apis.set_widget_name("nav_apis");
+        let nav_shortcuts: gtk::ListBoxRow = builder.object("nav_shortcuts").unwrap();
+        nav_shortcuts.set_widget_name("nav_shortcuts");
         let nav_advanced: gtk::ListBoxRow = builder.object("nav_advanced").unwrap();
         nav_advanced.set_widget_name("nav_advanced");
-        
+
         let stack_clone = stack.clone();
         let title_clone = content_title.clone();
         category_list.connect_row_selected(move |_, row| {
@@ -64,13 +69,13 @@ impl PreferencesComponent {
                     "nav_appearance" => { title_clone.set_title("Appearance"); "appearance" },
                     "nav_previews" => { title_clone.set_title("Previews"); "previews" },
                     "nav_apis" => { title_clone.set_title("APIs"); "apis" },
+                    "nav_shortcuts" => { title_clone.set_title("Shortcuts"); "shortcuts" },
                     "nav_advanced" => { title_clone.set_title("Advanced"); "advanced" },
                     _ => "appearance"
                 };
                 stack_clone.set_visible_child_name(name);
             }
-        });
-        category_list.select_row(Some(&nav_appearance));
+        });        category_list.select_row(Some(&nav_appearance));
 
         // Get references to widgets
         let font_row: adw::ActionRow = builder.object("font_row").unwrap();
@@ -105,6 +110,9 @@ impl PreferencesComponent {
         let row_reset_regex: adw::ActionRow = builder.object("row_reset_regex").unwrap();
         let row_open_config: adw::ActionRow = builder.object("row_open_config").unwrap();
         let row_reset_config: adw::ActionRow = builder.object("row_reset_config").unwrap();
+
+        let page_shortcuts: adw::PreferencesPage = builder.object("page_shortcuts").unwrap();
+        let shortcuts_data = crate::shortcuts::populate_shortcuts_page(&page_shortcuts);
 
         // 1. Font
         let font_dialog = gtk::FontDialog::new();
@@ -537,6 +545,8 @@ impl PreferencesComponent {
         let group_config: adw::PreferencesGroup = builder.object("group_config").unwrap();
 
         let list_clone = category_list.clone();
+        let nav_shortcuts_clone = nav_shortcuts.clone();
+        let shortcuts_data_clone = shortcuts_data.clone();
         let font_row_clone = font_row.clone();
         let theme_row_clone = theme_row.clone();
         let padding_spin_clone = padding_spin.clone();
@@ -613,6 +623,20 @@ impl PreferencesComponent {
             group_ollama_api.set_visible(a2);
             nav_apis.set_visible(group_gemini_api.is_visible() || group_ollama_api.is_visible());
 
+            let mut shortcuts_visible = false;
+            for (group, rows) in &shortcuts_data_clone {
+                let mut group_visible = false;
+                for row in rows {
+                    let title = row.title().to_lowercase();
+                    let m = query.is_empty() || title.contains(&query);
+                    row.set_visible(m);
+                    if m { group_visible = true; }
+                }
+                group.set_visible(group_visible);
+                if group_visible { shortcuts_visible = true; }
+            }
+            nav_shortcuts_clone.set_visible(shortcuts_visible);
+
             let ad1 = match_row(login_shell_switch_clone.upcast_ref(), "login shell spawn terminal");
             let ad2 = match_row(show_vte_grid_switch_clone.upcast_ref(), "show vte grid lines representing cells");
             let ad3 = match_row(custom_regex_entry_clone.upcast_ref(), "file path regex ctrl+click freezes");
@@ -627,7 +651,7 @@ impl PreferencesComponent {
 
             if let Some(selected) = list_clone.selected_row()
                 && !selected.is_visible() {
-                    for i in 0..4 {
+                    for i in 0..5 {
                         if let Some(row) = list_clone.row_at_index(i)
                             && row.is_visible() {
                                 list_clone.select_row(Some(&row));
@@ -637,9 +661,10 @@ impl PreferencesComponent {
                 }
         });
 
-        Self { dialog, theme_row, chat_width_spin, settings_rc }
+        Self { dialog, stack, nav_shortcuts, search_entry, theme_row, chat_width_spin, settings_rc }
     }
     pub fn show(&self, parent: &gtk::Window) {
+        self.search_entry.set_text("");
         let width = parent.width();
         let height = parent.height();
         let target_width = (width - 40).clamp(600, 950);
@@ -651,6 +676,15 @@ impl PreferencesComponent {
 
     pub fn widget(&self) -> &adw::Dialog {
         &self.dialog
+    }
+
+    pub fn show_page(&self, page_name: &str) {
+        if let Some(list_box) = self.nav_shortcuts.parent().and_then(|p| p.downcast::<gtk::ListBox>().ok()) {
+            if page_name == "shortcuts" {
+                list_box.select_row(Some(&self.nav_shortcuts));
+            }
+        }
+        self.stack.set_visible_child_name(page_name);
     }
 
     pub fn set_theme(&self, theme: &str) {

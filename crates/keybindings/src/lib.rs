@@ -1,6 +1,6 @@
 use gtk4::prelude::*;
 
-// Simple struct to hold keybinding definitions
+#[derive(Clone, Debug)]
 pub struct Keybinding {
     pub trigger: &'static str,
     pub action_name: &'static str,
@@ -32,6 +32,54 @@ pub const SWAP_LEFT: Keybinding = Keybinding { trigger: "<Ctrl><Shift>Left", act
 pub const SWAP_RIGHT: Keybinding = Keybinding { trigger: "<Ctrl><Shift>Right", action_name: "win.swap-right" };
 pub const SWAP_UP: Keybinding = Keybinding { trigger: "<Ctrl><Shift>Up", action_name: "win.swap-up" };
 pub const SWAP_DOWN: Keybinding = Keybinding { trigger: "<Ctrl><Shift>Down", action_name: "win.swap-down" };
+
+pub struct ShortcutCategory {
+    pub name: &'static str,
+    pub items: Vec<(&'static str, Keybinding)>,
+}
+
+pub fn get_shortcuts_by_category() -> Vec<ShortcutCategory> {
+    vec![
+        ShortcutCategory {
+            name: "General",
+            items: vec![
+                ("New Window", NEW_WINDOW),
+                ("New Tab", NEW_TAB),
+                ("Close Tab", CLOSE_TAB),
+                ("Command Palette", COMMAND_PALETTE),
+                ("Toggle Sidebar", TOGGLE_SIDEBAR),
+                ("Focus Claw", CLAW_TOGGLE_FOCUS),
+                ("Preferences", PREFERENCES),
+            ],
+        },
+        ShortcutCategory {
+            name: "Terminal",
+            items: vec![
+                ("Copy", COPY),
+                ("Paste", PASTE),
+                ("Search", SEARCH),
+                ("Zoom In", ZOOM_IN),
+                ("Zoom Out", ZOOM_OUT),
+            ],
+        },
+        ShortcutCategory {
+            name: "Split Panes",
+            items: vec![
+                ("Split Down", SPLIT_DOWN),
+                ("Split Right", SPLIT_RIGHT),
+                ("Close Pane", CLOSE_PANE),
+                ("Focus Up", FOCUS_UP),
+                ("Focus Down", FOCUS_DOWN),
+                ("Focus Left", FOCUS_LEFT),
+                ("Focus Right", FOCUS_RIGHT),
+                ("Swap Up", SWAP_UP),
+                ("Swap Down", SWAP_DOWN),
+                ("Swap Left", SWAP_LEFT),
+                ("Swap Right", SWAP_RIGHT),
+            ],
+        },
+    ]
+}
 
 pub fn bind_shortcuts(app: &libadwaita::Application) {
     app.set_accels_for_action(NEW_WINDOW.action_name, &[NEW_WINDOW.trigger]);

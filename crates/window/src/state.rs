@@ -5,7 +5,6 @@ use boxxy_apps::BoxxyAppsComponent;
 use boxxy_claw::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;
 use boxxy_preferences::{AppState, PreferencesComponent, Settings};
-use boxxy_shortcuts::ShortcutsComponent;
 use boxxy_terminal::TerminalEvent;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -92,7 +91,6 @@ pub struct AppWindowInner {
     pub ai_chat: AiSidebarComponent,
     pub claw: ClawSidebarComponent,
     pub theme_selector: boxxy_themes::ThemeSelectorComponent,
-    pub shortcuts: ShortcutsComponent,
     pub about: AboutComponent,
     pub command_palette: CommandPaletteComponent,
     pub current_settings: Settings,

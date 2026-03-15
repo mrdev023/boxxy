@@ -20,7 +20,6 @@ boxxy-ai-core = { path = "../ai_core" }
 boxxy-apps = { path = "../boxxy_apps" }
 boxxy-model-selection = { path = "../model_selection" }
 boxxy-command-palette = { path = "../command_palette" }
-boxxy-shortcuts = { path = "../shortcuts" }
 boxxy-about = { path = "../about" }
 anyhow.workspace = true
 sourceview5.workspace = true

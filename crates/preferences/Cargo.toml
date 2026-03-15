@@ -17,4 +17,5 @@ anyhow.workspace = true
 boxxy-themes.workspace = true
 tokio.workspace = true
 log.workspace = true
+boxxy-keybindings.workspace = true
 boxxy-model-selection = { path = "../model_selection" }

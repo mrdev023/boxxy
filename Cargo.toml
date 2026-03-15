@@ -10,7 +10,6 @@ members = [
     "crates/keybindings",
     "crates/boxxy_apps",
     "crates/preferences",
-    "crates/shortcuts",
     "crates/terminal",
     "crates/themes",
     "crates/window",
@@ -49,13 +48,10 @@ nursery = "warn"
 anyhow = "1.0.101"
 async-trait = "0.1"
 boxxy-model-selection = { path = "crates/model_selection" }
-boxxy-command-palette = { path = "crates/command_palette" }
 boxxy-keybindings = { path = "crates/keybindings" }
-boxxy-tab-menu = { path = "crates/tab_menu" }
 boxxy-terminal = { path = "crates/terminal" }
 boxxy-themes = { path = "crates/themes" }
 boxxy-window = { path = "crates/window" }
-boxxy-sidebar = { path = "crates/sidebar" }
 directories = "6.0.0"
 cairo-rs = "0.22"
 gdk-pixbuf = "0.22"

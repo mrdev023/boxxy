@@ -190,7 +190,8 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, msg: AppInput) {
             tabs::open_boxxy_apps(&mut inner);
         }
         AppInput::OpenShortcuts => {
-            inner.shortcuts.show(&inner.window.clone().upcast());
+            inner.preferences.show_page("shortcuts");
+            inner.preferences.show(&inner.window.clone().upcast());
         }
         AppInput::OpenAbout => {
             inner.about.show(&inner.window.clone().upcast());

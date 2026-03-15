@@ -13,7 +13,6 @@ use boxxy_app_menu::AppMenuComponent;
 use boxxy_claw::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;
 use boxxy_preferences::{AppState, PreferencesComponent, Settings};
-use boxxy_shortcuts::ShortcutsComponent;
 use boxxy_themes::ThemeSelectorComponent;
 
 use crate::init::AppInit;
@@ -99,7 +98,6 @@ impl AppWindow {
         });
         theme_selector.select_theme(current_settings.theme.as_str());
 
-        let shortcuts = ShortcutsComponent::new();
         let about = AboutComponent::new();
         let command_palette = CommandPaletteComponent::new();
 
@@ -127,11 +125,6 @@ impl AppWindow {
         let tx_pref_close = tx.clone();
         preferences.widget().connect_closed(move |_| {
             let _ = tx_pref_close.send_blocking(AppInput::FocusActiveTerminal);
-        });
-
-        let tx_sc = tx.clone();
-        shortcuts.widget().connect_closed(move |_| {
-            let _ = tx_sc.send_blocking(AppInput::FocusActiveTerminal);
         });
 
         let tx_am = tx.clone();
@@ -255,7 +248,6 @@ impl AppWindow {
             ai_chat,
             claw,
             theme_selector,
-            shortcuts,
             about,
             command_palette,
             current_settings,
