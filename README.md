@@ -28,8 +28,8 @@ Boxxy is currently in early preview, but it does have most of the things you exp
 
 ## Installation
 
+Nightly builds. It supports automatic updates from within the app
 ```bash
-#Nightly builds; It supports automatic updates from within the app
 curl -sSf https://raw.githubusercontent.com/miifrommera/boxxy/main/scripts/install.sh | sh
 ```
 
