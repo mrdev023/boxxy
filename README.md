@@ -28,10 +28,11 @@ Boxxy is currently in early preview, but it does have most of the things you exp
 
 ## Installation
 
-Nightly builds. It supports automatic updates from within the app
+Nightly builds. It supports automatic updates from within the app.
 ```bash
 curl -sSf https://raw.githubusercontent.com/miifrommera/boxxy/main/scripts/install.sh | sh
 ```
+Requires GTK 4.22, libAdwaita 1.9
 
 Flathub submission [in progress..](https://github.com/flathub/flathub/pull/8098)
 
