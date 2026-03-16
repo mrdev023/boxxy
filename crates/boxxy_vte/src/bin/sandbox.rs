@@ -5,7 +5,11 @@ use boxxy_vte::terminal::TerminalWidget;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .filter_module("zbus", log::LevelFilter::Warn)
+        .filter_module("zvariant", log::LevelFilter::Warn)
+        .filter_module("tracing", log::LevelFilter::Warn)
+        .init();
 
     let app = Application::builder()
         .application_id("org.boxxy.vte.sandbox")

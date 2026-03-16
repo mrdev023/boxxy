@@ -324,29 +324,8 @@ impl TerminalPaneComponent {
                                 });
                             }
 
-                            let inner_weak = Rc::downgrade(&inner_rc);
-                            let id_for_cwd = id.clone();
-                            glib::spawn_future_local(async move {
-                                loop {
-                                    glib::timeout_future(std::time::Duration::from_secs(2)).await;
-                                    let Some(inner_rc) = inner_weak.upgrade() else { break; };
-                                    let pid = inner_rc.borrow().pid;
-                                    if let Some(pid) = pid {
-                                        let agent = crate::get_agent().await;
-                                        if let Ok(cwd) = agent.get_cwd(pid).await {
-                                            let mut inner = inner_rc.borrow_mut();
-                                            if inner.working_dir.as_deref() != Some(&cwd) {
-                                                inner.working_dir = Some(cwd.clone());
-                                                let cb = inner.callback.clone();
-                                                drop(inner);
-                                                cb(PaneOutput::DirectoryChanged(id_for_cwd.clone(), cwd));
-                                            }
-                                        }
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            });
+                            // CWD tracking is now handled entirely via OSC 7 events
+                            // registered in events::setup_terminal_events.
                         }
                         Err(e) => log::error!("Failed to spawn process via agent: {:#}", e),
                     }

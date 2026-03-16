@@ -9,7 +9,11 @@ use boxxy_agent::ipc::BoxxyAgent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .filter_module("zbus", log::LevelFilter::Warn)
+        .filter_module("zvariant", log::LevelFilter::Warn)
+        .filter_module("tracing", log::LevelFilter::Warn)
+        .init();
     log::info!("Boxxy Agent starting...");
 
     let args: Vec<String> = std::env::args().collect();

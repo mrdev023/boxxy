@@ -1307,22 +1307,13 @@ where
     }
 
     #[inline]
-    fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
-        debug!(
-            "[unhandled hook] params={:?}, ints: {:?}, ignore: {:?}, action: {:?}",
-            params, intermediates, ignore, action
-        );
-    }
+    fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _action: char) {}
 
     #[inline]
-    fn put(&mut self, byte: u8) {
-        debug!("[unhandled put] byte={:?}", byte);
-    }
+    fn put(&mut self, _byte: u8) {}
 
     #[inline]
-    fn unhook(&mut self) {
-        debug!("[unhandled unhook]");
-    }
+    fn unhook(&mut self) {}
 
     #[inline]
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {

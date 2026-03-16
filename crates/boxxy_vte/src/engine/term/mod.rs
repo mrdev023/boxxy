@@ -1036,8 +1036,6 @@ impl<T> Term<T> {
             return;
         }
 
-        debug!("New num_cols is {num_cols} and num_lines is {num_lines}");
-
         let is_alt = self.mode.contains(TermMode::ALT_SCREEN);
         let delta = self.grid.resize(!is_alt, num_lines, num_cols);
         let _inactive_delta = self.inactive_grid.resize(is_alt, num_lines, num_cols);

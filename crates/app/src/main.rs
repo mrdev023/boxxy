@@ -4,7 +4,11 @@ use gtk4::{gio, glib};
 use boxxy_ai_core::utils;
 
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .filter_module("zbus", log::LevelFilter::Warn)
+        .filter_module("zvariant", log::LevelFilter::Warn)
+        .filter_module("tracing", log::LevelFilter::Warn)
+        .init();
     // Enter the global tokio runtime context so tokio::spawn works everywhere.
     let _rt_guard = utils::runtime().enter();
 
