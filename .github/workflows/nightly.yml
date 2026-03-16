@@ -42,6 +42,7 @@ jobs:
           run: |
             dnf install -y \
               gcc pkgconfig openssl-devel gtk4-devel libadwaita-devel \
+              gtksourceview5-devel \
               gstreamer1-devel gstreamer1-plugins-base-devel gdk-pixbuf2-devel \
               glib2-devel sqlite-devel tar gzip git curl
 
