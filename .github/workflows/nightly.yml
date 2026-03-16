@@ -8,6 +8,13 @@ on:
     - cron: '0 0 * * *' # Every night at midnight
   workflow_dispatch: # Allows you to trigger it manually from the UI
 
+permissions:
+  contents: write
+
+env:
+  # Opt-in to Node 24 for all actions as per 2026 deprecation standards
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build:
     name: Build (${{ matrix.arch }})
@@ -62,12 +69,15 @@ jobs:
         run: cat github_env >> $GITHUB_ENV
 
       - name: Update Nightly Release
-        uses: andelf/nightly-release@main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: nightly
-          name: 'Nightly Build'
-          body: 'This release contains the latest automated builds from the main branch.'
-          prerelease: true
-          files: ${{ env.ASSET_PATH }}
+        run: |
+          # Use official GH CLI (standard, pre-installed, and Node-version independent)
+          gh release delete nightly --yes || true
+          git tag -d nightly || true
+          git push origin :refs/tags/nightly || true
+          
+          gh release create nightly ${{ env.ASSET_PATH }} \
+            --title "Nightly Build" \
+            --notes "This release contains the latest automated builds from the main branch." \
+            --prerelease
