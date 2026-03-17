@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
+use flate2::read::GzDecoder;
+use reqwest::header::{HeaderValue, USER_AGENT};
+use self_update::Download;
+use self_update::backends::github::ReleaseList;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use self_update::backends::github::ReleaseList;
-use self_update::Download;
 use tar::Archive;
-use flate2::read::GzDecoder;
-use reqwest::header::{USER_AGENT, HeaderValue};
 
 const REPO_OWNER: &str = "miifrommera";
 const REPO_NAME: &str = "boxxy";
@@ -37,7 +37,8 @@ impl Updater {
         }
 
         // For nightly, we check the latest release with tag "nightly"
-        let nightly = releases.iter()
+        let nightly = releases
+            .iter()
             .find(|r| r.version == "nightly")
             .context("Could not find nightly release on GitHub")?;
 
@@ -52,8 +53,14 @@ impl Updater {
         }
 
         // Find the correct asset for this architecture
-        let target_arch = if cfg!(target_arch = "x86_64") { "x86_64" } else { "aarch64" };
-        let asset = nightly.assets.iter()
+        let target_arch = if cfg!(target_arch = "x86_64") {
+            "x86_64"
+        } else {
+            "aarch64"
+        };
+        let asset = nightly
+            .assets
+            .iter()
             .find(|a| a.name.contains(target_arch) && a.name.ends_with(".tar.gz"));
 
         if let Some(asset) = asset {
@@ -74,12 +81,15 @@ impl Updater {
         let tmp_tarball = pending_dir.join("update.tar.gz");
         let url_clone = url.clone();
         let tmp_tarball_clone = tmp_tarball.clone();
-        
+
         tokio::task::spawn_blocking(move || {
             let mut dest = fs::File::create(&tmp_tarball_clone)?;
             Download::from_url(&url_clone)
                 .set_header(USER_AGENT, HeaderValue::from_static("boxxy-terminal"))
-                .set_header(reqwest::header::ACCEPT, HeaderValue::from_static("application/octet-stream"))
+                .set_header(
+                    reqwest::header::ACCEPT,
+                    HeaderValue::from_static("application/octet-stream"),
+                )
                 .download_to(&mut dest)
         })
         .await
@@ -111,7 +121,7 @@ impl Updater {
         let app_dir = Self::get_app_dir()?;
         let bin_dir = app_dir.join("bin");
         let pending_dir = app_dir.join("updates").join("pending");
-        
+
         // Ensure bin directory exists (in case of fresh install via updater)
         if !bin_dir.exists() {
             fs::create_dir_all(&bin_dir)?;
@@ -124,8 +134,9 @@ impl Updater {
             .repo_name(REPO_NAME)
             .build()?
             .fetch()?;
-        
-        let nightly_date = releases.iter()
+
+        let nightly_date = releases
+            .iter()
             .find(|r| r.version == "nightly")
             .map(|r| r.date.clone())
             .unwrap_or_default();
@@ -135,23 +146,34 @@ impl Updater {
         let mut inner_folder = None;
         for entry in entries {
             if let Ok(entry) = entry {
-                if entry.file_type()?.is_dir() && entry.file_name().to_string_lossy().starts_with("boxxy-terminal") {
+                if entry.file_type()?.is_dir()
+                    && entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("boxxy-terminal")
+                {
                     inner_folder = Some(entry.path());
                     break;
                 }
             }
         }
-        
+
         let inner_folder = inner_folder.context("Could not find extracted content folder")?;
         let pending_bin = inner_folder.join("bin");
 
         log::info!("Swapping binaries from {:?} to {:?}", pending_bin, bin_dir);
 
         // Swap boxxy-terminal
-        Self::swap_binary(&bin_dir.join("boxxy-terminal"), &pending_bin.join("boxxy-terminal"))?;
-        
+        Self::swap_binary(
+            &bin_dir.join("boxxy-terminal"),
+            &pending_bin.join("boxxy-terminal"),
+        )?;
+
         // Swap boxxy-agent
-        Self::swap_binary(&bin_dir.join("boxxy-agent"), &pending_bin.join("boxxy-agent"))?;
+        Self::swap_binary(
+            &bin_dir.join("boxxy-agent"),
+            &pending_bin.join("boxxy-agent"),
+        )?;
 
         // Update .last_update file with the build date
         fs::write(app_dir.join(".last_update"), nightly_date)?;
@@ -165,15 +187,17 @@ impl Updater {
     }
 
     fn swap_binary(current: &Path, new: &Path) -> Result<()> {
-        if !new.exists() { return Ok(()); }
-        
+        if !new.exists() {
+            return Ok(());
+        }
+
         let old_backup = current.with_extension("old");
         if current.exists() {
             let _ = fs::remove_file(&old_backup);
             fs::rename(current, &old_backup)?;
         }
         fs::copy(new, current)?;
-        
+
         // Ensure it's executable
         #[cfg(unix)]
         {

@@ -1,12 +1,12 @@
 use boxxy_preferences::Settings;
 use boxxy_themes::Palette;
-use gtk4::prelude::*;
 use gtk4 as gtk;
+use gtk4::prelude::*;
 use std::collections::HashMap;
 
+use crate::TERMINAL_EVENT_BUS;
 use crate::events::*;
 use crate::pane::TerminalPaneComponent;
-use crate::TERMINAL_EVENT_BUS;
 
 #[derive(Debug)]
 pub struct PaneData {
@@ -65,8 +65,7 @@ impl TerminalComponent {
         split_container.set_vexpand(true);
 
         let mut panes = HashMap::new();
-         
-         
+
         let initial_pane_id = uuid::Uuid::new_v4().to_string();
 
         let wrapper = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -75,7 +74,7 @@ impl TerminalComponent {
         split_container.append(&wrapper);
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PaneOutput>();
-        
+
         let pane_controller = TerminalPaneComponent::new(
             PaneInit {
                 id: initial_pane_id.clone(),
@@ -83,7 +82,7 @@ impl TerminalComponent {
             },
             move |output: PaneOutput| {
                 let _ = tx.send(output);
-            }
+            },
         );
 
         wrapper.append(pane_controller.widget());
@@ -137,7 +136,43 @@ impl TerminalComponent {
     }
 
     pub fn get_pids(&self) -> Vec<u32> {
-        self.inner.borrow().panes.values().filter_map(|p| p.controller.get_pid()).collect()
+        self.inner
+            .borrow()
+            .panes
+            .values()
+            .filter_map(|p| p.controller.get_pid())
+            .collect()
+    }
+
+    pub fn send_text(&self, text: &str) {
+        let active_id = self.inner.borrow().active_pane_id.clone();
+        if let Some(pane) = self.inner.borrow().panes.get(&active_id) {
+            pane.controller.send_text(text);
+        }
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.inner
+            .borrow()
+            .panes
+            .values()
+            .any(|p| p.controller.has_selection())
+    }
+
+    pub fn show_bookmark_proposal(&self, name: &str, script: &str, placeholders: Vec<String>) {
+        let active_id = self.inner.borrow().active_pane_id.clone();
+        if let Some(pane) = self.inner.borrow().panes.get(&active_id) {
+            let proposal = if placeholders.is_empty() {
+                crate::TerminalProposal::Command(script.to_string())
+            } else {
+                crate::TerminalProposal::BookmarkTemplate(script.to_string(), placeholders)
+            };
+            pane.controller.show_bookmark_proposal(
+                &format!("Bookmark: {}", name),
+                "Execute the following script?",
+                proposal,
+            );
+        }
     }
 
     pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
@@ -146,7 +181,7 @@ impl TerminalComponent {
             let inner = self.inner.borrow();
             inner.panes.get(&active_id).map(|p| p.controller.clone())
         };
-        
+
         if let Some(pane) = pane {
             pane.get_text_snapshot(max_lines, offset_lines).await
         } else {
@@ -191,11 +226,16 @@ impl TerminalComponent {
                     inner.active_pane_id = id.clone();
                     drop(inner);
                     self.close_split();
-                    
+
                     let mut inner = self.inner.borrow_mut();
                     if was_active != id && inner.panes.contains_key(&was_active) {
                         inner.active_pane_id = was_active.clone();
-                        inner.panes.get(&was_active).unwrap().controller.grab_focus();
+                        inner
+                            .panes
+                            .get(&was_active)
+                            .unwrap()
+                            .controller
+                            .grab_focus();
                     }
                 }
             }
@@ -297,9 +337,13 @@ impl TerminalComponent {
 
     fn update_dimming(&self) {
         let inner = self.inner.borrow();
-        let dimming_enabled = inner.current_settings.as_ref().map(|s| s.dim_inactive_panes).unwrap_or(false);
+        let dimming_enabled = inner
+            .current_settings
+            .as_ref()
+            .map(|s| s.dim_inactive_panes)
+            .unwrap_or(false);
         let has_multiple = inner.panes.len() > 1 && !inner.is_maximized;
-        
+
         for (id, data) in &inner.panes {
             let should_dim = dimming_enabled && has_multiple && *id != inner.active_pane_id;
             data.controller.set_dimmed(should_dim);
@@ -341,17 +385,27 @@ impl TerminalComponent {
         }
     }
 
-    pub fn show_claw_popover(&self, title: &str, diagnosis: &str, proposal: ClawProposal) {
+    pub fn show_claw_popover(&self, title: &str, diagnosis: &str, proposal: TerminalProposal) {
         let inner = self.inner.borrow();
         if let Some(pane_data) = inner.panes.get(&inner.active_pane_id) {
-            pane_data.controller.show_claw_popover(title, diagnosis, proposal);
+            pane_data
+                .controller
+                .show_claw_popover(title, diagnosis, proposal);
         }
     }
 
-    pub fn show_claw_popover_for_pane(&self, pane_id: &str, title: &str, diagnosis: &str, proposal: ClawProposal) {
+    pub fn show_claw_popover_for_pane(
+        &self,
+        pane_id: &str,
+        title: &str,
+        diagnosis: &str,
+        proposal: TerminalProposal,
+    ) {
         let inner = self.inner.borrow();
         if let Some(pane_data) = inner.panes.get(pane_id) {
-            pane_data.controller.show_claw_popover(title, diagnosis, proposal);
+            pane_data
+                .controller
+                .show_claw_popover(title, diagnosis, proposal);
         }
     }
 
@@ -383,17 +437,26 @@ impl TerminalComponent {
         }
     }
 
-    pub fn show_diagnosis_ready(&self, diagnosis: String, proposal: ClawProposal) {
+    pub fn show_diagnosis_ready(&self, diagnosis: String, proposal: TerminalProposal) {
         let inner = self.inner.borrow();
         if let Some(pane_data) = inner.panes.get(&inner.active_pane_id) {
-            pane_data.controller.show_diagnosis_ready(diagnosis, proposal);
+            pane_data
+                .controller
+                .show_diagnosis_ready(diagnosis, proposal);
         }
     }
 
-    pub fn show_diagnosis_ready_for_pane(&self, pane_id: &str, diagnosis: String, proposal: ClawProposal) {
+    pub fn show_diagnosis_ready_for_pane(
+        &self,
+        pane_id: &str,
+        diagnosis: String,
+        proposal: TerminalProposal,
+    ) {
         let inner = self.inner.borrow();
         if let Some(pane_data) = inner.panes.get(pane_id) {
-            pane_data.controller.show_diagnosis_ready(diagnosis, proposal);
+            pane_data
+                .controller
+                .show_diagnosis_ready(diagnosis, proposal);
         }
     }
 
@@ -435,7 +498,12 @@ impl TerminalComponent {
 
     pub fn claw_history_widget(&self) -> gtk::ListBox {
         let inner = self.inner.borrow();
-        inner.panes.get(&inner.active_pane_id).unwrap().controller.claw_history_widget()
+        inner
+            .panes
+            .get(&inner.active_pane_id)
+            .unwrap()
+            .controller
+            .claw_history_widget()
     }
 
     pub fn working_dir(&self) -> Option<String> {
@@ -460,7 +528,9 @@ impl TerminalComponent {
         inner.current_palette = palette_opt;
 
         for pane_data in inner.panes.values() {
-            pane_data.controller.update_settings(settings.clone(), palette_opt);
+            pane_data
+                .controller
+                .update_settings(settings.clone(), palette_opt);
         }
         drop(inner);
         self.update_dimming();
@@ -487,8 +557,6 @@ impl TerminalComponent {
             gtk::Orientation::Vertical
         };
 
-         
-         
         let new_id = uuid::Uuid::new_v4().to_string();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PaneOutput>();
@@ -506,7 +574,7 @@ impl TerminalComponent {
             },
             move |msg: PaneOutput| {
                 let _ = tx.send(msg);
-            }
+            },
         );
 
         if let Some(ref settings) = inner.current_settings {
@@ -520,12 +588,21 @@ impl TerminalComponent {
         new_wrapper.set_vexpand(true);
         new_wrapper.append(new_controller.widget());
 
-        let active_wrapper = inner.panes.get(&inner.active_pane_id).unwrap().wrapper.clone();
+        let active_wrapper = inner
+            .panes
+            .get(&inner.active_pane_id)
+            .unwrap()
+            .wrapper
+            .clone();
 
         let paned = gtk::Paned::new(orientation);
         paned.set_hexpand(true);
         paned.set_vexpand(true);
-        paned.set_position(if is_vertical { active_wrapper.width() / 2 } else { active_wrapper.height() / 2 });
+        paned.set_position(if is_vertical {
+            active_wrapper.width() / 2
+        } else {
+            active_wrapper.height() / 2
+        });
 
         if let Some(parent) = active_wrapper.parent() {
             if let Some(p_paned) = parent.downcast_ref::<gtk::Paned>() {
@@ -562,7 +639,7 @@ impl TerminalComponent {
 
     pub fn close_split(&self) {
         let mut inner = self.inner.borrow_mut();
-        
+
         if inner.panes.len() == 1 {
             let term_id = inner.id.clone();
             let _ = TERMINAL_EVENT_BUS.send(TerminalEvent {
@@ -572,7 +649,7 @@ impl TerminalComponent {
             return;
         }
 
-        if inner.is_maximized {                    
+        if inner.is_maximized {
             drop(inner);
             self.toggle_maximize();
             inner = self.inner.borrow_mut();
@@ -581,36 +658,39 @@ impl TerminalComponent {
         let active_id = inner.active_pane_id.clone();
         if let Some(active_data) = inner.panes.remove(&active_id) {
             let active_wrapper = &active_data.wrapper;
-            
+
             if let Some(parent) = active_wrapper.parent()
-                && let Some(parent_paned) = parent.downcast_ref::<gtk::Paned>() {
-                    let parent_paned: &gtk::Paned = parent_paned;
-                    let sibling = if parent_paned.start_child().as_ref() == Some(active_wrapper.upcast_ref()) {
+                && let Some(parent_paned) = parent.downcast_ref::<gtk::Paned>()
+            {
+                let parent_paned: &gtk::Paned = parent_paned;
+                let sibling =
+                    if parent_paned.start_child().as_ref() == Some(active_wrapper.upcast_ref()) {
                         parent_paned.end_child()
                     } else {
                         parent_paned.start_child()
                     };
 
-                    if let Some(sibling) = sibling
-                        && let Some(grandparent) = parent_paned.parent() {
-                            // Detach both children from parent_paned so sibling can be freely moved
-                            parent_paned.set_start_child(None::<&gtk::Widget>);
-                            parent_paned.set_end_child(None::<&gtk::Widget>);
+                if let Some(sibling) = sibling
+                    && let Some(grandparent) = parent_paned.parent()
+                {
+                    // Detach both children from parent_paned so sibling can be freely moved
+                    parent_paned.set_start_child(None::<&gtk::Widget>);
+                    parent_paned.set_end_child(None::<&gtk::Widget>);
 
-                            if let Some(gp_paned) = grandparent.downcast_ref::<gtk::Paned>() {
-                                let gp_paned: &gtk::Paned = gp_paned;
-                                if gp_paned.start_child().as_ref() == Some(parent_paned.upcast_ref()) {
-                                    gp_paned.set_start_child(Some(&sibling));
-                                } else {
-                                    gp_paned.set_end_child(Some(&sibling));
-                                }
-                            } else if let Some(gp_box) = grandparent.downcast_ref::<gtk::Box>() {
-                                let gp_box: &gtk::Box = gp_box;
-                                gp_box.remove(parent_paned);
-                                gp_box.append(&sibling);
-                            }
+                    if let Some(gp_paned) = grandparent.downcast_ref::<gtk::Paned>() {
+                        let gp_paned: &gtk::Paned = gp_paned;
+                        if gp_paned.start_child().as_ref() == Some(parent_paned.upcast_ref()) {
+                            gp_paned.set_start_child(Some(&sibling));
+                        } else {
+                            gp_paned.set_end_child(Some(&sibling));
                         }
+                    } else if let Some(gp_box) = grandparent.downcast_ref::<gtk::Box>() {
+                        let gp_box: &gtk::Box = gp_box;
+                        gp_box.remove(parent_paned);
+                        gp_box.append(&sibling);
+                    }
                 }
+            }
 
             let next_id_opt = inner.panes.iter().next().map(|(id, _)| id.clone());
             if let Some(id) = next_id_opt {
@@ -642,14 +722,14 @@ impl TerminalComponent {
                 inner.maximized_container.append(leaf_widget);
             }
         }
-        
+
         inner.is_maximized = !is_max;
         if is_max {
             self.widget.set_visible_child_name("split");
         } else {
             self.widget.set_visible_child_name("max");
         }
-        
+
         if let Some(pane_data) = inner.panes.get(&active_id) {
             pane_data.controller.grab_focus();
         }
@@ -659,7 +739,7 @@ impl TerminalComponent {
 
     pub fn focus(&self, dir: Direction) {
         let mut inner = self.inner.borrow_mut();
-        
+
         if inner.panes.len() <= 1 || inner.is_maximized {
             return;
         }
@@ -670,9 +750,11 @@ impl TerminalComponent {
         };
 
         let split_container = inner.split_container.clone();
-        
+
         #[allow(deprecated)]
-        let (ax, ay) = active_wrapper.translate_coordinates(&split_container, 0.0, 0.0).unwrap_or((0.0, 0.0));
+        let (ax, ay) = active_wrapper
+            .translate_coordinates(&split_container, 0.0, 0.0)
+            .unwrap_or((0.0, 0.0));
         let aw = active_wrapper.width() as f64;
         let ah = active_wrapper.height() as f64;
         let acx = ax + aw / 2.0;
@@ -687,7 +769,10 @@ impl TerminalComponent {
             }
 
             #[allow(deprecated)]
-            let (cx, cy) = data.wrapper.translate_coordinates(&split_container, 0.0, 0.0).unwrap_or((0.0, 0.0));
+            let (cx, cy) = data
+                .wrapper
+                .translate_coordinates(&split_container, 0.0, 0.0)
+                .unwrap_or((0.0, 0.0));
             let cw = data.wrapper.width() as f64;
             let ch = data.wrapper.height() as f64;
             let ccx = cx + cw / 2.0;
@@ -727,7 +812,7 @@ impl TerminalComponent {
 
     pub fn swap(&self, dir: Direction) {
         let mut inner = self.inner.borrow_mut();
-        
+
         if inner.panes.len() <= 1 || inner.is_maximized {
             return;
         }
@@ -740,7 +825,9 @@ impl TerminalComponent {
         let split_container = inner.split_container.clone();
 
         #[allow(deprecated)]
-        let (ax, ay) = active_wrapper.translate_coordinates(&split_container, 0.0, 0.0).unwrap_or((0.0, 0.0));
+        let (ax, ay) = active_wrapper
+            .translate_coordinates(&split_container, 0.0, 0.0)
+            .unwrap_or((0.0, 0.0));
         let aw = active_wrapper.width() as f64;
         let ah = active_wrapper.height() as f64;
         let acx = ax + aw / 2.0;
@@ -755,7 +842,10 @@ impl TerminalComponent {
             }
 
             #[allow(deprecated)]
-            let (cx, cy) = data.wrapper.translate_coordinates(&split_container, 0.0, 0.0).unwrap_or((0.0, 0.0));
+            let (cx, cy) = data
+                .wrapper
+                .translate_coordinates(&split_container, 0.0, 0.0)
+                .unwrap_or((0.0, 0.0));
             let cw = data.wrapper.width() as f64;
             let ch = data.wrapper.height() as f64;
             let ccx = cx + cw / 2.0;
@@ -785,9 +875,21 @@ impl TerminalComponent {
 
         if let Some(target_id) = best_id {
             let active_id = inner.active_pane_id.clone();
-            
-            let active_widget = inner.panes.get(&active_id).unwrap().controller.widget().clone();
-            let target_widget = inner.panes.get(&target_id).unwrap().controller.widget().clone();
+
+            let active_widget = inner
+                .panes
+                .get(&active_id)
+                .unwrap()
+                .controller
+                .widget()
+                .clone();
+            let target_widget = inner
+                .panes
+                .get(&target_id)
+                .unwrap()
+                .controller
+                .widget()
+                .clone();
 
             let active_wrapper = inner.panes.get(&active_id).unwrap().wrapper.clone();
             let target_wrapper = inner.panes.get(&target_id).unwrap().wrapper.clone();

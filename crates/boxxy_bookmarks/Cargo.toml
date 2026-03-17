@@ -1,0 +1,25 @@
+[package]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+license.workspace = true
+name = "boxxy-bookmarks"
+
+[dependencies]
+gtk4.workspace = true
+libadwaita.workspace = true
+directories.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+regex = { workspace = true }
+log.workspace = true
+async-channel.workspace = true
+sourceview5.workspace = true
+boxxy-preferences = { path = "../preferences" }
+boxxy-themes = { path = "../themes" }
+boxxy-ai-core = { path = "../ai_core" }
+boxxy-model-selection.workspace = true
+boxxy-terminal = { path = "../terminal" }

@@ -1,11 +1,11 @@
+use super::{PaneInner, PendingDiagnosis};
+use crate::PaneOutput;
+use crate::claw_indicator::ClawIndicator;
+use crate::overlay::{OverlayMode, TerminalOverlay};
+use gtk4 as gtk;
+use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
-use gtk4::prelude::*;
-use gtk4 as gtk;
-use crate::claw_popover::ClawPopover;
-use crate::claw_indicator::ClawIndicator;
-use crate::PaneOutput;
-use super::{PaneInner, PendingDiagnosis};
 
 pub(super) fn setup_claw(
     widget: &gtk::Overlay,
@@ -15,8 +15,9 @@ pub(super) fn setup_claw(
     claw_rx: async_channel::Receiver<boxxy_claw::engine::ClawEngineEvent>,
     claw_message_list: gtk::ListBox,
     callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
-) -> (ClawPopover, ClawIndicator, PendingDiagnosis) {
-    let pending_proactive_diagnosis = Rc::new(RefCell::new(None::<(String, crate::ClawProposal)>));
+) -> (TerminalOverlay, ClawIndicator, PendingDiagnosis) {
+    let pending_proactive_diagnosis =
+        Rc::new(RefCell::new(None::<(String, crate::TerminalProposal)>));
     let pending_diag_clone = pending_proactive_diagnosis.clone();
 
     let pending_sidebar_buttons = Rc::new(RefCell::new(None::<gtk::Box>));
@@ -26,14 +27,14 @@ pub(super) fn setup_claw(
     let tx_user_reply = claw_sender.clone();
     let tx_file_reply = claw_sender.clone();
     let tx_lazy_reply = claw_sender.clone();
-    
-    let claw_popover_self_ref: Rc<RefCell<Option<ClawPopover>>> = Rc::new(RefCell::new(None));
+
+    let claw_popover_self_ref: Rc<RefCell<Option<TerminalOverlay>>> = Rc::new(RefCell::new(None));
     let pending_sidebar_btns_popover_clone = pending_sidebar_buttons.clone();
     let cb_focus = callback.clone();
 
     let id_for_focus = id.clone();
-    let claw_popover = ClawPopover::new(
-        move |cmd| {
+    let claw_popover = TerminalOverlay::new(
+        move |cmd: String| {
             if let Some(inner) = inner_clone_for_cmd.upgrade() {
                 let mut bytes = cmd.as_bytes().to_vec();
                 bytes.push(b'\r');
@@ -48,12 +49,13 @@ pub(super) fn setup_claw(
                 let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
                 gtk::glib::spawn_future_local(async move {
                     if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                        let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
-                            
-                            message: reply,
-                            snapshot,
-                            cwd,
-                        }).await;
+                        let _ = tx
+                            .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                message: reply,
+                                snapshot,
+                                cwd,
+                            })
+                            .await;
                     }
                 });
             }
@@ -62,13 +64,12 @@ pub(super) fn setup_claw(
             if let Some(btns) = pending_sidebar_btns_popover_clone.borrow_mut().take() {
                 btns.set_visible(false);
             }
-            
+
             let tx = tx_file_reply.clone();
             gtk::glib::spawn_future_local(async move {
-                let _ = tx.send(boxxy_claw::engine::ClawMessage::FileWriteReply {
-                    
-                    approved,
-                }).await;
+                let _ = tx
+                    .send(boxxy_claw::engine::ClawMessage::FileWriteReply { approved })
+                    .await;
             });
         },
         move |_proposal| {
@@ -76,13 +77,17 @@ pub(super) fn setup_claw(
         },
         {
             let tx_cancel = claw_sender.clone();
-            move || {
-                let tx = tx_cancel.clone();
-                gtk::glib::spawn_future_local(async move {
-                    let _ = tx.send(boxxy_claw::engine::ClawMessage::CancelPending).await;
-                });
+            move |mode| {
+                if mode == OverlayMode::Claw {
+                    let tx = tx_cancel.clone();
+                    gtk::glib::spawn_future_local(async move {
+                        let _ = tx
+                            .send(boxxy_claw::engine::ClawMessage::CancelPending)
+                            .await;
+                    });
+                }
             }
-        }
+        },
     );
     *claw_popover_self_ref.borrow_mut() = Some(claw_popover.clone());
     widget.add_overlay(claw_popover.widget());
@@ -93,16 +98,16 @@ pub(super) fn setup_claw(
         move || {
             let tx = tx_lazy_reply.clone();
             gtk::glib::spawn_future_local(async move {
-                let _ = tx.send(boxxy_claw::engine::ClawMessage::RequestLazyDiagnosis {
-                    
-                }).await;
+                let _ = tx
+                    .send(boxxy_claw::engine::ClawMessage::RequestLazyDiagnosis {})
+                    .await;
             });
         },
         move || {
             if let Some((diag, proposal)) = pending_diag_clone.borrow_mut().take() {
-                popover_clone.show("Boxxy-Claw", &diag, proposal);
+                popover_clone.show(OverlayMode::Claw, "Boxxy-Claw", &diag, proposal);
             }
-        }
+        },
     );
     widget.add_overlay(claw_indicator.widget());
 
@@ -116,7 +121,7 @@ pub(super) fn setup_claw(
         while let Ok(event) = claw_rx.recv().await {
             let s = boxxy_preferences::Settings::load();
             let show_on_terminal = s.claw_terminal_suggestions;
-            
+
             match &event {
                 boxxy_claw::engine::ClawEngineEvent::AgentThinking { is_thinking, .. } => {
                     if *is_thinking && show_on_terminal {
@@ -135,42 +140,53 @@ pub(super) fn setup_claw(
                     indicator_event_clone.hide();
                     if show_on_terminal {
                         popover_event_clone.show(
+                            OverlayMode::Claw,
                             "Boxxy-Claw",
                             diagnosis,
-                            crate::ClawProposal::None
+                            crate::TerminalProposal::None,
                         );
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::InjectCommand { command, diagnosis, .. } => {
+                boxxy_claw::engine::ClawEngineEvent::InjectCommand {
+                    command, diagnosis, ..
+                } => {
                     if !diagnosis.is_empty() {
                         boxxy_claw::ui::add_diagnosis_row(&claw_list_events, id.clone(), diagnosis);
                     }
-                    
+
                     let tx_text_reply = claw_sender.clone();
                     let inner_for_reply = inner_for_events.clone();
-                    let btns = boxxy_claw::ui::add_approval_row(&claw_list_events, id.clone(), command, move |reply_text| {
-                        let tx = tx_text_reply.clone();
-                        let inner = inner_for_reply.clone();
-                        gtk::glib::spawn_future_local(async move {
-                            let pane = inner.borrow().terminal.clone();
-                            let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                    message: reply_text,
-                                    snapshot,
-                                    cwd,
-                                }).await;
-                            }
-                        });
-                    });
+                    let btns = boxxy_claw::ui::add_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        command,
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
                     *pending_sidebar_buttons.borrow_mut() = Some(btns);
-                    
+
                     indicator_event_clone.hide();
                     if show_on_terminal {
                         popover_event_clone.show(
+                            OverlayMode::Claw,
                             "Boxxy-Claw",
                             diagnosis,
-                            crate::ClawProposal::Command(command.clone())
+                            crate::TerminalProposal::Command(command.clone()),
                         );
                     }
                 }
@@ -179,76 +195,106 @@ pub(super) fn setup_claw(
                     let tx_text_reply = claw_sender.clone();
                     let popover = popover_event_clone.clone();
                     let inner_for_reply = inner_for_events.clone();
-                    
-                    let btns = boxxy_claw::ui::add_file_write_approval_row(&claw_list_events, id.clone(), path, content, move |approved| {
-                        let tx = tx_file_reply_for_events.clone();
-                        let popover = popover.clone();
-                        gtk::glib::spawn_future_local(async move {
-                            popover.hide();
-                            let _ = tx.send(boxxy_claw::engine::ClawMessage::FileWriteReply {
-                                
-                                approved,
-                            }).await;
-                        });
-                    },
-                    move |reply_text| {
-                        let tx = tx_text_reply.clone();
-                        let inner = inner_for_reply.clone();
-                        gtk::glib::spawn_future_local(async move {
-                            let pane = inner.borrow().terminal.clone();
-                            let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                    message: reply_text,
-                                    snapshot,
-                                    cwd,
-                                }).await;
-                            }
-                        });
-                    });
+
+                    let btns = boxxy_claw::ui::add_file_write_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        path,
+                        content,
+                        move |approved| {
+                            let tx = tx_file_reply_for_events.clone();
+                            let popover = popover.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                popover.hide();
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::FileWriteReply {
+                                        approved,
+                                    })
+                                    .await;
+                            });
+                        },
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
                     *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
                     if show_on_terminal {
                         popover_event_clone.show(
+                            OverlayMode::Claw,
                             "Boxxy-Claw: Propose File Edit",
                             &format!("Path: `{path}`\n\nI need to write or edit this file to complete the task."),
-                            crate::ClawProposal::FileWrite(path.clone(), content.clone())
+                            crate::TerminalProposal::FileWrite(path.clone(), content.clone())
                         );
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand { command, explanation, .. } => {
+                boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand {
+                    command,
+                    explanation,
+                    ..
+                } => {
                     if !explanation.is_empty() {
-                        boxxy_claw::ui::add_diagnosis_row(&claw_list_events, id.clone(), explanation);
+                        boxxy_claw::ui::add_diagnosis_row(
+                            &claw_list_events,
+                            id.clone(),
+                            explanation,
+                        );
                     }
-                    
+
                     let tx_text_reply = claw_sender.clone();
                     let inner_for_reply = inner_for_events.clone();
-                    let btns = boxxy_claw::ui::add_approval_row(&claw_list_events, id.clone(), command, move |reply_text| {
-                        let tx = tx_text_reply.clone();
-                        let inner = inner_for_reply.clone();
-                        gtk::glib::spawn_future_local(async move {
-                            let pane = inner.borrow().terminal.clone();
-                            let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                let _ = tx.send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                    message: reply_text,
-                                    snapshot,
-                                    cwd,
-                                }).await;
-                            }
-                        });
-                    });
+                    let btns = boxxy_claw::ui::add_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        command,
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
                     *pending_sidebar_buttons.borrow_mut() = Some(btns);
-                    
+
                     if show_on_terminal {
                         popover_event_clone.show(
+                            OverlayMode::Claw,
                             "Boxxy-Claw",
                             explanation,
-                            crate::ClawProposal::Command(command.clone())
+                            crate::TerminalProposal::Command(command.clone()),
                         );
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::RequestScrollback { max_lines, offset_lines, reply } => {
+                boxxy_claw::engine::ClawEngineEvent::RequestScrollback {
+                    max_lines,
+                    offset_lines,
+                    reply,
+                } => {
                     let pane = inner_for_events.borrow().terminal.clone();
                     let max_lines = *max_lines;
                     let offset_lines = *offset_lines;
@@ -256,10 +302,13 @@ pub(super) fn setup_claw(
                     gtk::glib::spawn_future_local(async move {
                         let mut sender_opt = reply.lock().await;
                         if let Some(sender) = sender_opt.take() {
-                            if let Some(snapshot) = pane.get_text_snapshot(max_lines, offset_lines).await {
+                            if let Some(snapshot) =
+                                pane.get_text_snapshot(max_lines, offset_lines).await
+                            {
                                 let _ = sender.send(snapshot);
                             } else {
-                                let _ = sender.send("Error: Failed to fetch scrollback.".to_string());
+                                let _ =
+                                    sender.send("Error: Failed to fetch scrollback.".to_string());
                             }
                         }
                     });

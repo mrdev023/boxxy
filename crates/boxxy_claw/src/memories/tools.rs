@@ -1,11 +1,11 @@
 use anyhow::Result;
+use boxxy_db::Db;
+use boxxy_db::store::Store;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use boxxy_db::Db;
-use boxxy_db::store::Store;
 
 #[derive(Deserialize, Serialize)]
 pub struct MemoryStoreArgs {
@@ -77,12 +77,22 @@ impl Tool for MemoryStoreTool {
             let project_path = args.project_path.as_deref().or(Some(&self.current_dir));
 
             // Explicit memory stores via tool are automatically considered verified and NOT pinned by default
-            match store.add_memory(&args.key, project_path, &args.content, args.category.as_deref(), true, false).await {
+            match store
+                .add_memory(
+                    &args.key,
+                    project_path,
+                    &args.content,
+                    args.category.as_deref(),
+                    true,
+                    false,
+                )
+                .await
+            {
                 Ok(_) => {
                     drop(db_guard);
                     let _ = crate::memories::db::sync_memories_to_markdown(self.db.clone()).await;
                     Ok(format!("Successfully stored memory: {}", args.key))
-                },
+                }
                 Err(e) => Ok(format!("Error storing memory: {}", e)),
             }
         } else {

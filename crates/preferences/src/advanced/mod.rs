@@ -1,10 +1,10 @@
 use crate::config::Settings;
+use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
-use std::rc::Rc;
 use std::cell::RefCell;
 use std::fs;
+use std::rc::Rc;
 
 pub fn setup_advanced_page(
     builder: &gtk::Builder,
@@ -23,7 +23,8 @@ pub fn setup_advanced_page(
     let row_open_config: adw::ActionRow = builder.object("row_open_config").unwrap();
     let row_reset_config: adw::ActionRow = builder.object("row_reset_config").unwrap();
     let group_shell: adw::PreferencesGroup = builder.object("group_shell").unwrap();
-    let group_terminal_interaction: adw::PreferencesGroup = builder.object("group_terminal_interaction").unwrap();
+    let group_terminal_interaction: adw::PreferencesGroup =
+        builder.object("group_terminal_interaction").unwrap();
     let group_config: adw::PreferencesGroup = builder.object("group_config").unwrap();
 
     login_shell_switch.set_active(settings_rc.borrow().login_shell);
@@ -82,7 +83,10 @@ pub fn setup_advanced_page(
                 let _ = fs::create_dir_all(config_dir);
             }
             let uri = format!("file://{}", config_dir.display());
-            let _ = gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
+            let _ = gtk::gio::AppInfo::launch_default_for_uri(
+                &uri,
+                None::<&gtk::gio::AppLaunchContext>,
+            );
         }
     });
 
@@ -135,17 +139,34 @@ pub fn setup_advanced_page(
             m
         };
 
-        let ad1 = match_row(login_shell_switch_clone.upcast_ref(), "login shell spawn terminal");
-        let ad2 = match_row(show_vte_grid_switch_clone.upcast_ref(), "show vte grid lines representing cells");
-        let ad3 = match_row(custom_regex_entry_clone.upcast_ref(), "file path regex ctrl+click freezes");
+        let ad1 = match_row(
+            login_shell_switch_clone.upcast_ref(),
+            "login shell spawn terminal",
+        );
+        let ad2 = match_row(
+            show_vte_grid_switch_clone.upcast_ref(),
+            "show vte grid lines representing cells",
+        );
+        let ad3 = match_row(
+            custom_regex_entry_clone.upcast_ref(),
+            "file path regex ctrl+click freezes",
+        );
         let ad4 = match_row(row_reset_regex_clone.upcast_ref(), "reset to default");
-        let ad5 = match_row(row_open_config_clone.upcast_ref(), "open config folder manage settings");
-        let ad6 = match_row(row_reset_config_clone.upcast_ref(), "reset everything delete all apps destructive");
+        let ad5 = match_row(
+            row_open_config_clone.upcast_ref(),
+            "open config folder manage settings",
+        );
+        let ad6 = match_row(
+            row_reset_config_clone.upcast_ref(),
+            "reset everything delete all apps destructive",
+        );
 
         group_shell.set_visible(ad1 || ad2);
         group_terminal_interaction.set_visible(ad3 || ad4);
         group_config.set_visible(ad5 || ad6);
-        
-        group_shell.is_visible() || group_terminal_interaction.is_visible() || group_config.is_visible()
+
+        group_shell.is_visible()
+            || group_terminal_interaction.is_visible()
+            || group_config.is_visible()
     })
 }

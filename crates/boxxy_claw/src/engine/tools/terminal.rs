@@ -1,8 +1,8 @@
-use rig::tool::Tool;
-use rig::completion::ToolDefinition;
-use serde::{Deserialize, Serialize};
 use crate::engine::ClawEngineEvent;
 use crate::engine::session::SessionState;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct TerminalCommandArgs {
@@ -23,7 +23,7 @@ pub struct TerminalCommandTool {
 
 impl Tool for TerminalCommandTool {
     const NAME: &'static str = "terminal_exec";
-    
+
     type Error = std::io::Error;
     type Args = TerminalCommandArgs;
     type Output = TerminalCommandOutput;
@@ -51,22 +51,34 @@ impl Tool for TerminalCommandTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        
+
         {
             let mut state = self.state.lock().await;
             state.pending_terminal_reply = Some(tx);
         }
 
-        if let Err(e) = self.tx_ui.send(ClawEngineEvent::ProposeTerminalCommand {
-            command: args.command.clone(),
-            explanation: args.explanation.clone(),
-        }).await {
-            return Err(std::io::Error::other(format!("Failed to send terminal command proposal to UI: {e}")));
+        if let Err(e) = self
+            .tx_ui
+            .send(ClawEngineEvent::ProposeTerminalCommand {
+                command: args.command.clone(),
+                explanation: args.explanation.clone(),
+            })
+            .await
+        {
+            return Err(std::io::Error::other(format!(
+                "Failed to send terminal command proposal to UI: {e}"
+            )));
         }
 
-        let _ = self.tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: false }).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::AgentThinking { is_thinking: false })
+            .await;
         let result = rx.await;
-        let _ = self.tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: true }).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::AgentThinking { is_thinking: true })
+            .await;
 
         match result {
             Ok(Ok(output)) => Ok(TerminalCommandOutput {
@@ -86,7 +98,7 @@ impl Tool for TerminalCommandTool {
                         output: err,
                     })
                 }
-            },
+            }
             Err(_) => Ok(TerminalCommandOutput {
                 success: false,
                 output: "Internal error waiting for terminal command result.".to_string(),

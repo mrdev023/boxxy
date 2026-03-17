@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as Base64;
 use log::{error, info};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -78,20 +78,28 @@ pub struct Placement {
     pub image_id: u32,
     pub placement_id: u32,
     pub point: Point,
-    pub width: Option<u32>, // in cells
+    pub width: Option<u32>,  // in cells
     pub height: Option<u32>, // in cells
-    pub x_offset: u32, // in pixels
-    pub y_offset: u32, // in pixels
+    pub x_offset: u32,       // in pixels
+    pub y_offset: u32,       // in pixels
     pub z_index: i32,
-    pub visible_width: u32, // in pixels
+    pub visible_width: u32,  // in pixels
     pub visible_height: u32, // in pixels
 }
 
 #[derive(Clone)]
 pub enum KittyImageData {
     Dynamic(image::DynamicImage),
-    RawRgb { width: u32, height: u32, data: Arc<[u8]> },
-    RawRgba { width: u32, height: u32, data: Arc<[u8]> },
+    RawRgb {
+        width: u32,
+        height: u32,
+        data: Arc<[u8]>,
+    },
+    RawRgba {
+        width: u32,
+        height: u32,
+        data: Arc<[u8]>,
+    },
 }
 
 impl KittyImageData {
@@ -134,7 +142,11 @@ impl Default for KittyGraphics {
 }
 
 impl KittyGraphics {
-    pub fn rotate_placements(&mut self, range: &std::ops::Range<crate::engine::index::Line>, delta: i32) {
+    pub fn rotate_placements(
+        &mut self,
+        range: &std::ops::Range<crate::engine::index::Line>,
+        delta: i32,
+    ) {
         for placement in &mut self.placements {
             let old_line = placement.point.line.0;
             let range_top = range.start.0;
@@ -144,7 +156,12 @@ impl KittyGraphics {
                 placement.point.line -= delta;
             }
             if old_line != placement.point.line.0 {
-                log::trace!("KittyGraphics: Rotated placement {} from line {} to {}", placement.image_id, old_line, placement.point.line.0);
+                log::trace!(
+                    "KittyGraphics: Rotated placement {} from line {} to {}",
+                    placement.image_id,
+                    old_line,
+                    placement.point.line.0
+                );
             }
         }
     }
@@ -165,54 +182,75 @@ impl KittyGraphics {
         } else {
             data
         };
-        
+
         let mut parts = data.splitn(2, |&b| b == b';');
         let control = parts.next().unwrap_or(&[]);
         let payload = parts.next().unwrap_or(&[]);
-        
-        info!("KittyGraphics: handle_command raw control len={}, payload len={}", control.len(), payload.len());
+
+        info!(
+            "KittyGraphics: handle_command raw control len={}, payload len={}",
+            control.len(),
+            payload.len()
+        );
         if !control.is_empty() {
-            info!("KittyGraphics: control sequence: {}", String::from_utf8_lossy(control));
+            info!(
+                "KittyGraphics: control sequence: {}",
+                String::from_utf8_lossy(control)
+            );
         }
 
         let mut cmd = Command::default();
         let mut data_only = false;
 
         for param in control.split(|&b| b == b',') {
-            if param.is_empty() { continue; }
+            if param.is_empty() {
+                continue;
+            }
             let mut kv = param.splitn(2, |&b| b == b'=');
             let key = kv.next().unwrap_or(&[]);
             let value = kv.next().unwrap_or(&[]);
 
             match key {
-                b"a" => cmd.action = match value {
-                    b"T" => Action::TransmitAndDisplay,
-                    b"p" => Action::DisplayExisting,
-                    b"t" => Action::TransmitOnly,
-                    b"q" => Action::Query,
-                    b"c" => Action::ControlPlacement,
-                    b"d" => Action::Delete,
-                    _ => Action::TransmitAndDisplay,
-                },
-                b"f" => cmd.format = match value {
-                    b"24" => Format::Rgb,
-                    b"32" => Format::Rgba,
-                    b"100" => Format::Png,
-                    _ => Format::Rgb,
-                },
-                b"t" => cmd.transmission = match value {
-                    b"f" => Transmission::File,
-                    b"t" => Transmission::TempFile,
-                    b"s" => Transmission::SharedMemory,
-                    _ => Transmission::Direct,
-                },
-                b"o" => cmd.compression = match value {
-                    b"z" => Compression::Zlib,
-                    _ => Compression::None,
-                },
+                b"a" => {
+                    cmd.action = match value {
+                        b"T" => Action::TransmitAndDisplay,
+                        b"p" => Action::DisplayExisting,
+                        b"t" => Action::TransmitOnly,
+                        b"q" => Action::Query,
+                        b"c" => Action::ControlPlacement,
+                        b"d" => Action::Delete,
+                        _ => Action::TransmitAndDisplay,
+                    }
+                }
+                b"f" => {
+                    cmd.format = match value {
+                        b"24" => Format::Rgb,
+                        b"32" => Format::Rgba,
+                        b"100" => Format::Png,
+                        _ => Format::Rgb,
+                    }
+                }
+                b"t" => {
+                    cmd.transmission = match value {
+                        b"f" => Transmission::File,
+                        b"t" => Transmission::TempFile,
+                        b"s" => Transmission::SharedMemory,
+                        _ => Transmission::Direct,
+                    }
+                }
+                b"o" => {
+                    cmd.compression = match value {
+                        b"z" => Compression::Zlib,
+                        _ => Compression::None,
+                    }
+                }
                 b"i" => cmd.image_id = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
-                b"I" => cmd.image_number = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
-                b"p" => cmd.placement_id = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
+                b"I" => {
+                    cmd.image_number = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok())
+                }
+                b"p" => {
+                    cmd.placement_id = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok())
+                }
                 b"s" => cmd.width = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
                 b"v" => cmd.height = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
                 b"c" => cmd.columns = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
@@ -223,7 +261,12 @@ impl KittyGraphics {
                 b"O" => cmd.offset = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
                 b"S" => cmd.size = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()),
                 b"d" => cmd.delete_mode = value.first().copied(),
-                b"q" => cmd.quiet = std::str::from_utf8(value).ok().and_then(|s| s.parse().ok()).unwrap_or(0),
+                b"q" => {
+                    cmd.quiet = std::str::from_utf8(value)
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0)
+                }
                 b"m" => cmd.more = value == b"1",
                 _ => {}
             }
@@ -246,9 +289,15 @@ impl KittyGraphics {
         if !payload.is_empty() {
             self.pending_data.extend_from_slice(payload);
         }
-        
-        info!("KittyGraphics: chunk parsed, action={:?}, id={:?}, more={}, quiet={}, pending_len={}", 
-               cmd.action, cmd.image_id, cmd.more, cmd.quiet, self.pending_data.len());
+
+        info!(
+            "KittyGraphics: chunk parsed, action={:?}, id={:?}, more={}, quiet={}, pending_len={}",
+            cmd.action,
+            cmd.image_id,
+            cmd.more,
+            cmd.quiet,
+            self.pending_data.len()
+        );
 
         if self.pending_command.as_ref().is_some_and(|c| !c.more) {
             info!("KittyGraphics: more=0, processing pending command...");
@@ -269,19 +318,28 @@ impl KittyGraphics {
         if !self.pending_data.is_empty() {
             // Kitty protocol may send base64 data with whitespace (like newlines) or missing padding.
             // We need to sanitize it before decoding.
-            let mut sanitized: Vec<u8> = self.pending_data.iter().copied().filter(|&b| !b.is_ascii_whitespace()).collect();
-            
+            let mut sanitized: Vec<u8> = self
+                .pending_data
+                .iter()
+                .copied()
+                .filter(|&b| !b.is_ascii_whitespace())
+                .collect();
+
             // Add padding if missing
             while !sanitized.len().is_multiple_of(4) {
                 sanitized.push(b'=');
             }
-            
+
             match Base64.decode(&sanitized) {
                 Ok(d) => raw_data = d,
                 Err(e) => {
-                    error!("KittyGraphics: Failed to decode base64: {} (sanitized len: {})", e, sanitized.len());
+                    error!(
+                        "KittyGraphics: Failed to decode base64: {} (sanitized len: {})",
+                        e,
+                        sanitized.len()
+                    );
                     self.pending_data.clear();
-                    
+
                     if cmd.quiet != 2 {
                         let err_msg = "ERROR:base64 decode error";
                         if let Some(id) = cmd.image_id {
@@ -296,12 +354,19 @@ impl KittyGraphics {
         }
         self.pending_data.clear();
 
-        info!("KittyGraphics: Processing image: action={:?}, id={:?}, num={:?}, len={}", cmd.action, cmd.image_id, cmd.image_number, raw_data.len());
+        info!(
+            "KittyGraphics: Processing image: action={:?}, id={:?}, num={:?}, len={}",
+            cmd.action,
+            cmd.image_id,
+            cmd.image_number,
+            raw_data.len()
+        );
 
         // Assign a generated ID for anonymous images (id 0 or not specified)
         let mut image_id = cmd.image_id.unwrap_or(0);
         if image_id == 0 {
-            static NEXT_ANON_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(2_000_000_000);
+            static NEXT_ANON_ID: std::sync::atomic::AtomicU32 =
+                std::sync::atomic::AtomicU32::new(2_000_000_000);
             image_id = NEXT_ANON_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
 
@@ -331,7 +396,7 @@ impl KittyGraphics {
                 } else {
                     format!("/dev/shm/{}", name)
                 };
-                
+
                 let data = match std::fs::read(&path) {
                     Ok(mut d) => {
                         if let Some(offset) = cmd.offset {
@@ -356,7 +421,7 @@ impl KittyGraphics {
                         Vec::new()
                     }
                 };
-                
+
                 // Unlink shared memory
                 let _ = std::fs::remove_file(&path);
                 data
@@ -380,7 +445,10 @@ impl KittyGraphics {
 
         if cmd.action == Action::Delete {
             let delete_mode = cmd.delete_mode.unwrap_or(b'a');
-            info!("KittyGraphics: Deleting images, mode={}", delete_mode as char);
+            info!(
+                "KittyGraphics: Deleting images, mode={}",
+                delete_mode as char
+            );
 
             match delete_mode {
                 b'a' | b'A' => {
@@ -410,7 +478,7 @@ impl KittyGraphics {
                     self.placements.clear();
                 }
             }
-            
+
             let response = if cmd.quiet != 1 && cmd.quiet != 2 {
                 Some("\x1b_G;OK\x1b\\".to_string())
             } else {
@@ -419,7 +487,11 @@ impl KittyGraphics {
             return (response, None);
         }
 
-        if matches!(cmd.action, Action::TransmitAndDisplay | Action::TransmitOnly | Action::Query) && error_msg.is_none() {
+        if matches!(
+            cmd.action,
+            Action::TransmitAndDisplay | Action::TransmitOnly | Action::Query
+        ) && error_msg.is_none()
+        {
             let img_data = if cmd.format == Format::Png {
                 match image::load_from_memory(&raw_data) {
                     Ok(img) => Some(KittyImageData::Dynamic(img)),
@@ -437,15 +509,27 @@ impl KittyGraphics {
                     error_msg = Some("ERROR:width or height is zero for raw pixels".to_string());
                     None
                 } else {
-                    let expected_len = (width * height * (if cmd.format == Format::Rgb { 3 } else { 4 })) as usize;
+                    let expected_len =
+                        (width * height * (if cmd.format == Format::Rgb { 3 } else { 4 })) as usize;
                     if data_len < expected_len {
-                        error_msg = Some(format!("ERROR:data too short, expected {}, got {}", expected_len, data_len));
+                        error_msg = Some(format!(
+                            "ERROR:data too short, expected {}, got {}",
+                            expected_len, data_len
+                        ));
                         None
                     } else {
                         let arc_data: Arc<[u8]> = Arc::from(raw_data.into_boxed_slice());
                         match cmd.format {
-                            Format::Rgb => Some(KittyImageData::RawRgb { width, height, data: arc_data }),
-                            Format::Rgba => Some(KittyImageData::RawRgba { width, height, data: arc_data }),
+                            Format::Rgb => Some(KittyImageData::RawRgb {
+                                width,
+                                height,
+                                data: arc_data,
+                            }),
+                            Format::Rgba => Some(KittyImageData::RawRgba {
+                                width,
+                                height,
+                                data: arc_data,
+                            }),
                             _ => unreachable!(),
                         }
                     }
@@ -454,7 +538,10 @@ impl KittyGraphics {
 
             if let Some(img_data) = img_data {
                 if cmd.action == Action::Query {
-                    info!("KittyGraphics: Query successful for image data (len={})", data_len);
+                    info!(
+                        "KittyGraphics: Query successful for image data (len={})",
+                        data_len
+                    );
                 } else {
                     let kitty_img = Arc::new(KittyImage {
                         id: image_id,
@@ -467,7 +554,11 @@ impl KittyGraphics {
             }
         }
 
-        if matches!(cmd.action, Action::TransmitAndDisplay | Action::DisplayExisting) && error_msg.is_none() {
+        if matches!(
+            cmd.action,
+            Action::TransmitAndDisplay | Action::DisplayExisting
+        ) && error_msg.is_none()
+        {
             if let Some(img) = self.images.get(&image_id) {
                 // Create a placement at current cursor position
                 let placement = Placement {
@@ -483,7 +574,10 @@ impl KittyGraphics {
                     visible_height: img.data.height(),
                 };
                 self.placements.push(placement);
-                info!("KittyGraphics: Created placement for image {} at {:?}", image_id, cursor_point);
+                info!(
+                    "KittyGraphics: Created placement for image {} at {:?}",
+                    image_id, cursor_point
+                );
             } else {
                 error_msg = Some("ERROR:image not found".to_string());
             }
@@ -491,11 +585,13 @@ impl KittyGraphics {
 
         // Return a response if required
         let response = if let Some(err) = error_msg {
-            if cmd.quiet != 2 && cmd.quiet != 1 { // quiet=1 suppresses OK, quiet=2 suppresses errors
+            if cmd.quiet != 2 && cmd.quiet != 1 {
+                // quiet=1 suppresses OK, quiet=2 suppresses errors
                 if let Some(id) = cmd.image_id {
                     Some(format!("\x1b_Gi={};{}\x1b\\", id, err))
                 } else {
-                    cmd.image_number.map(|num| format!("\x1b_GI={};{}\x1b\\", num, err))
+                    cmd.image_number
+                        .map(|num| format!("\x1b_GI={};{}\x1b\\", num, err))
                 }
             } else {
                 None
@@ -510,20 +606,21 @@ impl KittyGraphics {
                     Some(format!("\x1b_Gi={};OK\x1b\\", id))
                 }
             } else {
-                cmd.image_number.map(|num| format!("\x1b_Gi={},I={};OK\x1b\\", image_id, num))
+                cmd.image_number
+                    .map(|num| format!("\x1b_Gi={},I={};OK\x1b\\", image_id, num))
             }
         };
 
         let mut cursor_offset = None;
-        if cmd.cursor_movement == CursorMovement::Move && matches!(cmd.action, Action::TransmitAndDisplay | Action::DisplayExisting)
-            && let Some(img) = self.images.get(&image_id) {
-                // Return either explicitly requested cell dimensions, or the image's pixel dimensions to let Term calculate cells
-                cursor_offset = Some((
-                    cmd.columns,
-                    cmd.rows,
-                    img.data.width(),
-                    img.data.height()
-                ));
+        if cmd.cursor_movement == CursorMovement::Move
+            && matches!(
+                cmd.action,
+                Action::TransmitAndDisplay | Action::DisplayExisting
+            )
+            && let Some(img) = self.images.get(&image_id)
+        {
+            // Return either explicitly requested cell dimensions, or the image's pixel dimensions to let Term calculate cells
+            cursor_offset = Some((cmd.columns, cmd.rows, img.data.width(), img.data.height()));
         }
 
         (response, cursor_offset)

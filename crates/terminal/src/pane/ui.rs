@@ -1,8 +1,8 @@
-use std::rc::Rc;
-use gtk4::prelude::*;
-use gtk4 as gtk;
 use crate::search_bar::SearchBarComponent;
 use boxxy_vte::terminal::TerminalWidget;
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use std::rc::Rc;
 
 pub(super) fn build_ui() -> (
     gtk::Overlay,
@@ -48,7 +48,7 @@ pub(super) fn build_ui() -> (
     let search_bar = SearchBarComponent::new();
     search_bar.set_terminal(terminal.clone());
     widget.add_overlay(search_bar.widget());
-    
+
     let search_bar_rc = Rc::new(search_bar);
 
     (

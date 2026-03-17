@@ -1,7 +1,7 @@
-use boxxy_window::{AppWindow, AppInit};
-use libadwaita::prelude::*;
-use gtk4::{gio, glib};
 use boxxy_ai_core::utils;
+use boxxy_window::{AppInit, AppWindow};
+use gtk4::{gio, glib};
+use libadwaita::prelude::*;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -26,8 +26,7 @@ fn main() {
 
     gstreamer::init().expect("Failed to initialize GStreamer.");
 
-    gio::resources_register_include!("compiled.gresource")
-        .expect("Failed to register resources.");
+    gio::resources_register_include!("compiled.gresource").expect("Failed to register resources.");
 
     let app = libadwaita::Application::builder()
         .application_id("play.mii.Boxxy")
@@ -46,7 +45,7 @@ fn main() {
     app.connect_command_line(|app, cmdline| {
         let options = cmdline.options_dict();
         let new_window = options.contains("new-window");
-        
+
         let has_window = app.active_window().is_some();
 
         if new_window && has_window {
@@ -64,14 +63,14 @@ fn main() {
                 window.present();
             }
         }
-        
+
         0.into()
     });
 
     app.connect_activate(|app| {
         let app_init = AppInit::new();
         AppWindow::new(app, app_init);
-        
+
         let inspector_action = gio::SimpleAction::new("inspector", None);
         inspector_action.connect_activate(move |_, _| {
             gtk4::Window::set_interactive_debugging(true);
@@ -82,6 +81,3 @@ fn main() {
     let exit_code = app.run();
     std::process::exit(exit_code.into());
 }
-
-
-

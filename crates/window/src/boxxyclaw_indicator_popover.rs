@@ -1,9 +1,9 @@
+use adw::prelude::*;
+use boxxy_preferences::Settings;
+use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use gtk::prelude::*;
-use adw::prelude::*;
 use std::rc::Rc;
-use boxxy_preferences::Settings;
 
 pub struct BoxxyclawIndicatorPopover {
     popover: gtk::Popover,
@@ -19,7 +19,7 @@ impl BoxxyclawIndicatorPopover {
         on_terminal_toggled: F3,
     ) -> Self {
         let popover = gtk::Popover::new();
-        
+
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
@@ -38,7 +38,7 @@ impl BoxxyclawIndicatorPopover {
             .activatable_widget(&enable_btn)
             .build();
         enable_row.add_suffix(&enable_btn);
-        
+
         let on_enable_rc = Rc::new(on_enable_toggled);
         enable_btn.connect_state_set(move |_, state| {
             on_enable_rc(state);
@@ -100,7 +100,11 @@ impl BoxxyclawIndicatorPopover {
 
     pub fn update_ui(&self, active: bool, settings: &Settings) {
         self.enable_btn.set_active(active);
-        self.proactive_btn.set_active(settings.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive);
-        self.terminal_btn.set_active(settings.claw_terminal_suggestions);
+        self.proactive_btn.set_active(
+            settings.claw_auto_diagnosis_mode
+                == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive,
+        );
+        self.terminal_btn
+            .set_active(settings.claw_terminal_suggestions);
     }
 }

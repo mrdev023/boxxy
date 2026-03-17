@@ -1,13 +1,13 @@
-use zbus::interface;
-use zbus::zvariant::{OwnedFd, Type};
-use zbus::object_server::SignalEmitter;
-use zbus::fdo;
-use serde::{Deserialize, Serialize};
-use nix::pty::{posix_openpt, grantpt, unlockpt, ptsname, PtyMaster};
 use nix::fcntl::OFlag;
-use nix::unistd::{getuid, User};
+use nix::pty::{PtyMaster, grantpt, posix_openpt, ptsname, unlockpt};
+use nix::unistd::{User, getuid};
+use serde::{Deserialize, Serialize};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
+use zbus::fdo;
+use zbus::interface;
+use zbus::object_server::SignalEmitter;
 use zbus::proxy;
+use zbus::zvariant::{OwnedFd, Type};
 
 #[proxy(
     interface = "play.mii.Boxxy.Agent",
@@ -64,14 +64,13 @@ impl BoxxyAgent {
 
     /// Create a new PTY master/slave pair and return the master FD.
     async fn create_pty(&self) -> fdo::Result<OwnedFd> {
-        let master_fd = posix_openpt(OFlag::O_RDWR | OFlag::O_NOCTTY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK)
-            .map_err(|e| fdo::Error::Failed(format!("posix_openpt failed: {}", e)))?;
-        
-        grantpt(&master_fd)
-            .map_err(|e| fdo::Error::Failed(format!("grantpt failed: {}", e)))?;
-        
-        unlockpt(&master_fd)
-            .map_err(|e| fdo::Error::Failed(format!("unlockpt failed: {}", e)))?;
+        let master_fd =
+            posix_openpt(OFlag::O_RDWR | OFlag::O_NOCTTY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK)
+                .map_err(|e| fdo::Error::Failed(format!("posix_openpt failed: {}", e)))?;
+
+        grantpt(&master_fd).map_err(|e| fdo::Error::Failed(format!("grantpt failed: {}", e)))?;
+
+        unlockpt(&master_fd).map_err(|e| fdo::Error::Failed(format!("unlockpt failed: {}", e)))?;
 
         let raw_fd = master_fd.into_raw_fd();
         let std_fd = unsafe { std::os::unix::io::OwnedFd::from_raw_fd(raw_fd) };
@@ -80,10 +79,10 @@ impl BoxxyAgent {
 
     /// Spawn a process on the host using the provided master PTY FD.
     async fn spawn(
-        &self, 
+        &self,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-        pty_master: OwnedFd, 
-        options: SpawnOptions
+        pty_master: OwnedFd,
+        options: SpawnOptions,
     ) -> fdo::Result<u32> {
         // Convert zbus OwnedFd to std OwnedFd
         let std_fd: std::os::unix::io::OwnedFd = pty_master.into();
@@ -100,17 +99,17 @@ impl BoxxyAgent {
         if options.argv.len() > 1 {
             cmd.args(&options.argv[1..]);
         }
-        
+
         if !options.cwd.is_empty() {
             cmd.current_dir(&options.cwd);
         }
-        
+
         for (key, value) in options.env {
             cmd.env(key, value);
         }
 
         let master_raw_fd = master_fd.as_raw_fd();
-        
+
         unsafe {
             cmd.pre_exec(move || {
                 // 1. Create a new session
@@ -149,9 +148,11 @@ impl BoxxyAgent {
             log::error!("Agent spawn failed: {}", e);
             fdo::Error::Failed(format!("spawn failed: {}", e))
         })?;
-        
-        let pid = child.id().ok_or_else(|| fdo::Error::Failed("Failed to get PID".to_string()))?;
-        
+
+        let pid = child
+            .id()
+            .ok_or_else(|| fdo::Error::Failed("Failed to get PID".to_string()))?;
+
         let emitter = emitter.to_owned();
         tokio::spawn(async move {
             let status = child.wait().await;
@@ -179,35 +180,36 @@ impl BoxxyAgent {
             Ok(c) => c,
             Err(_) => return Ok("".to_string()),
         };
-        
+
         let rp_pos = stat_content.rfind(')').unwrap_or(0);
         if rp_pos == 0 || rp_pos + 2 >= stat_content.len() {
             return Ok("".to_string());
         }
-        
+
         let rest = &stat_content[rp_pos + 2..];
         let parts: Vec<&str> = rest.split_whitespace().collect();
         if parts.len() < 6 {
             return Ok("".to_string());
         }
-        
+
         let pgrp: u32 = parts[2].parse().unwrap_or(0);
         let tpgid: u32 = parts[5].parse().unwrap_or(0);
-        
+
         if tpgid == 0 || tpgid == pgrp {
             return Ok("".to_string());
         }
-        
+
         let tpgid_stat_path = format!("/proc/{}/stat", tpgid);
         if let Ok(tpgid_stat) = std::fs::read_to_string(&tpgid_stat_path) {
             let lp_pos = tpgid_stat.find('(');
             let rp_pos = tpgid_stat.rfind(')');
             if let (Some(lp), Some(rp)) = (lp_pos, rp_pos)
-                && rp > lp {
-                    return Ok(tpgid_stat[lp + 1..rp].to_string());
-                }
+                && rp > lp
+            {
+                return Ok(tpgid_stat[lp + 1..rp].to_string());
+            }
         }
-        
+
         Ok("".to_string())
     }
 
@@ -229,12 +231,16 @@ impl BoxxyAgent {
                                     if parts.len() > 1 {
                                         if let Ok(ppid) = parts[1].parse::<u32>() {
                                             let cmdline_path = format!("/proc/{}/cmdline", p);
-                                            let full_name = if let Ok(cmdline) = std::fs::read(&cmdline_path) {
-                                                let cmd = String::from_utf8_lossy(&cmdline).replace('\0', " ").trim().to_string();
-                                                if cmd.is_empty() { name } else { cmd }
-                                            } else {
-                                                name
-                                            };
+                                            let full_name =
+                                                if let Ok(cmdline) = std::fs::read(&cmdline_path) {
+                                                    let cmd = String::from_utf8_lossy(&cmdline)
+                                                        .replace('\0', " ")
+                                                        .trim()
+                                                        .to_string();
+                                                    if cmd.is_empty() { name } else { cmd }
+                                                } else {
+                                                    name
+                                                };
                                             all_procs.push((p, ppid, full_name));
                                         }
                                     }
@@ -248,7 +254,7 @@ impl BoxxyAgent {
 
         let mut descendants = Vec::new();
         let mut to_visit = vec![pid];
-        
+
         while let Some(current) = to_visit.pop() {
             for (p, ppid, name) in &all_procs {
                 if *ppid == current {
@@ -257,7 +263,7 @@ impl BoxxyAgent {
                 }
             }
         }
-        
+
         Ok(descendants)
     }
 

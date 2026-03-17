@@ -44,7 +44,11 @@ fn set_controlling_terminal(fd: c_int) -> Result<()> {
         libc::ioctl(fd, TIOCSCTTY as _, 0)
     };
 
-    if res == 0 { Ok(()) } else { Err(Error::last_os_error()) }
+    if res == 0 {
+        Ok(())
+    } else {
+        Err(Error::last_os_error())
+    }
 }
 
 #[derive(Debug)]
@@ -68,7 +72,13 @@ fn get_pw_entry(buf: &mut [i8; 1024]) -> Result<Passwd<'_>> {
     // Try and read the pw file.
     let uid = unsafe { libc::getuid() };
     let status = unsafe {
-        libc::getpwuid_r(uid, entry.as_mut_ptr(), buf.as_mut_ptr() as *mut _, buf.len(), &mut res)
+        libc::getpwuid_r(
+            uid,
+            entry.as_mut_ptr(),
+            buf.as_mut_ptr() as *mut _,
+            buf.len(),
+            &mut res,
+        )
     };
     let entry = unsafe { entry.assume_init() };
 
@@ -285,8 +295,13 @@ pub fn from_fd(config: &Options, window_id: u64, master: OwnedFd, slave: OwnedFd
                 set_nonblocking(master_fd);
             }
 
-            Ok(Pty { child, file: File::from(master), signals, sig_id })
-        },
+            Ok(Pty {
+                child,
+                file: File::from(master),
+                signals,
+                sig_id,
+            })
+        }
         Err(err) => Err(Error::new(
             err.kind(),
             format!(
@@ -344,7 +359,7 @@ impl EventedPty for Pty {
             Err(err) => {
                 error!("Error checking child process termination: {err}");
                 None
-            },
+            }
             Ok(None) => None,
             Ok(exit_status) => Some(ChildEvent::Exited(exit_status)),
         }
@@ -385,7 +400,12 @@ impl ToWinsize for WindowSize {
 
         let ws_xpixel = self.pixel_width as libc::c_ushort;
         let ws_ypixel = self.pixel_height as libc::c_ushort;
-        Winsize { ws_row, ws_col, ws_xpixel, ws_ypixel }
+        Winsize {
+            ws_row,
+            ws_col,
+            ws_xpixel,
+            ws_ypixel,
+        }
     }
 }
 

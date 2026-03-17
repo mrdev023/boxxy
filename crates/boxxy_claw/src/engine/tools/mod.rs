@@ -1,14 +1,14 @@
 pub mod file_ops;
 pub mod memory;
-pub mod terminal;
-pub mod skills;
-pub mod workspace;
 pub mod scrollback;
+pub mod skills;
+pub mod terminal;
+pub mod workspace;
 
-use rig::tool::Tool;
-use rig::completion::ToolDefinition;
-use serde::{Deserialize, Serialize};
 use boxxy_agent::ipc::AgentClawProxy;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct SysShellArgs {
@@ -30,7 +30,7 @@ pub struct SysShellTool {
 
 impl Tool for SysShellTool {
     const NAME: &'static str = "sys_shell_exec";
-    
+
     type Error = std::io::Error;
     type Args = SysShellArgs;
     type Output = SysShellOutput;
@@ -56,19 +56,19 @@ impl Tool for SysShellTool {
         let command = if self.current_dir.is_empty() {
             args.command
         } else {
-            format!("cd '{}' && {}", self.current_dir.replace('\'', "'\\''"), args.command)
+            format!(
+                "cd '{}' && {}",
+                self.current_dir.replace('\'', "'\\''"),
+                args.command
+            )
         };
         match self.proxy.exec_shell(command).await {
-            Ok((exit_code, stdout, stderr)) => {
-                Ok(SysShellOutput {
-                    stdout,
-                    stderr,
-                    exit_code,
-                })
-            }
-            Err(e) => {
-                Err(std::io::Error::other(format!("IPC Error: {e}")))
-            }
+            Ok((exit_code, stdout, stderr)) => Ok(SysShellOutput {
+                stdout,
+                stderr,
+                exit_code,
+            }),
+            Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
         }
     }
 }

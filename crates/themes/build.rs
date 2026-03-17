@@ -1,7 +1,7 @@
+use serde::Deserialize;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
@@ -65,20 +65,13 @@ fn main() {
     let mut palette_files: Vec<_> = fs::read_dir(&palettes_dir)
         .expect("resources/palettes not found")
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|x| x == "toml")
-                .unwrap_or(false)
-        })
+        .filter(|e| e.path().extension().map(|x| x == "toml").unwrap_or(false))
         .collect();
 
     palette_files.sort_by_key(|e| e.file_name());
 
     let mut themes_code = String::new();
-    themes_code.push_str(
-        "pub static THEMES: &[ParsedPaletteStatic] = &[\n",
-    );
+    themes_code.push_str("pub static THEMES: &[ParsedPaletteStatic] = &[\n");
 
     for entry in palette_files {
         let path = entry.path();
@@ -125,15 +118,18 @@ struct ParsedPalette {
 fn parse_toml_theme(stem: &str, content: &str) -> Option<ParsedPalette> {
     let theme: TomlTheme = toml::from_str(content).ok()?;
     let colors = theme.colors?;
-    
+
     let primary = colors.primary?;
     let bg = primary.background.unwrap_or_else(|| "#000000".to_string());
     let fg = primary.foreground.unwrap_or_else(|| "#ffffff".to_string());
-    
-    let cursor = colors.cursor.and_then(|c| c.cursor).unwrap_or_else(|| fg.clone());
-    
+
+    let cursor = colors
+        .cursor
+        .and_then(|c| c.cursor)
+        .unwrap_or_else(|| fg.clone());
+
     let mut palette_colors: [String; 16] = std::array::from_fn(|_| "#000000".to_string());
-    
+
     if let Some(normal) = colors.normal {
         palette_colors[0] = normal.black.unwrap_or_else(|| "#000000".to_string());
         palette_colors[1] = normal.red.unwrap_or_else(|| "#000000".to_string());
@@ -144,7 +140,7 @@ fn parse_toml_theme(stem: &str, content: &str) -> Option<ParsedPalette> {
         palette_colors[6] = normal.cyan.unwrap_or_else(|| "#000000".to_string());
         palette_colors[7] = normal.white.unwrap_or_else(|| "#000000".to_string());
     }
-    
+
     if let Some(bright) = colors.bright {
         palette_colors[8] = bright.black.unwrap_or_else(|| "#000000".to_string());
         palette_colors[9] = bright.red.unwrap_or_else(|| "#000000".to_string());
@@ -162,7 +158,7 @@ fn parse_toml_theme(stem: &str, content: &str) -> Option<ParsedPalette> {
         cursor: cursor.clone(),
         colors: palette_colors.clone(),
     };
-    
+
     // We duplicate dark to light if we don't have separate definitions in the TOML
     // A more advanced parsing could try to generate a light theme from a dark theme, but we duplicate for now.
     Some(ParsedPalette {

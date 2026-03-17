@@ -1,10 +1,13 @@
-use crate::engine::{ClawMessage, ClawEngineEvent, context::load_session_context, context::retrieve_memories, context::summarize_and_store, dispatcher::extract_command_and_clean};
-use log::{info, debug};
+use crate::engine::{
+    ClawEngineEvent, ClawMessage, context::load_session_context, context::retrieve_memories,
+    context::summarize_and_store, dispatcher::extract_command_and_clean,
+};
+use boxxy_agent::ipc::AgentClawProxy;
 use boxxy_db::Db;
+use log::{debug, info};
 use rig::message::Message;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use boxxy_agent::ipc::AgentClawProxy;
 
 pub struct SessionState {
     pub pending_terminal_reply: Option<tokio::sync::oneshot::Sender<Result<String, String>>>,
@@ -23,10 +26,16 @@ pub struct ClawSession {
 }
 
 impl ClawSession {
-    pub fn new(pane_id: String) -> (Self, async_channel::Sender<ClawMessage>, async_channel::Receiver<ClawEngineEvent>) {
+    pub fn new(
+        pane_id: String,
+    ) -> (
+        Self,
+        async_channel::Sender<ClawMessage>,
+        async_channel::Receiver<ClawEngineEvent>,
+    ) {
         let (tx, rx) = async_channel::unbounded();
         let (tx_ui, rx_ui) = async_channel::unbounded();
-        
+
         // We defer loading session context and skills until the first use
         let session = Self {
             pane_id,
@@ -41,7 +50,7 @@ impl ClawSession {
                 pending_lazy_diagnosis: None,
             })),
         };
-        
+
         (session, tx, rx_ui)
     }
 
@@ -54,24 +63,32 @@ impl ClawSession {
     async fn run(mut self, claw_proxy: AgentClawProxy<'static>) {
         // LAZY LOADING: We don't initialize the DB or load skills until we receive a message.
         // This ensures BoxxyClaw doesn't consume memory/CPU if the user doesn't use the AI.
-        
+
         let mut is_initialized = false;
         let mut current_dir = String::from("/");
 
         // Register with global workspace
         let workspace = crate::registry::workspace::global_workspace().await;
-        workspace.update_pane_state(self.pane_id.clone(), current_dir.clone(), None, None).await;
+        workspace
+            .update_pane_state(self.pane_id.clone(), current_dir.clone(), None, None)
+            .await;
 
         while let Ok(msg) = self.rx.recv().await {
             if !is_initialized {
-                info!("Initializing Claw Session for pane {} upon first request...", self.pane_id);
+                info!(
+                    "Initializing Claw Session for pane {} upon first request...",
+                    self.pane_id
+                );
                 let session_context = load_session_context();
                 self.session_context = session_context;
-                
+
                 if let Ok(db) = Db::new().await {
                     *self.db.lock().await = Some(db);
-                    info!("Claw Memory Database initialized for pane {}.", self.pane_id);
-                    
+                    info!(
+                        "Claw Memory Database initialized for pane {}.",
+                        self.pane_id
+                    );
+
                     // Sync any manual edits from MEMORY.md back to the DB
                     let _ = crate::memories::db::sync_markdown_to_db(self.db.clone()).await;
 
@@ -80,7 +97,7 @@ impl ClawSession {
                 } else {
                     log::error!("Failed to initialize Claw Memory Database.");
                 }
-                
+
                 is_initialized = true;
             }
 
@@ -95,19 +112,32 @@ impl ClawSession {
                         *self.db.lock().await = Some(db);
                     }
                 }
-                ClawMessage::CommandFinished { exit_code, snapshot, cwd } => {
+                ClawMessage::CommandFinished {
+                    exit_code,
+                    snapshot,
+                    cwd,
+                } => {
                     current_dir = cwd.clone();
-                    
+
                     // Update workspace state
                     let last_cmd = snapshot.lines().next().unwrap_or("").to_string();
-                    workspace.update_pane_state(self.pane_id.clone(), current_dir.clone(), Some(last_cmd), Some(snapshot.clone())).await;
+                    workspace
+                        .update_pane_state(
+                            self.pane_id.clone(),
+                            current_dir.clone(),
+                            Some(last_cmd),
+                            Some(snapshot.clone()),
+                        )
+                        .await;
 
                     let mut state_lock = self.state.lock().await;
                     if let Some(reply) = state_lock.pending_terminal_reply.take() {
                         if exit_code == 0 {
                             let _ = reply.send(Ok(snapshot.clone()));
                         } else {
-                            let _ = reply.send(Err(format!("Command failed with exit code {exit_code}:\n{snapshot}")));
+                            let _ = reply.send(Err(format!(
+                                "Command failed with exit code {exit_code}:\n{snapshot}"
+                            )));
                         }
                     } else if exit_code != 0 {
                         if exit_code == 130 || exit_code == 131 {
@@ -115,12 +145,16 @@ impl ClawSession {
                         }
 
                         let settings = boxxy_preferences::Settings::load();
-                        let prompt = format!("The user's command failed with exit code {exit_code}. Please analyze the terminal snapshot and suggest a fix.");
-                        
-                        if settings.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy {
+                        let prompt = format!(
+                            "The user's command failed with exit code {exit_code}. Please analyze the terminal snapshot and suggest a fix."
+                        );
+
+                        if settings.claw_auto_diagnosis_mode
+                            == boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+                        {
                             state_lock.pending_lazy_diagnosis = Some((prompt, snapshot, cwd));
                             drop(state_lock);
-                            
+
                             let tx_ui = self.tx_ui.clone();
                             tokio::spawn(async move {
                                 let _ = tx_ui.send(ClawEngineEvent::LazyErrorIndicator).await;
@@ -144,7 +178,8 @@ impl ClawSession {
                 }
                 ClawMessage::RequestLazyDiagnosis => {
                     let mut state_lock = self.state.lock().await;
-                    if let Some((prompt, snapshot, cwd)) = state_lock.pending_lazy_diagnosis.take() {
+                    if let Some((prompt, snapshot, cwd)) = state_lock.pending_lazy_diagnosis.take()
+                    {
                         drop(state_lock);
                         spawn_turn(
                             self.pane_id.clone(),
@@ -160,13 +195,27 @@ impl ClawSession {
                         );
                     }
                 }
-                ClawMessage::ClawQuery { query, snapshot, cwd } => {
+                ClawMessage::ClawQuery {
+                    query,
+                    snapshot,
+                    cwd,
+                } => {
                     current_dir = cwd.clone();
-                    
-                    // Update workspace state
-                    workspace.update_pane_state(self.pane_id.clone(), current_dir.clone(), Some(query.clone()), Some(snapshot.clone())).await;
 
-                    debug!("Pane {}: Direct Claw query: {query}. Starting analysis.", self.pane_id);
+                    // Update workspace state
+                    workspace
+                        .update_pane_state(
+                            self.pane_id.clone(),
+                            current_dir.clone(),
+                            Some(query.clone()),
+                            Some(snapshot.clone()),
+                        )
+                        .await;
+
+                    debug!(
+                        "Pane {}: Direct Claw query: {query}. Starting analysis.",
+                        self.pane_id
+                    );
                     spawn_turn(
                         self.pane_id.clone(),
                         &query,
@@ -186,26 +235,45 @@ impl ClawSession {
                         let _ = reply.send(approved);
                     }
                 }
-                ClawMessage::UserMessage { message, snapshot, cwd } => {
+                ClawMessage::UserMessage {
+                    message,
+                    snapshot,
+                    cwd,
+                } => {
                     current_dir = cwd.clone();
-                    debug!("Pane {}: User reply: {message}. Checking for pending tools.", self.pane_id);
-                    
+                    debug!(
+                        "Pane {}: User reply: {message}. Checking for pending tools.",
+                        self.pane_id
+                    );
+
                     // Update workspace state
-                    workspace.update_pane_state(self.pane_id.clone(), current_dir.clone(), None, Some(snapshot.clone())).await;
+                    workspace
+                        .update_pane_state(
+                            self.pane_id.clone(),
+                            current_dir.clone(),
+                            None,
+                            Some(snapshot.clone()),
+                        )
+                        .await;
 
                     let mut state_lock = self.state.lock().await;
                     let mut fulfilled = false;
-                    
+
                     if let Some(reply) = state_lock.pending_terminal_reply.take() {
-                        let _ = reply.send(Err(format!("User provided text feedback instead of running command: {message}")));
+                        let _ = reply.send(Err(format!(
+                            "User provided text feedback instead of running command: {message}"
+                        )));
                         fulfilled = true;
                     } else if let Some(reply) = state_lock.pending_file_reply.take() {
                         let _ = reply.send(false);
                         fulfilled = true;
                     }
-                    
+
                     if fulfilled {
-                        debug!("Pane {}: Fulfilled pending tool with user feedback.", self.pane_id);
+                        debug!(
+                            "Pane {}: Fulfilled pending tool with user feedback.",
+                            self.pane_id
+                        );
                     } else {
                         drop(state_lock);
                         spawn_turn(
@@ -235,7 +303,7 @@ impl ClawSession {
                 }
             }
         }
-        
+
         // Unregister on loop exit
         workspace.unregister_pane(self.pane_id).await;
     }
@@ -258,7 +326,7 @@ fn spawn_turn(
     let snapshot_clone = snapshot.to_string();
     let session_ctx_clone = session_ctx.to_string();
     let cwd_clone = cwd.clone();
-    
+
     tokio::spawn(async move {
         if is_new_task {
             if let Ok(mut lock) = state.try_lock() {
@@ -271,20 +339,22 @@ fn spawn_turn(
         let db_guard = db.lock().await;
         let past_memories = retrieve_memories(&*db_guard, &prompt_clone, &cwd_clone).await;
         drop(db_guard);
-        
+
         let state_lock = state.lock().await;
         let settings = boxxy_preferences::Settings::load();
 
         let mut active_skills_text = String::new();
         let mut available_skills_text = String::new();
         let query_lower = prompt_clone.to_lowercase();
-        
+
         let registry = crate::registry::skills::global_registry().await;
 
         // Fetch Workspace Radar
         let workspace = crate::registry::workspace::global_workspace().await;
-        let radar = workspace.get_radar_for_project(&cwd_clone, pane_id.clone()).await;
-        
+        let radar = workspace
+            .get_radar_for_project(&cwd_clone, pane_id.clone())
+            .await;
+
         // 1. Semantic Search: Get the top 3 most relevant skills via SQLite FTS5 to be "Active"
         let mut active_skills = registry.search_relevant_skills(&prompt_clone, 3).await;
 
@@ -292,7 +362,10 @@ fn spawn_turn(
         let all_skills = registry.get_skills().await;
         for skill in &all_skills {
             // Avoid duplicates
-            if active_skills.iter().any(|s| s.frontmatter.name == skill.frontmatter.name) {
+            if active_skills
+                .iter()
+                .any(|s| s.frontmatter.name == skill.frontmatter.name)
+            {
                 continue;
             }
 
@@ -328,23 +401,33 @@ fn spawn_turn(
         // Include all skills NOT in active_skills as compact metadata
         let mut toolbox_count = 0;
         for skill in &all_skills {
-            if active_skills.iter().any(|s| s.frontmatter.name == skill.frontmatter.name) {
+            if active_skills
+                .iter()
+                .any(|s| s.frontmatter.name == skill.frontmatter.name)
+            {
                 continue;
             }
-            
+
             if toolbox_count == 0 {
                 available_skills_text.push_str("\n--- AVAILABLE SKILLS (TOOLBOX - Compact) ---\n");
                 available_skills_text.push_str("Use `activate_skill(name)` if you need the full instructions for any of these:\n");
             }
-            
-            available_skills_text.push_str(&format!("- {}: {}\n", skill.frontmatter.name, skill.frontmatter.description));
+
+            available_skills_text.push_str(&format!(
+                "- {}: {}\n",
+                skill.frontmatter.name, skill.frontmatter.description
+            ));
             toolbox_count += 1;
         }
 
-        let data = gtk4::gio::resources_lookup_data("/play/mii/Boxxy/prompts/claw.md", gtk4::gio::ResourceLookupFlags::NONE)
-            .expect("Failed to load claw prompt resource");
-        let system_prompt_template = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
-        
+        let data = gtk4::gio::resources_lookup_data(
+            "/play/mii/Boxxy/prompts/claw.md",
+            gtk4::gio::ResourceLookupFlags::NONE,
+        )
+        .expect("Failed to load claw prompt resource");
+        let system_prompt_template =
+            String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+
         let system_prompt = system_prompt_template
             .replace("{{session_context}}", &session_ctx_clone)
             .replace("{{active_skills}}", &active_skills_text)
@@ -369,24 +452,31 @@ fn spawn_turn(
             db.clone(),
         );
 
-        let full_prompt = format!(
-            "{prompt_clone}\n\nTerminal Snapshot:\n```\n{snapshot_clone}\n```"
-        );
+        let full_prompt =
+            format!("{prompt_clone}\n\nTerminal Snapshot:\n```\n{snapshot_clone}\n```");
 
         let history = state_lock.history.clone();
         drop(state_lock);
 
         info!("Pane {pane_id}: Sending turn to Boxxy-Claw agent...");
-        let _ = tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: true }).await;
-        
+        let _ = tx_ui
+            .send(ClawEngineEvent::AgentThinking { is_thinking: true })
+            .await;
+
         match agent.chat(&full_prompt, history).await {
             Ok(response) => {
-                let _ = tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: false }).await;
+                let _ = tx_ui
+                    .send(ClawEngineEvent::AgentThinking { is_thinking: false })
+                    .await;
                 info!("Pane {pane_id}: Boxxy-Claw turn complete.");
-                
+
                 let mut state_lock = state.lock().await;
-                state_lock.history.push(rig::message::Message::user(full_prompt));
-                state_lock.history.push(rig::message::Message::assistant(response.clone()));
+                state_lock
+                    .history
+                    .push(rig::message::Message::user(full_prompt));
+                state_lock
+                    .history
+                    .push(rig::message::Message::assistant(response.clone()));
 
                 // Optional: Trigger Memory Flush if history is too long
                 let creds = boxxy_ai_core::AiCredentials::new(
@@ -400,35 +490,47 @@ fn spawn_turn(
                     &settings.claw_model,
                     &creds,
                     &cwd_clone,
-                ).await;
-                
+                )
+                .await;
+
                 drop(state_lock);
-let prompt_for_db = prompt_clone.clone();
-let resp_for_db = response.clone();
-let db_for_summary = db.clone();
-let cwd_for_db = cwd_clone.clone();
-let mem_model = settings.memory_model.clone().unwrap_or(settings.claw_model.clone());
-let creds = boxxy_ai_core::AiCredentials::new(
-    settings.api_keys.clone(),
-    settings.ollama_base_url.clone(),
-);
+                let prompt_for_db = prompt_clone.clone();
+                let resp_for_db = response.clone();
+                let db_for_summary = db.clone();
+                let cwd_for_db = cwd_clone.clone();
+                let mem_model = settings
+                    .memory_model
+                    .clone()
+                    .unwrap_or(settings.claw_model.clone());
+                let creds = boxxy_ai_core::AiCredentials::new(
+                    settings.api_keys.clone(),
+                    settings.ollama_base_url.clone(),
+                );
 
-tokio::spawn(async move {
-    let db_guard = db_for_summary.lock().await;
-    if db_guard.is_some() {
-        summarize_and_store(&*db_guard, &prompt_for_db, &resp_for_db, &cwd_for_db, creds.clone()).await;
-    }
-    drop(db_guard);
+                tokio::spawn(async move {
+                    let db_guard = db_for_summary.lock().await;
+                    if db_guard.is_some() {
+                        summarize_and_store(
+                            &*db_guard,
+                            &prompt_for_db,
+                            &resp_for_db,
+                            &cwd_for_db,
+                            creds.clone(),
+                        )
+                        .await;
+                    }
+                    drop(db_guard);
 
-    crate::memories::extraction::extract_implicit_memory(
-        db_for_summary.clone(),
-        prompt_for_db,
-        resp_for_db,
-        mem_model,
-        creds,
-        cwd_for_db,
-    ).await;
-});
+                    crate::memories::extraction::extract_implicit_memory(
+                        db_for_summary.clone(),
+                        prompt_for_db,
+                        resp_for_db,
+                        mem_model,
+                        creds,
+                        cwd_for_db,
+                    )
+                    .await;
+                });
                 let mut command_opt = None;
                 let mut clean_diagnosis = response.clone();
 
@@ -439,22 +541,32 @@ tokio::spawn(async move {
                 }
 
                 if clean_diagnosis.trim() == "[SILENT_ACK]" {
-                    info!("Pane {pane_id}: Agent acknowledged rejection silently. Not sending UI event.");
+                    info!(
+                        "Pane {pane_id}: Agent acknowledged rejection silently. Not sending UI event."
+                    );
                 } else if clean_diagnosis.trim().is_empty() && command_opt.is_none() {
-                    info!("Pane {pane_id}: Agent response was empty (likely just tool calls). Not sending UI event.");
+                    info!(
+                        "Pane {pane_id}: Agent response was empty (likely just tool calls). Not sending UI event."
+                    );
                 } else if let Some(command) = command_opt {
-                    let _ = tx_ui.send(ClawEngineEvent::InjectCommand { 
-                        command,
-                        diagnosis: clean_diagnosis
-                    }).await;
+                    let _ = tx_ui
+                        .send(ClawEngineEvent::InjectCommand {
+                            command,
+                            diagnosis: clean_diagnosis,
+                        })
+                        .await;
                 } else {
-                    let _ = tx_ui.send(ClawEngineEvent::DiagnosisComplete { 
-                        diagnosis: clean_diagnosis 
-                    }).await;
+                    let _ = tx_ui
+                        .send(ClawEngineEvent::DiagnosisComplete {
+                            diagnosis: clean_diagnosis,
+                        })
+                        .await;
                 }
             }
             Err(e) => {
-                let _ = tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: false }).await;
+                let _ = tx_ui
+                    .send(ClawEngineEvent::AgentThinking { is_thinking: false })
+                    .await;
                 log::error!("Pane {pane_id}: Boxxy-Claw agent failed: {e}");
             }
         }

@@ -5,9 +5,9 @@ use bitflags::bitflags;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::engine::ansi::{Color, Hyperlink as VteHyperlink, NamedColor};
 use crate::engine::grid::{self, GridCell};
 use crate::engine::index::Column;
-use crate::engine::ansi::{Color, Hyperlink as VteHyperlink, NamedColor};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,7 +31,7 @@ bitflags! {
         const DOTTED_UNDERLINE          = 0b0010_0000_0000_0000;
         const DASHED_UNDERLINE          = 0b0100_0000_0000_0000;
         const GRAPHICS_ATTACHMENT       = 0b1000_0000_0000_0000;
-        
+
         const SEMANTIC_PROMPT           = 0b0000_0000_0000_0001_0000_0000_0000_0000;
         const SEMANTIC_CMD              = 0b0000_0000_0000_0010_0000_0000_0000_0000;
         const SEMANTIC_OUTPUT           = 0b0000_0000_0000_0100_0000_0000_0000_0000;
@@ -74,7 +74,10 @@ impl From<VteHyperlink> for Hyperlink {
 
 impl From<Hyperlink> for VteHyperlink {
     fn from(val: Hyperlink) -> Self {
-        VteHyperlink { id: Some(val.id().to_owned()), uri: val.uri().to_owned() }
+        VteHyperlink {
+            id: Some(val.id().to_owned()),
+            uri: val.uri().to_owned(),
+        }
     }
 }
 
@@ -93,10 +96,12 @@ impl HyperlinkInner {
         let id = match id {
             Some(id) => id.to_string(),
             None => {
-                let mut id = HYPERLINK_ID_SUFFIX.fetch_add(1, Ordering::Relaxed).to_string();
+                let mut id = HYPERLINK_ID_SUFFIX
+                    .fetch_add(1, Ordering::Relaxed)
+                    .to_string();
                 id.push_str("_terminal");
                 id
-            },
+            }
         };
 
         Self { id, uri }
@@ -257,14 +262,20 @@ impl GridCell for Cell {
 
     #[inline]
     fn reset(&mut self, template: &Self) {
-        *self = Cell { bg: template.bg, ..Cell::default() };
+        *self = Cell {
+            bg: template.bg,
+            ..Cell::default()
+        };
     }
 }
 
 impl From<Color> for Cell {
     #[inline]
     fn from(color: Color) -> Self {
-        Self { bg: color, ..Cell::default() }
+        Self {
+            bg: color,
+            ..Cell::default()
+        }
     }
 }
 

@@ -1,7 +1,7 @@
+use boxxy_vte::terminal::TerminalWidget;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
-use gtk4::{Application, ApplicationWindow, ScrolledWindow, PolicyType};
-use boxxy_vte::terminal::TerminalWidget;
+use gtk4::{Application, ApplicationWindow, PolicyType, ScrolledWindow};
 
 #[tokio::main]
 async fn main() {
@@ -46,7 +46,7 @@ async fn main() {
         // widget already has a real pixel allocation and the initial PTY resize
         // reflects the true terminal dimensions.
         terminal.spawn_async(None, &[]);
-        
+
         let term_clone = terminal.clone();
         glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             log::info!("Simulating Kitty APC sequence directly into shell...");

@@ -1,5 +1,5 @@
-use gtk4 as gtk;
 use gtk::gdk;
+use gtk4 as gtk;
 use sourceview5::prelude::*;
 use std::cell::RefCell;
 use std::fs;
@@ -39,7 +39,9 @@ impl PaletteVariantStatic {
     pub fn to_vte_colors(&self) -> (gdk::RGBA, gdk::RGBA, Vec<gdk::RGBA>) {
         let fg = gdk::RGBA::parse(self.foreground).unwrap_or(gdk::RGBA::WHITE);
         let bg = gdk::RGBA::parse(self.background).unwrap_or(gdk::RGBA::BLACK);
-        let palette = self.colors.iter()
+        let palette = self
+            .colors
+            .iter()
             .map(|c| gdk::RGBA::parse(*c).unwrap_or(gdk::RGBA::BLACK))
             .collect();
         (fg, bg, palette)
@@ -65,18 +67,21 @@ pub fn load_palette(name: &str) -> Option<ParsedPaletteStatic> {
         "" | "System" | "system" | "none" => return None,
         _ => {}
     }
-    
+
     // 1. Direct match by exact id or name
     if let Some(p) = THEMES.iter().find(|p| p.id == name || p.name == name) {
         return Some(*p);
     }
-    
+
     // 2. Normalised fallback for legacy settings (e.g. "dracula" → "Dracula").
     let target = name.to_lowercase().replace('-', " ");
-    if let Some(p) = THEMES.iter().find(|p| p.id.to_lowercase().replace('-', " ") == target || p.name.to_lowercase().replace('-', " ") == target) {
+    if let Some(p) = THEMES.iter().find(|p| {
+        p.id.to_lowercase().replace('-', " ") == target
+            || p.name.to_lowercase().replace('-', " ") == target
+    }) {
         return Some(*p);
     }
-    
+
     None
 }
 

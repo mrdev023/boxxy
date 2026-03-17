@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use mlua::{Lua, Result as LuaResult, FromLua, Value, AnyUserData};
+use mlua::{AnyUserData, FromLua, Lua, Result as LuaResult, Value};
 use std::fmt;
 
 #[derive(Clone)]
@@ -103,78 +103,90 @@ impl BoxxyAppEngine {
         let ui = self.lua.create_table()?;
 
         // boxxy.ui.label({ text = "..." })
-        ui.set("label", self.lua.create_function(|_, table: mlua::Table| {
-            let text: String = table.get("text").unwrap_or_default();
-            let label = gtk4::Label::builder()
-                .label(&text)
-                .build();
-            apply_common_props(label.upcast_ref(), &table);
-            Ok(LuaWidget(label.upcast()))
-        })?)?;
+        ui.set(
+            "label",
+            self.lua.create_function(|_, table: mlua::Table| {
+                let text: String = table.get("text").unwrap_or_default();
+                let label = gtk4::Label::builder().label(&text).build();
+                apply_common_props(label.upcast_ref(), &table);
+                Ok(LuaWidget(label.upcast()))
+            })?,
+        )?;
 
         // boxxy.ui.button({ label = "...", on_click = fn })
-        ui.set("button", self.lua.create_function(|lua, table: mlua::Table| {
-            let label_text: String = table.get("label").unwrap_or_default();
-            let on_click: Option<mlua::Function> = table.get("on_click").ok();
+        ui.set(
+            "button",
+            self.lua.create_function(|lua, table: mlua::Table| {
+                let label_text: String = table.get("label").unwrap_or_default();
+                let on_click: Option<mlua::Function> = table.get("on_click").ok();
 
-            let button = gtk4::Button::builder()
-                .label(&label_text)
-                .build();
+                let button = gtk4::Button::builder().label(&label_text).build();
 
-            if let Some(callback) = on_click {
-                let lua_clone = lua.clone();
-                let registry_key = lua.create_registry_value(callback)?;
+                if let Some(callback) = on_click {
+                    let lua_clone = lua.clone();
+                    let registry_key = lua.create_registry_value(callback)?;
 
-                button.connect_clicked(move |_| {
-                    if let Ok(func) = lua_clone.registry_value::<mlua::Function>(&registry_key)
-                        && let Err(e) = func.call::<()>(()) {
+                    button.connect_clicked(move |_| {
+                        if let Ok(func) = lua_clone.registry_value::<mlua::Function>(&registry_key)
+                            && let Err(e) = func.call::<()>(())
+                        {
                             log::error!("Lua callback error: {}", e);
                         }
-                });
-            }
+                    });
+                }
 
-            apply_common_props(button.upcast_ref(), &table);
-            Ok(LuaWidget(button.upcast()))
-        })?)?;
+                apply_common_props(button.upcast_ref(), &table);
+                Ok(LuaWidget(button.upcast()))
+            })?,
+        )?;
 
         // boxxy.ui.entry({ placeholder = "..." })
-        ui.set("entry", self.lua.create_function(|_, table: mlua::Table| {
-            let placeholder: String = table.get("placeholder").unwrap_or_default();
-            let entry = gtk4::Entry::builder()
-                .placeholder_text(&placeholder)
-                .build();
-            apply_common_props(entry.upcast_ref(), &table);
-            Ok(LuaWidget(entry.upcast()))
-        })?)?;
+        ui.set(
+            "entry",
+            self.lua.create_function(|_, table: mlua::Table| {
+                let placeholder: String = table.get("placeholder").unwrap_or_default();
+                let entry = gtk4::Entry::builder()
+                    .placeholder_text(&placeholder)
+                    .build();
+                apply_common_props(entry.upcast_ref(), &table);
+                Ok(LuaWidget(entry.upcast()))
+            })?,
+        )?;
 
         // boxxy.ui.box({ orientation = "vertical", spacing = 10, children = { ... } })
-        ui.set("box", self.lua.create_function(|_, table: mlua::Table| {
-             let orientation_str: String = table.get("orientation").unwrap_or_else(|_| "vertical".to_string());
-             let spacing: i32 = table.get("spacing").unwrap_or(0);
-             let children: Option<mlua::Table> = table.get("children").ok();
+        ui.set(
+            "box",
+            self.lua.create_function(|_, table: mlua::Table| {
+                let orientation_str: String = table
+                    .get("orientation")
+                    .unwrap_or_else(|_| "vertical".to_string());
+                let spacing: i32 = table.get("spacing").unwrap_or(0);
+                let children: Option<mlua::Table> = table.get("children").ok();
 
-             let orientation = match orientation_str.as_str() {
-                 "horizontal" => gtk4::Orientation::Horizontal,
-                 _ => gtk4::Orientation::Vertical,
-             };
+                let orientation = match orientation_str.as_str() {
+                    "horizontal" => gtk4::Orientation::Horizontal,
+                    _ => gtk4::Orientation::Vertical,
+                };
 
-             let box_widget = gtk4::Box::builder()
-                 .orientation(orientation)
-                 .spacing(spacing)
-                 .build();
+                let box_widget = gtk4::Box::builder()
+                    .orientation(orientation)
+                    .spacing(spacing)
+                    .build();
 
-             if let Some(children_table) = children {
-                 for pair in children_table.pairs::<mlua::Value, AnyUserData>() {
-                     if let Ok((_, ud)) = pair
-                        && let Ok(widget) = ud.borrow::<LuaWidget>() {
-                             box_widget.append(&widget.0);
+                if let Some(children_table) = children {
+                    for pair in children_table.pairs::<mlua::Value, AnyUserData>() {
+                        if let Ok((_, ud)) = pair
+                            && let Ok(widget) = ud.borrow::<LuaWidget>()
+                        {
+                            box_widget.append(&widget.0);
                         }
-                 }
-             }
+                    }
+                }
 
-             apply_common_props(box_widget.upcast_ref(), &table);
-             Ok(LuaWidget(box_widget.upcast()))
-        })?)?;
+                apply_common_props(box_widget.upcast_ref(), &table);
+                Ok(LuaWidget(box_widget.upcast()))
+            })?,
+        )?;
 
         boxxy.set("ui", ui)?;
 
@@ -182,28 +194,33 @@ impl BoxxyAppEngine {
         let utils = self.lua.create_table()?;
 
         // boxxy.utils.run_command("ls", {"-l", "-a"})
-        utils.set("run_command", self.lua.create_function(|_, (cmd, args): (String, Vec<String>)| {
-             use std::process::Command;
+        utils.set(
+            "run_command",
+            self.lua
+                .create_function(|_, (cmd, args): (String, Vec<String>)| {
+                    use std::process::Command;
 
-             let output = Command::new(cmd)
-                 .args(args)
-                 .output();
+                    let output = Command::new(cmd).args(args).output();
 
-             match output {
-                 Ok(o) => {
-                     let stdout = String::from_utf8_lossy(&o.stdout).to_string();
-                     let stderr = String::from_utf8_lossy(&o.stderr).to_string();
-                     Ok((o.status.success(), stdout, stderr))
-                 },
-                 Err(e) => Ok((false, String::new(), e.to_string()))
-             }
-        })?)?;
+                    match output {
+                        Ok(o) => {
+                            let stdout = String::from_utf8_lossy(&o.stdout).to_string();
+                            let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                            Ok((o.status.success(), stdout, stderr))
+                        }
+                        Err(e) => Ok((false, String::new(), e.to_string())),
+                    }
+                })?,
+        )?;
 
         // boxxy.utils.notify("Message")
-        utils.set("notify", self.lua.create_function(|_, msg: String| {
-            log::info!("Notification: {}", msg);
-            Ok(())
-        })?)?;
+        utils.set(
+            "notify",
+            self.lua.create_function(|_, msg: String| {
+                log::info!("Notification: {}", msg);
+                Ok(())
+            })?,
+        )?;
 
         boxxy.set("utils", utils)?;
         globals.set("boxxy", boxxy)?;

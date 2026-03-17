@@ -1,13 +1,13 @@
 pub mod dialog;
 pub mod engine;
 
+use boxxy_model_selection::ModelProvider;
 use dialog::CreateAppDialog;
 use engine::BoxxyAppEngine;
+use gtk::glib;
+use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use gtk4 as gtk;
-use gtk::glib;
-use boxxy_model_selection::ModelProvider;
 use std::cell::RefCell;
 use std::fs;
 use std::path::PathBuf;
@@ -39,9 +39,9 @@ impl std::fmt::Debug for BoxxyAppsComponent {
 impl BoxxyAppsComponent {
     pub fn new() -> Self {
         let engine = Rc::new(RefCell::new(BoxxyAppEngine::new()));
-        
+
         let widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        
+
         // Sidebar
         let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 12);
         sidebar.set_width_request(250);
@@ -50,12 +50,12 @@ impl BoxxyAppsComponent {
         sidebar.set_margin_start(12);
         sidebar.set_margin_end(12);
         sidebar.add_css_class("boxxy-apps-sidebar");
-        
+
         let title = gtk::Label::new(Some("Installed Apps"));
         title.add_css_class("title-2");
         title.set_halign(gtk::Align::Start);
         sidebar.append(&title);
-        
+
         let new_app_btn = gtk::Button::builder()
             .label("New App")
             .icon_name("list-add-symbolic")
@@ -63,17 +63,17 @@ impl BoxxyAppsComponent {
             .tooltip_text("Create new app with AI")
             .build();
         sidebar.append(&new_app_btn);
-        
+
         let scroll = gtk::ScrolledWindow::new();
         scroll.set_vexpand(true);
         scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
-        
+
         let app_list_box = gtk::ListBox::new();
         app_list_box.set_selection_mode(gtk::SelectionMode::None);
         app_list_box.add_css_class("boxed-list");
         scroll.set_child(Some(&app_list_box));
         sidebar.append(&scroll);
-        
+
         let warning_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         warning_box.set_margin_top(4);
         let warning_icon = gtk::Image::from_icon_name("dialog-warning-symbolic");
@@ -87,15 +87,15 @@ impl BoxxyAppsComponent {
         warning_label.set_opacity(0.5);
         warning_box.append(&warning_label);
         sidebar.append(&warning_box);
-        
+
         widget.append(&sidebar);
-        
+
         // Content Area
         let clamp = adw::Clamp::new();
         clamp.set_maximum_size(800);
         clamp.set_hexpand(true);
         clamp.set_vexpand(true);
-        
+
         let overlay = gtk::Overlay::new();
         let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content_box.set_margin_top(12);
@@ -105,7 +105,7 @@ impl BoxxyAppsComponent {
         content_box.set_hexpand(true);
         content_box.set_vexpand(true);
         overlay.set_child(Some(&content_box));
-        
+
         let close_app_btn = gtk::Button::builder()
             .icon_name("window-close-symbolic")
             .halign(gtk::Align::End)
@@ -118,7 +118,7 @@ impl BoxxyAppsComponent {
         close_app_btn.add_css_class("flat");
         close_app_btn.add_css_class("circular");
         overlay.add_overlay(&close_app_btn);
-        
+
         clamp.set_child(Some(&overlay));
         widget.append(&clamp);
 
@@ -139,7 +139,7 @@ impl BoxxyAppsComponent {
             widget,
             inner: inner.clone(),
         };
-        
+
         // Listen for global settings changes to sync model across windows
         let comp_clone = comp.clone();
         let mut settings_rx = boxxy_preferences::SETTINGS_EVENT_BUS.subscribe();
@@ -165,7 +165,7 @@ impl BoxxyAppsComponent {
         comp.inner.borrow().new_app_btn.connect_clicked(move |_| {
             c.open_create_dialog();
         });
-        
+
         let c = comp.clone();
         comp.inner.borrow().close_app_btn.connect_clicked(move |_| {
             c.close_app();
@@ -192,56 +192,57 @@ impl BoxxyAppsComponent {
         if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
             let apps_dir = dirs.config_dir().join("apps");
             if apps_dir.exists()
-                && let Ok(entries) = fs::read_dir(&apps_dir) {
-                    let mut paths: Vec<PathBuf> = entries
-                        .flatten()
-                        .map(|e| e.path())
-                        .filter(|p| p.extension().is_some_and(|ext| ext == "lua"))
-                        .collect();
+                && let Ok(entries) = fs::read_dir(&apps_dir)
+            {
+                let mut paths: Vec<PathBuf> = entries
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|ext| ext == "lua"))
+                    .collect();
 
-                    let order = Self::load_order();
-                    paths.sort_by(|a, b| {
-                        let a_str = a.to_string_lossy().to_string();
-                        let b_str = b.to_string_lossy().to_string();
-                        let a_idx = order.iter().position(|o| o == &a_str);
-                        let b_idx = order.iter().position(|o| o == &b_str);
-                        match (a_idx, b_idx) {
-                            (Some(ai), Some(bi)) => ai.cmp(&bi),
-                            (Some(_), None) => std::cmp::Ordering::Less,
-                            (None, Some(_)) => std::cmp::Ordering::Greater,
-                            (None, None) => a.cmp(b),
-                        }
-                    });
-
-                    for path in paths {
-                        let row = self.create_app_row(path);
-                        inner.app_list_box.append(&row);
+                let order = Self::load_order();
+                paths.sort_by(|a, b| {
+                    let a_str = a.to_string_lossy().to_string();
+                    let b_str = b.to_string_lossy().to_string();
+                    let a_idx = order.iter().position(|o| o == &a_str);
+                    let b_idx = order.iter().position(|o| o == &b_str);
+                    match (a_idx, b_idx) {
+                        (Some(ai), Some(bi)) => ai.cmp(&bi),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => a.cmp(b),
                     }
+                });
+
+                for path in paths {
+                    let row = self.create_app_row(path);
+                    inner.app_list_box.append(&row);
                 }
+            }
         }
     }
 
     fn create_app_row(&self, path: PathBuf) -> gtk::ListBoxRow {
         let row = gtk::ListBoxRow::new();
         row.add_css_class("activatable");
-        
+
         let label_text = path
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-            
+
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         hbox.set_margin_top(8);
         hbox.set_margin_bottom(8);
         hbox.set_margin_start(8);
         hbox.set_margin_end(8);
-        
+
         let label = gtk::Label::new(Some(&label_text));
         label.set_halign(gtk::Align::Start);
         label.set_hexpand(true);
         hbox.append(&label);
-        
+
         let edit_btn = gtk::Button::from_icon_name("document-edit-symbolic");
         edit_btn.add_css_class("flat");
         edit_btn.add_css_class("circular");
@@ -254,7 +255,7 @@ impl BoxxyAppsComponent {
             );
         });
         hbox.append(&edit_btn);
-        
+
         let delete_btn = gtk::Button::from_icon_name("user-trash-symbolic");
         delete_btn.add_css_class("flat");
         delete_btn.add_css_class("circular");
@@ -269,9 +270,9 @@ impl BoxxyAppsComponent {
             }
         });
         hbox.append(&delete_btn);
-        
+
         row.set_child(Some(&hbox));
-        
+
         // Drag and Drop
         let drag_source = gtk::DragSource::new();
         drag_source.set_actions(gtk::gdk::DragAction::MOVE);
@@ -280,7 +281,7 @@ impl BoxxyAppsComponent {
             Some(gtk::gdk::ContentProvider::for_value(&p_str.to_value()))
         });
         row.add_controller(drag_source);
-        
+
         let drop_target = gtk::DropTarget::new(gtk::glib::Type::STRING, gtk::gdk::DragAction::MOVE);
         let p_target = path.clone();
         let c = self.clone();
@@ -296,7 +297,7 @@ impl BoxxyAppsComponent {
             }
         });
         row.add_controller(drop_target);
-        
+
         let gesture = gtk::GestureClick::new();
         let p_clone = path.clone();
         let c = self.clone();
@@ -304,7 +305,7 @@ impl BoxxyAppsComponent {
             c.run_app_file(p_clone.clone());
         });
         row.add_controller(gesture);
-        
+
         row
     }
 
@@ -312,10 +313,10 @@ impl BoxxyAppsComponent {
         let mut order = Self::load_order();
         let s_str = source.to_string_lossy().to_string();
         let t_str = target.to_string_lossy().to_string();
-        
+
         if let (Some(from_idx), Some(to_idx)) = (
             order.iter().position(|o| o == &s_str),
-            order.iter().position(|o| o == &t_str)
+            order.iter().position(|o| o == &t_str),
         ) {
             let item = order.remove(from_idx);
             order.insert(to_idx, item);
@@ -360,7 +361,7 @@ impl BoxxyAppsComponent {
             inner.close_app_btn.set_visible(true);
             drop(inner);
             self.save_state();
-            
+
             let inner = self.inner.borrow();
             while let Some(child) = inner.content_box.first_child() {
                 inner.content_box.remove(&child);
@@ -394,7 +395,10 @@ impl BoxxyAppsComponent {
         if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
             let state_file = dirs.config_dir().join("apps").join("state.json");
             let inner = self.inner.borrow();
-            let state = inner.running_app.as_ref().map(|p| p.to_string_lossy().to_string());
+            let state = inner
+                .running_app
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
             let _ = fs::write(
                 state_file,
                 serde_json::to_string(&state).unwrap_or_default(),

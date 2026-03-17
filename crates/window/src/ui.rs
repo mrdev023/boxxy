@@ -1,22 +1,24 @@
-use gtk4 as gtk;
-use libadwaita as adw;
-use gtk::prelude::*;
 use adw::prelude::*;
 use gtk::glib;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use boxxy_sidebar::AiSidebarComponent;
 use boxxy_app_menu::AppMenuComponent;
+use boxxy_bookmarks::manager::{BOOKMARKS_EVENT_BUS, BookmarksManager};
+use boxxy_bookmarks::sidebar::BookmarksSidebarComponent;
 use boxxy_claw::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;
 use boxxy_preferences::{AppState, PreferencesComponent, Settings};
+use boxxy_sidebar::AiSidebarComponent;
 use boxxy_themes::ThemeSelectorComponent;
 
+use crate::actions::setup_actions;
 use crate::init::AppInit;
 use crate::state::{AppInput, AppWindowInner};
-use crate::actions::setup_actions;
 use crate::tab_menu::TabContextMenu;
 
 pub struct AppWindow {
@@ -53,8 +55,8 @@ impl AppWindow {
 
         tab_view.connect_create_window(move |_| {
             let new_tab_view = adw::TabView::new();
-            if let Some(app) = gtk::gio::Application::default()
-                .and_then(|a| a.downcast::<adw::Application>().ok())
+            if let Some(app) =
+                gtk::gio::Application::default().and_then(|a| a.downcast::<adw::Application>().ok())
             {
                 AppWindow::new(
                     &app,
@@ -84,12 +86,17 @@ impl AppWindow {
 
         let app_menu = AppMenuComponent::new();
         let ai_chat = AiSidebarComponent::new();
-        
+
         let tx_claw_active = tx.clone();
         let claw = ClawSidebarComponent::new(move |active| {
             let _ = tx_claw_active.send_blocking(AppInput::SetClawActive(active));
         });
         claw.update_diagnosis_mode(&current_settings.claw_auto_diagnosis_mode);
+
+        let tx_bookmarks = tx.clone();
+        let bookmarks_sidebar = BookmarksSidebarComponent::new(move |name, script| {
+            let _ = tx_bookmarks.send_blocking(AppInput::ExecuteBookmark(name, script));
+        });
 
         let tx_theme = tx.clone();
         let theme_selector = ThemeSelectorComponent::new(move |palette| {
@@ -99,6 +106,47 @@ impl AppWindow {
 
         let command_palette = CommandPaletteComponent::new();
 
+        // Sync bookmarks with command palette
+        let cp_clone = command_palette.clone();
+        let update_palette = move || {
+            let bookmarks = BookmarksManager::list();
+            let commands = bookmarks
+                .into_iter()
+                .map(|bm| {
+                    let script = BookmarksManager::get_script(&bm.filename).unwrap_or_default();
+                    boxxy_command_palette::CommandItem {
+                        title: format!("Bookmark: {}", bm.name),
+                        action: "win.execute-bookmark".to_string(),
+                        parameter: Some((bm.name, script).to_variant()),
+                        shortcut: None,
+                    }
+                })
+                .collect();
+            cp_clone.set_dynamic_commands(commands);
+        };
+
+        update_palette();
+
+        let cp_sync = command_palette.clone();
+        let mut bookmarks_rx = BOOKMARKS_EVENT_BUS.subscribe();
+        glib::spawn_future_local(async move {
+            while let Ok(_) = bookmarks_rx.recv().await {
+                let bookmarks = BookmarksManager::list();
+                let commands = bookmarks
+                    .into_iter()
+                    .map(|bm| {
+                        let script = BookmarksManager::get_script(&bm.filename).unwrap_or_default();
+                        boxxy_command_palette::CommandItem {
+                            title: format!("Bookmark: {}", bm.name),
+                            action: "win.execute-bookmark".to_string(),
+                            parameter: Some((bm.name, script).to_variant()),
+                            shortcut: None,
+                        }
+                    })
+                    .collect();
+                cp_sync.set_dynamic_commands(commands);
+            }
+        });
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .default_width(app_state.window_width)
@@ -173,11 +221,29 @@ impl AppWindow {
         });
         split_view.add_controller(gesture);
 
-        let (sidebar_toolbar, view_stack) = Self::build_sidebar(&tx, &ai_chat, &claw, &theme_selector, &app_state, &current_settings);
+        let (sidebar_toolbar, view_stack) = Self::build_sidebar(
+            &tx,
+            &ai_chat,
+            &claw,
+            &bookmarks_sidebar,
+            &theme_selector,
+            &app_state,
+            &current_settings,
+        );
         split_view.set_sidebar(Some(&sidebar_toolbar));
 
-        let (content_toolbar, content_header, bell_indicator, single_tab_title, header_title_stack, menu_btn, tab_bar, claw_indicator, claw_popover) = Self::build_content_area(&tx, &tab_view, &current_settings);
-        
+        let (
+            content_toolbar,
+            content_header,
+            bell_indicator,
+            single_tab_title,
+            header_title_stack,
+            menu_btn,
+            tab_bar,
+            claw_indicator,
+            claw_popover,
+        ) = Self::build_content_area(&tx, &tab_view, &current_settings);
+
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&content_toolbar));
 
@@ -194,7 +260,10 @@ impl AppWindow {
             if let Some(notification) = pill_clone.get_notification() {
                 let popover = gtk::Popover::new();
                 popover.set_position(gtk::PositionType::Top);
-                let details = crate::widgets::notification_details::BoxxyNotificationDetails::new(&notification, tx_pill.clone());
+                let details = crate::widgets::notification_details::BoxxyNotificationDetails::new(
+                    &notification,
+                    tx_pill.clone(),
+                );
                 popover.set_child(Some(&details));
                 popover.set_parent(&pill_clone);
                 popover.popup();
@@ -229,7 +298,9 @@ impl AppWindow {
         let tx_event = tx.clone();
         boxxy_ai_core::utils::runtime().spawn(async move {
             while let Ok(event) = event_rx.recv().await {
-                let _ = tx_event.send(AppInput::HandleTerminalEvent(Some(event))).await;
+                let _ = tx_event
+                    .send(AppInput::HandleTerminalEvent(Some(event)))
+                    .await;
             }
         });
 
@@ -261,6 +332,9 @@ impl AppWindow {
             app_menu,
             ai_chat,
             claw,
+            bookmarks_sidebar,
+            bookmarks_controller: None,
+            bookmarks_page: None,
             theme_selector,
             command_palette,
             current_settings,
@@ -277,7 +351,10 @@ impl AppWindow {
 
         let inner_ref = Rc::new(RefCell::new(inner));
 
-        let tab_bar_opt = inner_ref.borrow().header_title_stack.child_by_name("tabs")
+        let tab_bar_opt = inner_ref
+            .borrow()
+            .header_title_stack
+            .child_by_name("tabs")
             .and_then(|w| w.downcast::<adw::TabBar>().ok());
 
         if let Some(tab_bar) = tab_bar_opt {
@@ -322,8 +399,11 @@ impl AppWindow {
             // Wait 10 seconds after startup to not interfere with boot
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             if let Ok(Some((version, url))) = crate::updater::Updater::check_for_update().await {
-                let notification = crate::widgets::notification::Notification::new_update(&version, &url);
-                let _ = tx_update.send(AppInput::PushNotification(notification)).await;
+                let notification =
+                    crate::widgets::notification::Notification::new_update(&version, &url);
+                let _ = tx_update
+                    .send(AppInput::PushNotification(notification))
+                    .await;
             }
         });
 
@@ -345,6 +425,7 @@ impl AppWindow {
         tx: &async_channel::Sender<AppInput>,
         ai_chat: &AiSidebarComponent,
         claw: &ClawSidebarComponent,
+        bookmarks_sidebar: &BookmarksSidebarComponent,
         theme_selector: &ThemeSelectorComponent,
         app_state: &AppState,
         current_settings: &Settings,
@@ -359,6 +440,10 @@ impl AppWindow {
 
         let claw_page = view_stack.add_titled(claw.widget(), Some("claw"), "Claw");
         claw_page.set_icon_name(Some("boxxyclaw"));
+
+        let bookmarks_page =
+            view_stack.add_titled(bookmarks_sidebar.widget(), Some("bookmarks"), "Bookmarks");
+        bookmarks_page.set_icon_name(Some("user-bookmarks-symbolic"));
 
         let themes_page = view_stack.add_titled(theme_selector.widget(), Some("themes"), "Colors");
         themes_page.set_icon_name(Some("appearance-symbolic"));
@@ -377,28 +462,29 @@ impl AppWindow {
             .policy(adw::ViewSwitcherPolicy::Narrow)
             .build();
 
-        let sidebar_header = adw::HeaderBar::builder()
-            .title_widget(&switcher)
-            .build();
+        let sidebar_header = adw::HeaderBar::builder().title_widget(&switcher).build();
         sidebar_header.add_css_class("flat");
         sidebar_header.add_css_class("sidebar-header");
-        
+
         let sidebar_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        
+
         let handle_event_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         handle_event_box.set_width_request(6);
         handle_event_box.add_css_class("sidebar-resize-handle");
         handle_event_box.set_cursor_from_name(Some("col-resize"));
 
         let drag = gtk::GestureDrag::new();
-        
+
         let start_width = Rc::new(Cell::new(0));
         let last_width = Rc::new(Cell::new(0));
 
         drag.connect_drag_begin(glib::clone!(
-            #[weak] sidebar_toolbar,
-            #[strong] start_width,
-            #[strong] last_width,
+            #[weak]
+            sidebar_toolbar,
+            #[strong]
+            start_width,
+            #[strong]
+            last_width,
             move |_, _, _| {
                 let w = sidebar_toolbar.width();
                 start_width.set(w);
@@ -408,31 +494,38 @@ impl AppWindow {
 
         let tx_drag_update = tx.clone();
         drag.connect_drag_update(glib::clone!(
-            #[weak] sidebar_toolbar,
-            #[strong] start_width,
-            #[strong] last_width,
+            #[weak]
+            sidebar_toolbar,
+            #[strong]
+            start_width,
+            #[strong]
+            last_width,
             move |_, offset_x, _| {
                 let true_offset_x = offset_x + (last_width.get() - start_width.get()) as f64;
                 let offset_snapped = (true_offset_x as i32 / 10) * 10;
-                
+
                 if offset_snapped == 0 {
                     return;
                 }
-                
+
                 let target_width = (start_width.get() + offset_snapped).clamp(200, 800);
 
                 if target_width != last_width.get() {
                     sidebar_toolbar.set_width_request(target_width);
                     last_width.set(target_width);
-                    let _ = tx_drag_update.send_blocking(AppInput::SidebarWidthChanged(target_width));
+                    let _ =
+                        tx_drag_update.send_blocking(AppInput::SidebarWidthChanged(target_width));
                 }
             }
         ));
         let tx_drag_end = tx.clone();
         drag.connect_drag_end(glib::clone!(
-            #[weak] sidebar_toolbar,
-            #[strong] start_width,
-            #[strong] last_width,
+            #[weak]
+            sidebar_toolbar,
+            #[strong]
+            start_width,
+            #[strong]
+            last_width,
             move |_, offset_x, _| {
                 let true_offset_x = offset_x + (last_width.get() - start_width.get()) as f64;
                 let offset_snapped = (true_offset_x as i32 / 10) * 10;
@@ -440,19 +533,19 @@ impl AppWindow {
                 sidebar_toolbar.set_width_request(target_width);
                 let _ = tx_drag_end.send_blocking(AppInput::SidebarWidthChanged(target_width));
             }
-        ));        
+        ));
         handle_event_box.add_controller(drag);
-        
+
         let sidebar_content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         sidebar_content_box.set_hexpand(true);
         sidebar_content_box.append(&sidebar_header);
         sidebar_content_box.append(&view_stack);
-        
+
         sidebar_box.append(&sidebar_content_box);
         sidebar_box.append(&handle_event_box);
 
         sidebar_toolbar.set_content(Some(&sidebar_box));
-        
+
         (sidebar_toolbar, view_stack)
     }
 
@@ -460,7 +553,17 @@ impl AppWindow {
         tx: &async_channel::Sender<AppInput>,
         tab_view: &adw::TabView,
         current_settings: &Settings,
-    ) -> (adw::ToolbarView, adw::HeaderBar, gtk::Image, adw::WindowTitle, gtk::Stack, gtk::Button, adw::TabBar, gtk::Button, crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover) {
+    ) -> (
+        adw::ToolbarView,
+        adw::HeaderBar,
+        gtk::Image,
+        adw::WindowTitle,
+        gtk::Stack,
+        gtk::Button,
+        adw::TabBar,
+        gtk::Button,
+        crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover,
+    ) {
         let content_toolbar = adw::ToolbarView::new();
         let content_header = adw::HeaderBar::builder().build();
         content_header.add_css_class("flat");
@@ -473,9 +576,7 @@ impl AppWindow {
             .view(tab_view)
             .build();
 
-        let single_tab_title = adw::WindowTitle::builder()
-            .title("Terminal")
-            .build();
+        let single_tab_title = adw::WindowTitle::builder().title("Terminal").build();
 
         let header_title_stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::None)
@@ -537,9 +638,9 @@ impl AppWindow {
                 let mut s = boxxy_preferences::Settings::load();
                 s.claw_terminal_suggestions = terminal;
                 s.save();
-            }
+            },
         );
-        
+
         let pop_clone = claw_popover.popover().clone();
         let btn_clone = claw_indicator.clone();
         claw_indicator.connect_clicked(move |_| {
@@ -565,7 +666,17 @@ impl AppWindow {
             let _ = tx_closetab.send_blocking(AppInput::CloseTabRequest(key));
             gtk::glib::Propagation::Stop
         });
-        
-        (content_toolbar, content_header, bell_indicator, single_tab_title, header_title_stack, menu_btn, tab_bar, claw_indicator, claw_popover)
+
+        (
+            content_toolbar,
+            content_header,
+            bell_indicator,
+            single_tab_title,
+            header_title_stack,
+            menu_btn,
+            tab_bar,
+            claw_indicator,
+            claw_popover,
+        )
     }
 }

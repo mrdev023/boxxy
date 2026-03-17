@@ -1,13 +1,11 @@
 pub mod backend;
-pub mod input;
 mod imp;
+pub mod input;
 
+use crate::engine::index::{Column, Line, Point};
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
-use crate::engine::index::{Column, Line, Point};
-
-
 
 pub use crate::engine::ansi::CursorShape;
 
@@ -50,13 +48,19 @@ impl TerminalWidget {
         if let Some(backend) = self.imp().backend.borrow().as_ref() {
             let state = backend.render_state.load();
             let (cols, lines) = (state.columns, state.screen_lines);
-            let start = crate::engine::index::Point::new(crate::engine::index::Line(0), crate::engine::index::Column(0));
-            let end = crate::engine::index::Point::new(crate::engine::index::Line(lines as i32 - 1), crate::engine::index::Column(cols - 1));
-            
+            let start = crate::engine::index::Point::new(
+                crate::engine::index::Line(0),
+                crate::engine::index::Column(0),
+            );
+            let end = crate::engine::index::Point::new(
+                crate::engine::index::Line(lines as i32 - 1),
+                crate::engine::index::Column(cols - 1),
+            );
+
             let mut sel = crate::engine::selection::Selection::new(
                 crate::engine::selection::SelectionType::Simple,
                 start,
-                crate::engine::index::Side::Left
+                crate::engine::index::Side::Left,
             );
             sel.update(end, crate::engine::index::Side::Right);
             backend.set_selection(Some(sel));
@@ -96,19 +100,20 @@ impl TerminalWidget {
     pub(crate) fn start_cursor_blink(&self) {
         let imp = self.imp();
         self.stop_cursor_blink();
-        
+
         // Immediately make the cursor visible when starting/resetting the blink timer
         imp.cursor_visible.set(true);
         self.queue_draw();
 
         if imp.cursor_blinking.get() {
             let obj = self.clone();
-            let source_id = glib::timeout_add_local(std::time::Duration::from_millis(600), move || {
-                let imp = obj.imp();
-                imp.cursor_visible.set(!imp.cursor_visible.get());
-                obj.queue_draw();
-                glib::ControlFlow::Continue
-            });
+            let source_id =
+                glib::timeout_add_local(std::time::Duration::from_millis(600), move || {
+                    let imp = obj.imp();
+                    imp.cursor_visible.set(!imp.cursor_visible.get());
+                    obj.queue_draw();
+                    glib::ControlFlow::Continue
+                });
             imp.cursor_blink_id.replace(Some(source_id));
         }
     }
@@ -141,16 +146,10 @@ impl TerminalWidget {
         // 1. HTTP / HTTPS URLs
         // Character class: anything that isn't whitespace or common URL
         // terminators.  Written with concat! to avoid raw-string/quote issues.
-        self.add_match_regex_str(
-            concat!(r"https?://[^\s)>\]", r#"'""#, r"]+"),
-            0,
-        );
+        self.add_match_regex_str(concat!(r"https?://[^\s)>\]", r#"'""#, r"]+"), 0);
 
         // 2. file:// URIs
-        self.add_match_regex_str(
-            concat!(r"file://[^\s)>\]", r#"'""#, r"]+"),
-            0,
-        );
+        self.add_match_regex_str(concat!(r"file://[^\s)>\]", r#"'""#, r"]+"), 0);
 
         // 3. Bare absolute / relative / home-relative Unix paths
         self.add_match_regex_str(
@@ -170,7 +169,7 @@ impl TerminalWidget {
             self.queue_resize();
         }
     }
-    
+
     pub fn set_cell_width_scale(&self, scale: f64) {
         let imp = self.imp();
         if (imp.cell_width_scale.get() - scale).abs() > f64::EPSILON {
@@ -201,17 +200,22 @@ impl TerminalWidget {
         self.imp().invert_scroll.set(invert);
     }
 
-    pub fn set_colors(&self, fg: Option<&gtk4::gdk::RGBA>, bg: Option<&gtk4::gdk::RGBA>, palette: &[&gtk4::gdk::RGBA]) {
+    pub fn set_colors(
+        &self,
+        fg: Option<&gtk4::gdk::RGBA>,
+        bg: Option<&gtk4::gdk::RGBA>,
+        palette: &[&gtk4::gdk::RGBA],
+    ) {
         let imp = self.imp();
         imp.fg_color.replace(fg.copied());
         imp.bg_color.replace(bg.copied());
-        
+
         // ── Pre-compute the full 256-color palette ───────────────────────────
         // We generate the entire XTerm-compatible color space ahead of time.
         // This allows the render loop to perform O(1) array lookups instead of
         // recalculating RGB values for every character cell in every frame.
         let mut full_palette: Vec<gtk4::gdk::RGBA> = Vec::with_capacity(256);
-        
+
         // 0-15: Standard and high-intensity theme colors (ANSI 16)
         for i in 0..16 {
             if i < palette.len() {
@@ -220,7 +224,7 @@ impl TerminalWidget {
                 full_palette.push(gtk4::gdk::RGBA::BLACK); // Fallback if theme is incomplete
             }
         }
-        
+
         // 16-231: 6x6x6 RGB color cube (Extended ANSI)
         // These are mathematically derived colors used by many CLI tools.
         for i in 0..216 {
@@ -229,7 +233,7 @@ impl TerminalWidget {
             let b = (i % 6) as f32 / 5.0;
             full_palette.push(gtk4::gdk::RGBA::new(r, g, b, 1.0));
         }
-        
+
         // 232-255: 24-step grayscale ramp
         // Fine-grained gray shades from near-black to near-white.
         for i in 0..24 {
@@ -266,9 +270,7 @@ impl TerminalWidget {
 
         let display_offset = state.display_offset;
         let point = Point::new(Line(row as i32 - display_offset), Column(col));
-        state.cell(point)
-            .hyperlink()
-            .map(|h| h.uri().to_string())
+        state.cell(point).hyperlink().map(|h| h.uri().to_string())
     }
 
     // ── Regex match detection ─────────────────────────────────────────────────
@@ -282,7 +284,9 @@ impl TerminalWidget {
     pub fn check_match_at(&self, x: f64, y: f64) -> (Option<String>, i32) {
         let imp = self.imp();
         let backend_ref = imp.backend.borrow();
-        let Some(backend) = backend_ref.as_ref() else { return (None, 0); };
+        let Some(backend) = backend_ref.as_ref() else {
+            return (None, 0);
+        };
         let state = backend.render_state.load();
 
         let char_size = imp.get_char_size(self);
@@ -311,7 +315,10 @@ impl TerminalWidget {
         }
         col_byte_offsets.push(line_text.len()); // sentinel
 
-        let cursor_byte = col_byte_offsets.get(col).copied().unwrap_or(line_text.len());
+        let cursor_byte = col_byte_offsets
+            .get(col)
+            .copied()
+            .unwrap_or(line_text.len());
 
         let rules = imp.match_rules.borrow();
         for rule in rules.iter() {
@@ -356,7 +363,11 @@ impl TerminalWidget {
                 tag
             }
             Err(e) => {
-                log::warn!("add_match_regex_str: failed to compile {:?}: {}", pattern, e);
+                log::warn!(
+                    "add_match_regex_str: failed to compile {:?}: {}",
+                    pattern,
+                    e
+                );
                 0
             }
         }
@@ -373,7 +384,9 @@ impl TerminalWidget {
 
     /// VTE-compat stub — VTE `Regex` objects cannot be used without `vte4`.
     /// Use `add_match_regex_str` instead.
-    pub fn match_add_regex(&self, _regex: &glib::Object, _flags: u32) -> i32 { 0 }
+    pub fn match_add_regex(&self, _regex: &glib::Object, _flags: u32) -> i32 {
+        0
+    }
 
     // ── Terminal event callbacks ──────────────────────────────────────────────
 
@@ -441,9 +454,10 @@ impl TerminalWidget {
                 Ok(Some(text)) if !text.is_empty() => {
                     log::info!("Terminal: Pasting text from PRIMARY, len={}", text.len());
                     if let Some(widget) = obj_weak.upgrade()
-                        && let Some(backend) = widget.imp().backend.borrow().as_ref() {
-                            backend.write_to_pty(text.as_str().as_bytes().to_vec());
-                        }
+                        && let Some(backend) = widget.imp().backend.borrow().as_ref()
+                    {
+                        backend.write_to_pty(text.as_str().as_bytes().to_vec());
+                    }
                 }
                 _ => {
                     log::warn!("Terminal: PRIMARY paste failed or empty");
@@ -490,25 +504,30 @@ impl TerminalWidget {
     pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let sent = if let Some(backend) = self.imp().backend.borrow().as_ref() {
-            backend.notifier.0.send(crate::engine::event_loop::Msg::GetTextSnapshot(max_lines, offset_lines, tx)).is_ok()
+            backend
+                .notifier
+                .0
+                .send(crate::engine::event_loop::Msg::GetTextSnapshot(
+                    max_lines,
+                    offset_lines,
+                    tx,
+                ))
+                .is_ok()
         } else {
             false
         };
 
-        if sent {
-            rx.await.ok()
-        } else {
-            None
-        }
+        if sent { rx.await.ok() } else { None }
     }
     pub fn set_vadjustment(&self, adjustment: Option<&gtk4::Adjustment>) {
         let imp = self.imp();
 
         // Disconnect the old handler before swapping the adjustment out.
         if let Some(old_adj) = imp.vadjustment.borrow().as_ref()
-            && let Some(handler_id) = imp.vadjustment_handler.borrow_mut().take() {
-                old_adj.disconnect(handler_id);
-            }
+            && let Some(handler_id) = imp.vadjustment_handler.borrow_mut().take()
+        {
+            old_adj.disconnect(handler_id);
+        }
 
         imp.vadjustment.replace(adjustment.cloned());
 
@@ -545,29 +564,30 @@ impl TerminalWidget {
     pub(crate) fn update_scroll_adjustment(&self) {
         let imp = self.imp();
         if let Some(adj) = imp.vadjustment.borrow().as_ref()
-            && let Some(backend) = imp.backend.borrow().as_ref() {
-                let state = backend.render_state.load();
-                
-                let total_lines = state.total_lines as f64;
-                let screen_lines = state.screen_lines as f64;
-                let display_offset = state.display_offset as f64;
-                
-                let value = (total_lines - screen_lines - display_offset).max(0.0);
-                
-                // Block signal handler while updating to prevent feedback loop
-                if let Some(handler_id) = imp.vadjustment_handler.borrow().as_ref() {
-                    adj.block_signal(handler_id);
-                    adj.configure(
-                        value,
-                        0.0,
-                        total_lines.max(screen_lines),
-                        1.0,
-                        screen_lines,
-                        screen_lines,
-                    );
-                    adj.unblock_signal(handler_id);
-                }
+            && let Some(backend) = imp.backend.borrow().as_ref()
+        {
+            let state = backend.render_state.load();
+
+            let total_lines = state.total_lines as f64;
+            let screen_lines = state.screen_lines as f64;
+            let display_offset = state.display_offset as f64;
+
+            let value = (total_lines - screen_lines - display_offset).max(0.0);
+
+            // Block signal handler while updating to prevent feedback loop
+            if let Some(handler_id) = imp.vadjustment_handler.borrow().as_ref() {
+                adj.block_signal(handler_id);
+                adj.configure(
+                    value,
+                    0.0,
+                    total_lines.max(screen_lines),
+                    1.0,
+                    screen_lines,
+                    screen_lines,
+                );
+                adj.unblock_signal(handler_id);
             }
+        }
     }
 }
 

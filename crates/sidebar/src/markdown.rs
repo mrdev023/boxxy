@@ -54,31 +54,35 @@ pub fn to_pango(input: &str) -> String {
     while !s.is_empty() {
         // **bold**
         if s.starts_with("**")
-            && let Some(p) = s[2..].find("**") {
-                out.push_str("<b>");
-                push_escaped(&mut out, &s[2..2 + p]);
-                out.push_str("</b>");
-                s = &s[4 + p..];
-                continue;
-            }
+            && let Some(p) = s[2..].find("**")
+        {
+            out.push_str("<b>");
+            push_escaped(&mut out, &s[2..2 + p]);
+            out.push_str("</b>");
+            s = &s[4 + p..];
+            continue;
+        }
         // `inline code`  (not ``` which starts a fence)
-        if s.starts_with('`') && !s.starts_with("```")
-            && let Some(p) = s[1..].find('`') {
-                out.push_str("<tt>");
-                push_escaped(&mut out, &s[1..1 + p]);
-                out.push_str("</tt>");
-                s = &s[2 + p..];
-                continue;
-            }
+        if s.starts_with('`')
+            && !s.starts_with("```")
+            && let Some(p) = s[1..].find('`')
+        {
+            out.push_str("<tt>");
+            push_escaped(&mut out, &s[1..1 + p]);
+            out.push_str("</tt>");
+            s = &s[2 + p..];
+            continue;
+        }
         // _italic_
         if s.starts_with('_')
-            && let Some(p) = s[1..].find('_') {
-                out.push_str("<i>");
-                push_escaped(&mut out, &s[1..1 + p]);
-                out.push_str("</i>");
-                s = &s[2 + p..];
-                continue;
-            }
+            && let Some(p) = s[1..].find('_')
+        {
+            out.push_str("<i>");
+            push_escaped(&mut out, &s[1..1 + p]);
+            out.push_str("</i>");
+            s = &s[2 + p..];
+            continue;
+        }
         // Plain character — escape XML
         let c = s.chars().next().unwrap();
         match c {

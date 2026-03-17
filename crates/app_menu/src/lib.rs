@@ -59,10 +59,7 @@ impl AppMenuComponent {
                 "Copy Path"
             };
             let i = gio::MenuItem::new(Some(label), None);
-            i.set_action_and_target_value(
-                Some("term.copy-path"),
-                Some(&path.to_variant()),
-            );
+            i.set_action_and_target_value(Some("term.copy-path"), Some(&path.to_variant()));
             i.set_attribute_value("accel", Some(&"".to_variant()));
             i
         } else {
@@ -121,6 +118,7 @@ impl AppMenuComponent {
         // ── Section 5: App Features ──────────────────────────────────────────
         let app_section = gio::Menu::new();
         app_section.append_item(&item("Open in Files", "win.open-in-files"));
+        app_section.append_item(&item("Bookmarks", "win.bookmarks"));
         menu_model.append_section(None, &app_section);
 
         // ── Section 6: Meta Actions ──────────────────────────────────────────

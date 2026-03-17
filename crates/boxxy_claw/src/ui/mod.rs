@@ -1,8 +1,8 @@
+use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use gtk::prelude::*;
-use std::rc::Rc;
 use std::cell::Cell;
+use std::rc::Rc;
 
 pub struct ClawSidebarComponent {
     widget: gtk::Box,
@@ -38,11 +38,12 @@ impl ClawSidebarComponent {
             .vexpand(true)
             .visible(false)
             .build();
-        
+
         widget.append(&scroll);
 
         let is_active = Rc::new(Cell::new(false));
-        let current_list: Rc<std::cell::RefCell<Option<gtk::ListBox>>> = Rc::new(std::cell::RefCell::new(None));
+        let current_list: Rc<std::cell::RefCell<Option<gtk::ListBox>>> =
+            Rc::new(std::cell::RefCell::new(None));
 
         // Command panel
         let command_panel = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -75,26 +76,28 @@ impl ClawSidebarComponent {
         } else {
             "chat-none-symbolic"
         };
-        
+
         let mut chat_mode_builder = gtk::Button::builder()
             .icon_name(initial_icon)
             .css_classes(["flat"]);
-            
+
         if s.claw_terminal_suggestions {
-            chat_mode_builder = chat_mode_builder.css_classes(["flat", "suggested-action"])
+            chat_mode_builder = chat_mode_builder
+                .css_classes(["flat", "suggested-action"])
                 .tooltip_text("Disable Terminal Suggestions");
         } else {
-            chat_mode_builder = chat_mode_builder.css_classes(["flat", "destructive-action"])
+            chat_mode_builder = chat_mode_builder
+                .css_classes(["flat", "destructive-action"])
                 .tooltip_text("Enable Terminal Suggestions");
         }
-            
+
         let chat_mode_btn = chat_mode_builder.build();
 
         let chat_btn_clone = chat_mode_btn.clone();
         chat_mode_btn.connect_clicked(move |_| {
             let mut s = boxxy_preferences::Settings::load();
             s.claw_terminal_suggestions = !s.claw_terminal_suggestions;
-            
+
             if s.claw_terminal_suggestions {
                 chat_btn_clone.set_icon_name("chat-symbolic");
                 chat_btn_clone.set_tooltip_text(Some("Disable Terminal Suggestions"));
@@ -115,7 +118,7 @@ impl ClawSidebarComponent {
             .css_classes(["flat", "suggested-action"])
             .tooltip_text("Activate Claw")
             .build();
-            
+
         let active_clone = is_active.clone();
         let btn_clone = toggle_btn.clone();
         let on_toggled_rc = std::rc::Rc::new(on_active_toggled);
@@ -142,12 +145,14 @@ impl ClawSidebarComponent {
             .css_classes(["flat", "accent"])
             .tooltip_text("Proactive Diagnosis Mode")
             .build();
-            
+
         let mode_toggle_btn_clone = mode_toggle_btn.clone();
         mode_toggle_btn.connect_clicked(move |_| {
             let mut s = boxxy_preferences::Settings::load();
-            if s.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy {
-                s.claw_auto_diagnosis_mode = boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive;
+            if s.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+            {
+                s.claw_auto_diagnosis_mode =
+                    boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive;
                 mode_toggle_btn_clone.set_icon_name("running-symbolic");
                 mode_toggle_btn_clone.set_tooltip_text(Some("Proactive Diagnosis Mode"));
                 mode_toggle_btn_clone.add_css_class("accent");
@@ -159,7 +164,7 @@ impl ClawSidebarComponent {
             }
             s.save();
         });
-        
+
         command_panel.append(&clear_btn);
         command_panel.append(&chat_mode_btn);
         command_panel.append(&mode_toggle_btn);
@@ -185,11 +190,12 @@ impl ClawSidebarComponent {
 
     pub fn set_history_widget(&self, list: &gtk::ListBox) {
         if let Some(old) = self.current_list.borrow().as_ref()
-            && old == list {
-                self.refresh_visibility();
-                return;
+            && old == list
+        {
+            self.refresh_visibility();
+            return;
         }
-        
+
         if list.parent().is_some() {
             list.unparent();
         }
@@ -218,12 +224,14 @@ impl ClawSidebarComponent {
         match mode {
             boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive => {
                 self.mode_toggle_btn.set_icon_name("running-symbolic");
-                self.mode_toggle_btn.set_tooltip_text(Some("Proactive Diagnosis Mode"));
+                self.mode_toggle_btn
+                    .set_tooltip_text(Some("Proactive Diagnosis Mode"));
                 self.mode_toggle_btn.add_css_class("accent");
             }
             boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy => {
                 self.mode_toggle_btn.set_icon_name("walking2-symbolic");
-                self.mode_toggle_btn.set_tooltip_text(Some("Lazy Diagnosis Mode"));
+                self.mode_toggle_btn
+                    .set_tooltip_text(Some("Lazy Diagnosis Mode"));
                 self.mode_toggle_btn.remove_css_class("accent");
             }
         }
@@ -232,12 +240,14 @@ impl ClawSidebarComponent {
     pub fn update_terminal_suggestions(&self, enabled: bool) {
         if enabled {
             self.chat_mode_btn.set_icon_name("chat-symbolic");
-            self.chat_mode_btn.set_tooltip_text(Some("Disable Terminal Suggestions"));
+            self.chat_mode_btn
+                .set_tooltip_text(Some("Disable Terminal Suggestions"));
             self.chat_mode_btn.remove_css_class("destructive-action");
             self.chat_mode_btn.add_css_class("suggested-action");
         } else {
             self.chat_mode_btn.set_icon_name("chat-none-symbolic");
-            self.chat_mode_btn.set_tooltip_text(Some("Enable Terminal Suggestions"));
+            self.chat_mode_btn
+                .set_tooltip_text(Some("Enable Terminal Suggestions"));
             self.chat_mode_btn.remove_css_class("suggested-action");
             self.chat_mode_btn.add_css_class("destructive-action");
         }
@@ -246,12 +256,14 @@ impl ClawSidebarComponent {
     pub fn update_active(&self, active: bool) {
         self.is_active.set(active);
         if active {
-            self.toggle_btn.set_icon_name("media-playback-stop-symbolic");
+            self.toggle_btn
+                .set_icon_name("media-playback-stop-symbolic");
             self.toggle_btn.set_tooltip_text(Some("Deactivate Claw"));
             self.toggle_btn.remove_css_class("suggested-action");
             self.toggle_btn.add_css_class("destructive-action");
         } else {
-            self.toggle_btn.set_icon_name("media-playback-start-symbolic");
+            self.toggle_btn
+                .set_icon_name("media-playback-start-symbolic");
             self.toggle_btn.set_tooltip_text(Some("Activate Claw"));
             self.toggle_btn.remove_css_class("destructive-action");
             self.toggle_btn.add_css_class("suggested-action");
@@ -292,17 +304,24 @@ pub fn add_diagnosis_row(list: &gtk::ListBox, pane_id: String, diagnosis: &str) 
     let icon = gtk::Image::from_icon_name("boxxyclaw");
     icon.add_css_class("accent");
     header.append(&icon);
-    
+
     let title = gtk::Label::new(Some("Diagnosis"));
     title.add_css_class("heading");
     title.set_halign(gtk::Align::Start);
     header.append(&title);
-    
-    let pane_lbl = gtk::Label::new(Some(&format!("Pane {}", if pane_id.len() >= 7 { &pane_id[..7] } else { &pane_id })));
+
+    let pane_lbl = gtk::Label::new(Some(&format!(
+        "Pane {}",
+        if pane_id.len() >= 7 {
+            &pane_id[..7]
+        } else {
+            &pane_id
+        }
+    )));
     pane_lbl.add_css_class("caption");
     pane_lbl.add_css_class("dim-label");
     header.append(&pane_lbl);
-    
+
     vbox.append(&header);
 
     let text_view = gtk::TextView::builder()
@@ -312,7 +331,7 @@ pub fn add_diagnosis_row(list: &gtk::ListBox, pane_id: String, diagnosis: &str) 
         .css_classes(["claw-diagnosis"])
         .build();
     text_view.buffer().set_text(diagnosis);
-    
+
     vbox.append(&text_view);
     row.set_child(Some(&vbox));
 
@@ -320,8 +339,8 @@ pub fn add_diagnosis_row(list: &gtk::ListBox, pane_id: String, diagnosis: &str) 
 }
 
 pub fn add_approval_row(
-    list: &gtk::ListBox, 
-    pane_id: String, 
+    list: &gtk::ListBox,
+    pane_id: String,
     command: &str,
     on_text_reply: impl Fn(String) + 'static,
 ) -> gtk::Box {
@@ -334,22 +353,29 @@ pub fn add_approval_row(
     vbox.set_margin_bottom(8);
     vbox.set_margin_start(8);
     vbox.set_margin_end(8);
-    
+
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let icon = gtk::Image::from_icon_name("dialog-warning-symbolic");
     icon.add_css_class("warning");
     header.append(&icon);
-    
+
     let title = gtk::Label::new(Some("Suggested Action"));
     title.add_css_class("heading");
     title.set_halign(gtk::Align::Start);
     header.append(&title);
-    
-    let pane_lbl = gtk::Label::new(Some(&format!("Pane {}", if pane_id.len() >= 7 { &pane_id[..7] } else { &pane_id })));
+
+    let pane_lbl = gtk::Label::new(Some(&format!(
+        "Pane {}",
+        if pane_id.len() >= 7 {
+            &pane_id[..7]
+        } else {
+            &pane_id
+        }
+    )));
     pane_lbl.add_css_class("caption");
     pane_lbl.add_css_class("dim-label");
     header.append(&pane_lbl);
-    
+
     vbox.append(&header);
 
     let cmd_label = gtk::Label::new(Some(command));
@@ -364,36 +390,38 @@ pub fn add_approval_row(
 
     let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     reply_box.set_margin_top(4);
-    
+
     let reply_entry = gtk::Entry::builder()
         .placeholder_text("Reply to Boxxy-Claw...")
         .hexpand(true)
         .build();
-    
+
     let reply_btn = gtk::Button::builder()
         .icon_name("paper-plane-symbolic")
         .css_classes(["flat"])
         .tooltip_text("Send Reply")
         .build();
-        
+
     reply_box.append(&reply_entry);
     reply_box.append(&reply_btn);
     action_container.append(&reply_box);
 
-    let help_label = gtk::Label::new(Some("Press Enter in the terminal to execute, or Ctrl+C to cancel."));
+    let help_label = gtk::Label::new(Some(
+        "Press Enter in the terminal to execute, or Ctrl+C to cancel.",
+    ));
     help_label.set_halign(gtk::Align::Start);
     help_label.set_wrap(true);
     help_label.add_css_class("caption");
     help_label.add_css_class("success");
     action_container.append(&help_label);
-    
+
     vbox.append(&action_container);
 
     let on_text_reply_rc = std::rc::Rc::new(on_text_reply);
     let on_text_reply_clone1 = on_text_reply_rc.clone();
     let entry_clone1 = reply_entry.clone();
     let action_container_clone = action_container.clone();
-    
+
     let do_reply = move || {
         let text = entry_clone1.text().to_string();
         if !text.is_empty() {
@@ -434,22 +462,29 @@ pub fn add_file_write_approval_row(
     vbox.set_margin_bottom(8);
     vbox.set_margin_start(8);
     vbox.set_margin_end(8);
-    
+
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let icon = gtk::Image::from_icon_name("document-edit-symbolic");
     icon.add_css_class("accent");
     header.append(&icon);
-    
+
     let title = gtk::Label::new(Some("Propose File Edit"));
     title.add_css_class("heading");
     title.set_halign(gtk::Align::Start);
     header.append(&title);
-    
-    let pane_lbl = gtk::Label::new(Some(&format!("Pane {}", if pane_id.len() >= 7 { &pane_id[..7] } else { &pane_id })));
+
+    let pane_lbl = gtk::Label::new(Some(&format!(
+        "Pane {}",
+        if pane_id.len() >= 7 {
+            &pane_id[..7]
+        } else {
+            &pane_id
+        }
+    )));
     pane_lbl.add_css_class("caption");
     pane_lbl.add_css_class("dim-label");
     header.append(&pane_lbl);
-    
+
     vbox.append(&header);
 
     let path_label = gtk::Label::new(Some(path));
@@ -465,7 +500,7 @@ pub fn add_file_write_approval_row(
         .wrap_mode(gtk::WrapMode::WordChar)
         .build();
     preview.buffer().set_text(content);
-    
+
     let scroll_view = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
@@ -480,18 +515,18 @@ pub fn add_file_write_approval_row(
     let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     reply_box.set_margin_top(4);
     reply_box.set_margin_bottom(4);
-    
+
     let reply_entry = gtk::Entry::builder()
         .placeholder_text("Reply to Boxxy-Claw...")
         .hexpand(true)
         .build();
-    
+
     let reply_btn = gtk::Button::builder()
         .icon_name("paper-plane-symbolic")
         .css_classes(["flat"])
         .tooltip_text("Send Reply")
         .build();
-        
+
     reply_box.append(&reply_entry);
     reply_box.append(&reply_btn);
     action_container.append(&reply_box);
@@ -503,7 +538,7 @@ pub fn add_file_write_approval_row(
         .label("Reject")
         .css_classes(["destructive-action"])
         .build();
-        
+
     let approve_btn = gtk::Button::builder()
         .label("Approve & Write")
         .css_classes(["suggested-action"])
@@ -533,7 +568,7 @@ pub fn add_file_write_approval_row(
     let on_text_reply_clone1 = on_text_reply_rc.clone();
     let entry_clone1 = reply_entry.clone();
     let action_container_clone3 = action_container.clone();
-    
+
     let do_reply = move || {
         let text = entry_clone1.text().to_string();
         if !text.is_empty() {
@@ -553,6 +588,6 @@ pub fn add_file_write_approval_row(
 
     row.set_child(Some(&vbox));
     list.append(&row);
-    
+
     action_container
 }

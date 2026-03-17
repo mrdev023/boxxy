@@ -1,7 +1,7 @@
+use boxxy_terminal::TerminalComponent;
 use libadwaita;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use boxxy_terminal::TerminalComponent;
 
 thread_local! {
     pub static ORPHAN_TABS: RefCell<HashMap<String, TerminalController>> = RefCell::new(HashMap::new());

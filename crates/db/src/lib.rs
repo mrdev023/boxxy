@@ -2,8 +2,8 @@
 #![allow(clippy::missing_panics_doc)]
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::PathBuf;
 
 pub mod models;
@@ -180,11 +180,11 @@ impl Db {
         let _ = sqlx::query("ALTER TABLE skills ADD COLUMN pinned BOOLEAN DEFAULT false")
             .execute(&self.pool)
             .await;
-            
+
         Ok(())
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn pool(&self) -> &SqlitePool {
         &self.pool
     }

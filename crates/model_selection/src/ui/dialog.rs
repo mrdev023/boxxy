@@ -39,8 +39,9 @@ impl GlobalModelSelectorDialog {
         stack.set_vhomogeneous(true);
 
         let ai_chat_selector = SingleModelSelector::new(init_ai, ollama_url.clone(), on_ai_change);
-        let claw_selector = SingleModelSelector::new(init_apps.clone(), ollama_url.clone(), on_apps_change);
-        
+        let claw_selector =
+            SingleModelSelector::new(init_apps.clone(), ollama_url.clone(), on_apps_change);
+
         let mem_initial = init_memory.unwrap_or(init_apps);
         let memory_selector = SingleModelSelector::new(mem_initial, ollama_url, move |new_prov| {
             on_memory_change(Some(new_prov));

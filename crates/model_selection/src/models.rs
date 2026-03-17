@@ -36,7 +36,11 @@ impl GeminiModel {
 
     pub fn available_thinking_levels(&self) -> Vec<ThinkingLevel> {
         match self {
-            GeminiModel::Pro => vec![ThinkingLevel::Low, ThinkingLevel::Medium, ThinkingLevel::High],
+            GeminiModel::Pro => vec![
+                ThinkingLevel::Low,
+                ThinkingLevel::Medium,
+                ThinkingLevel::High,
+            ],
             GeminiModel::Flash => vec![
                 ThinkingLevel::Minimal,
                 ThinkingLevel::Low,

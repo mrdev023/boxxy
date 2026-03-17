@@ -1,7 +1,7 @@
-use gtk4::prelude::*;
 use gtk4 as gtk;
-use std::rc::Rc;
+use gtk4::prelude::*;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct ImagePreviewPopover {
@@ -24,7 +24,7 @@ impl Default for ImagePreviewPopover {
 impl ImagePreviewPopover {
     pub fn new() -> Self {
         let settings = boxxy_preferences::Settings::load();
-        
+
         let popover = gtk::Popover::builder()
             .has_arrow(true)
             .autohide(false) // We control visibility manually based on hover
@@ -37,7 +37,7 @@ impl ImagePreviewPopover {
             .halign(gtk::Align::Center)
             .valign(gtk::Align::Center)
             .build();
-            
+
         let video_stream = gtk::MediaFile::new();
         video_stream.set_loop(true);
 
@@ -47,7 +47,7 @@ impl ImagePreviewPopover {
             .valign(gtk::Align::Center)
             .paintable(&video_stream)
             .build();
-            
+
         // Provide a minimum size so the popover doesn't collapse to 0x0 before the video metadata loads.
         video_pic.set_size_request(300, 200);
 
@@ -70,20 +70,20 @@ impl ImagePreviewPopover {
             .build();
         stack.add_named(&picture, Some("image"));
         stack.add_named(&video, Some("video"));
-            
+
         // Constrain max size via Clamp so large images don't cover the whole screen
         let clamp = libadwaita::Clamp::builder()
             .maximum_size(settings.preview_max_width)
             .child(&stack)
             .build();
-            
+
         popover.set_child(Some(&clamp));
 
         let is_pinned = Rc::new(RefCell::new(false));
         let is_pinned_clone = is_pinned.clone();
         let active_uri = Rc::new(RefCell::new(None));
         let active_uri_clone = active_uri.clone();
-        
+
         let picture_clone = picture.clone();
         let video_stream_clone = video_stream.clone();
 
@@ -135,14 +135,15 @@ impl ImagePreviewPopover {
         // If we are already showing or pending this exact URI, don't restart the timer.
         // This prevents flashing when moving the mouse inside a single link.
         if let Some(ref current) = *self.active_uri.borrow()
-            && current == uri {
-                if !is_hover {
-                    // Upgrade to pinned
-                    *self.is_pinned.borrow_mut() = true;
-                    self.popover.set_autohide(true);
-                }
-                return;
+            && current == uri
+        {
+            if !is_hover {
+                // Upgrade to pinned
+                *self.is_pinned.borrow_mut() = true;
+                self.popover.set_autohide(true);
             }
+            return;
+        }
 
         self.cancel_pending();
         *self.active_uri.borrow_mut() = Some(uri.to_string());
@@ -151,7 +152,7 @@ impl ImagePreviewPopover {
         // This helps with URIs that might contain literal quotes from the shell.
         let uri_trimmed = uri.trim_matches(|c| c == '\'' || c == '"');
         let uri_lower = uri_trimmed.to_lowercase();
-        
+
         let is_image = uri_lower.ends_with(".png")
             || uri_lower.ends_with(".jpg")
             || uri_lower.ends_with(".jpeg")
@@ -159,7 +160,7 @@ impl ImagePreviewPopover {
             || uri_lower.ends_with(".webp")
             || uri_lower.ends_with(".bmp")
             || uri_lower.ends_with(".svg");
-            
+
         let is_video = uri_lower.ends_with(".mp4")
             || uri_lower.ends_with(".webm")
             || uri_lower.ends_with(".mkv")
@@ -185,31 +186,32 @@ impl ImagePreviewPopover {
 
         // Debounce: Wait 300ms before showing the preview for hover, 0ms for click
         let pending_task_clone = self.pending_task.clone();
-        let task_id = gtk::glib::timeout_add_local(std::time::Duration::from_millis(timeout_ms), move || {
-            if is_image {
-                stack_clone.set_visible_child_name("image");
-                picture_clone.set_file(Some(&file));
-                video_stream_clone.set_file(None::<&gtk::gio::File>);
-            } else if is_video {
-                stack_clone.set_visible_child_name("video");
-                video_stream_clone.set_file(Some(&file));
-                video_stream_clone.play();
-                picture_clone.set_file(None::<&gtk::gio::File>);
-            }            
-            
-            popover_clone.set_autohide(!is_hover);
-            if !is_hover {
-                *is_pinned_clone.borrow_mut() = true;
-            }
+        let task_id =
+            gtk::glib::timeout_add_local(std::time::Duration::from_millis(timeout_ms), move || {
+                if is_image {
+                    stack_clone.set_visible_child_name("image");
+                    picture_clone.set_file(Some(&file));
+                    video_stream_clone.set_file(None::<&gtk::gio::File>);
+                } else if is_video {
+                    stack_clone.set_visible_child_name("video");
+                    video_stream_clone.set_file(Some(&file));
+                    video_stream_clone.play();
+                    picture_clone.set_file(None::<&gtk::gio::File>);
+                }
 
-            popover_clone.set_pointing_to(Some(&rect));
-            popover_clone.popup();
-            
-            // Clear the stored source ID so we don't try to remove it later
-            *pending_task_clone.borrow_mut() = None;
-            
-            gtk::glib::ControlFlow::Break
-        });
+                popover_clone.set_autohide(!is_hover);
+                if !is_hover {
+                    *is_pinned_clone.borrow_mut() = true;
+                }
+
+                popover_clone.set_pointing_to(Some(&rect));
+                popover_clone.popup();
+
+                // Clear the stored source ID so we don't try to remove it later
+                *pending_task_clone.borrow_mut() = None;
+
+                gtk::glib::ControlFlow::Break
+            });
 
         *self.pending_task.borrow_mut() = Some(task_id);
     }
@@ -217,21 +219,22 @@ impl ImagePreviewPopover {
     pub fn hide_preview_if_not_pinned(&self) {
         if !*self.is_pinned.borrow() {
             self.cancel_hide();
-            
+
             let popover_clone = self.popover.clone();
             let active_uri_clone = self.active_uri.clone();
             let picture_clone = self.picture.clone();
             let video_stream_clone = self.video_stream.clone();
             let hide_task_clone = self.hide_task.clone();
-            
-            let task_id = gtk::glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
-                *active_uri_clone.borrow_mut() = None;
-                popover_clone.popdown();
-                picture_clone.set_file(None::<&gtk::gio::File>);
-                video_stream_clone.set_file(None::<&gtk::gio::File>);
-                *hide_task_clone.borrow_mut() = None;
-                gtk::glib::ControlFlow::Break
-            });
+
+            let task_id =
+                gtk::glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+                    *active_uri_clone.borrow_mut() = None;
+                    popover_clone.popdown();
+                    picture_clone.set_file(None::<&gtk::gio::File>);
+                    video_stream_clone.set_file(None::<&gtk::gio::File>);
+                    *hide_task_clone.borrow_mut() = None;
+                    gtk::glib::ControlFlow::Break
+                });
             *self.hide_task.borrow_mut() = Some(task_id);
         }
     }
@@ -251,7 +254,7 @@ impl ImagePreviewPopover {
             source_id.remove();
         }
     }
-    
+
     fn cancel_hide(&self) {
         if let Some(source_id) = self.hide_task.borrow_mut().take() {
             source_id.remove();

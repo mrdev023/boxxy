@@ -1,8 +1,8 @@
-use gtk4::prelude::*;
-use gtk4 as gtk;
-use std::rc::Rc;
-use std::cell::RefCell;
 use boxxy_vte::terminal::TerminalWidget;
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const PCRE2_CASELESS: u32 = 0x00000008;
 const PCRE2_MULTILINE: u32 = 0x00000400;

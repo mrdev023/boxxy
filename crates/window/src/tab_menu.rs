@@ -45,8 +45,7 @@ impl TabContextMenu {
         on_close_page: impl Fn(libadwaita::TabPage) + 'static,
         on_move_to_new_window: impl Fn(libadwaita::TabPage) + 'static,
     ) -> Self {
-        let current_page: Rc<RefCell<Option<libadwaita::TabPage>>> =
-            Rc::new(RefCell::new(None));
+        let current_page: Rc<RefCell<Option<libadwaita::TabPage>>> = Rc::new(RefCell::new(None));
 
         // Build the close action.
         let close_action = gio::SimpleAction::new("close-tab", None);
@@ -62,7 +61,7 @@ impl TabContextMenu {
         // Build the move to new window action.
         let move_action = gio::SimpleAction::new("move-to-new-window", None);
         move_action.set_enabled(false); // enabled dynamically in setup-menu
-        
+
         let cp2 = current_page.clone();
         move_action.connect_activate(move |_, _| {
             if let Some(page) = cp2.borrow().clone() {
@@ -76,13 +75,13 @@ impl TabContextMenu {
         let cp = current_page.clone();
         tab_view.connect_setup_menu(move |tv, page| {
             *cp.borrow_mut() = page.cloned();
-            
+
             let (can_close, can_move) = match page {
                 None => (false, false),
                 Some(p) => {
                     let is_pinned = p.is_pinned();
                     let unpinned_count = tv.n_pages() - tv.n_pinned_pages();
-                    
+
                     if is_pinned {
                         // Pinned tabs can be closed, but cannot be moved to a new window
                         (true, false)
@@ -93,7 +92,7 @@ impl TabContextMenu {
                     }
                 }
             };
-            
+
             close_action_ref.set_enabled(can_close);
             move_action_ref.set_enabled(can_move);
         });
@@ -110,7 +109,11 @@ impl TabContextMenu {
         menu.append(Some("Move to New Window"), Some("tab.move-to-new-window"));
         tab_view.set_menu_model(Some(&menu));
 
-        Self { menu, action_group, current_page }
+        Self {
+            menu,
+            action_group,
+            current_page,
+        }
     }
 
     /// The page the context menu is currently (or was last) open for.

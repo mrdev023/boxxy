@@ -1,9 +1,9 @@
+use super::PaneInner;
+use crate::PaneOutput;
+use boxxy_vte::terminal::TerminalWidget;
+use gtk4 as gtk;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use gtk4 as gtk;
-use boxxy_vte::terminal::TerminalWidget;
-use crate::PaneOutput;
-use super::PaneInner;
 
 pub(super) fn wire_terminal_events(
     terminal: &TerminalWidget,
@@ -65,15 +65,20 @@ pub(super) fn wire_terminal_events(
         if let Some(code) = exit_code {
             let tx = tx_osc_clone.clone();
             let pane = inner_for_osc.borrow().terminal.clone();
-            let cwd = inner_for_osc.borrow().working_dir.clone().unwrap_or_default();
+            let cwd = inner_for_osc
+                .borrow()
+                .working_dir
+                .clone()
+                .unwrap_or_default();
             gtk::glib::spawn_future_local(async move {
                 if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                    let _ = tx.send(boxxy_claw::engine::ClawMessage::CommandFinished {
-                        
-                        exit_code: code,
-                        snapshot,
-                        cwd,
-                    }).await;
+                    let _ = tx
+                        .send(boxxy_claw::engine::ClawMessage::CommandFinished {
+                            exit_code: code,
+                            snapshot,
+                            cwd,
+                        })
+                        .await;
                 }
             });
         }
@@ -88,15 +93,20 @@ pub(super) fn wire_terminal_events(
         }
         let tx = tx_query_clone.clone();
         let pane = inner_for_query.borrow().terminal.clone();
-        let cwd = inner_for_query.borrow().working_dir.clone().unwrap_or_default();
+        let cwd = inner_for_query
+            .borrow()
+            .working_dir
+            .clone()
+            .unwrap_or_default();
         gtk::glib::spawn_future_local(async move {
             if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                let _ = tx.send(boxxy_claw::engine::ClawMessage::ClawQuery {
-                    
-                    query,
-                    snapshot,
-                    cwd,
-                }).await;
+                let _ = tx
+                    .send(boxxy_claw::engine::ClawMessage::ClawQuery {
+                        query,
+                        snapshot,
+                        cwd,
+                    })
+                    .await;
             }
         });
     });
@@ -107,24 +117,30 @@ pub(super) fn wire_terminal_events(
     let tx_cancel_typing = claw_sender.clone();
     key_controller.connect_key_pressed(move |_, keyval, _, state| {
         // Only trigger cancel on non-modifier keys or Enter/Backspace
-        let is_modifier = state.contains(gtk::gdk::ModifierType::CONTROL_MASK) 
-                       || state.contains(gtk::gdk::ModifierType::ALT_MASK);
+        let is_modifier = state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            || state.contains(gtk::gdk::ModifierType::ALT_MASK);
         if !is_modifier {
             let key_lower = keyval.to_lower();
-            let is_printable = key_lower >= gtk::gdk::Key::space && key_lower <= gtk::gdk::Key::asciitilde;
-            if is_printable || keyval == gtk::gdk::Key::Return || keyval == gtk::gdk::Key::BackSpace {
+            let is_printable =
+                key_lower >= gtk::gdk::Key::space && key_lower <= gtk::gdk::Key::asciitilde;
+            if is_printable || keyval == gtk::gdk::Key::Return || keyval == gtk::gdk::Key::BackSpace
+            {
                 let tx = tx_cancel_typing.clone();
                 gtk::glib::spawn_future_local(async move {
-                    let _ = tx.send(boxxy_claw::engine::ClawMessage::CancelPending).await;
+                    let _ = tx
+                        .send(boxxy_claw::engine::ClawMessage::CancelPending)
+                        .await;
                 });
             }
         }
         gtk::glib::Propagation::Proceed
     });
-    
+
     use gtk4::prelude::Cast;
     use gtk4::prelude::EventControllerExt;
     use gtk4::prelude::WidgetExt;
-    
-    terminal.upcast_ref::<gtk::Widget>().add_controller(key_controller);
+
+    terminal
+        .upcast_ref::<gtk::Widget>()
+        .add_controller(key_controller);
 }

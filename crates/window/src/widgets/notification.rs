@@ -74,9 +74,7 @@ impl Notification {
                     is_primary: false,
                 },
             ],
-            details: vec![
-                ("Version".to_string(), version.to_string()),
-            ],
+            details: vec![("Version".to_string(), version.to_string())],
         }
     }
 }

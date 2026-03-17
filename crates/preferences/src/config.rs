@@ -1,10 +1,10 @@
+use boxxy_model_selection::ModelProvider;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{LazyLock, OnceLock, RwLock};
 use tokio::sync::broadcast;
-use boxxy_model_selection::ModelProvider;
 
 pub static SETTINGS_EVENT_BUS: LazyLock<broadcast::Sender<Settings>> = LazyLock::new(|| {
     let (tx, _) = broadcast::channel(16);
@@ -72,7 +72,8 @@ impl fmt::Display for ClawAutoDiagnosisMode {
     }
 }
 
-pub const DEFAULT_FILE_REGEX: &str = r#"(?:https?://[^\s"'<>]+|/[\w.@:/-]+|~[\w.@:/-]+|\.{1,2}/[\w.@:/-]+)"#;
+pub const DEFAULT_FILE_REGEX: &str =
+    r#"(?:https?://[^\s"'<>]+|/[\w.@:/-]+|~[\w.@:/-]+|\.{1,2}/[\w.@:/-]+)"#;
 
 // --- User Configurable Settings ---
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -163,11 +164,11 @@ impl Settings {
         if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
             let config_dir = dirs.config_dir();
             let boxxyclaw_dir = config_dir.join("boxxyclaw");
-            
+
             if !boxxyclaw_dir.exists() {
                 let _ = fs::create_dir_all(&boxxyclaw_dir);
             }
-            
+
             // Generate BLACKLIST.md
             let blacklist_md = boxxyclaw_dir.join("BLACKLIST.md");
             if !blacklist_md.exists() {
@@ -247,12 +248,13 @@ Providing this context allows Boxxy-Claw to tailor its commands and diagnostics 
         let _ = SETTINGS_CACHE.get_or_init(|| {
             let mut settings = Self::default();
             if let Some(path) = Self::get_path()
-                && let Ok(content) = fs::read_to_string(path) {
-                    match serde_json::from_str::<Settings>(&content) {
-                        Ok(s) => settings = s,
-                        Err(e) => log::error!("Failed to load settings: {}", e),
-                    }
+                && let Ok(content) = fs::read_to_string(path)
+            {
+                match serde_json::from_str::<Settings>(&content) {
+                    Ok(s) => settings = s,
+                    Err(e) => log::error!("Failed to load settings: {}", e),
                 }
+            }
             RwLock::new(settings)
         });
     }
@@ -272,11 +274,13 @@ Providing this context allows Boxxy-Claw to tailor its commands and diagnostics 
         }
 
         if let Some(path) = Self::get_path()
-            && let Ok(content) = serde_json::to_string_pretty(self) {
-                let _ = fs::write(path, content);
-                let _ = SETTINGS_EVENT_BUS.send(self.clone());
-            }
-    }}
+            && let Ok(content) = serde_json::to_string_pretty(self)
+        {
+            let _ = fs::write(path, content);
+            let _ = SETTINGS_EVENT_BUS.send(self.clone());
+        }
+    }
+}
 
 // --- Internal App State ---
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -317,9 +321,10 @@ impl AppState {
             let mut state = Self::default();
             if let Some(path) = Self::get_path()
                 && let Ok(content) = fs::read_to_string(path)
-                    && let Ok(s) = serde_json::from_str::<AppState>(&content) {
-                        state = s;
-                    }
+                && let Ok(s) = serde_json::from_str::<AppState>(&content)
+            {
+                state = s;
+            }
             RwLock::new(state)
         });
     }
@@ -336,9 +341,9 @@ impl AppState {
             *cache.write().unwrap() = self.clone();
         }
         if let Some(path) = Self::get_path()
-            && let Ok(content) = serde_json::to_string_pretty(self) {
-                let _ = fs::write(path, content);
-            }
+            && let Ok(content) = serde_json::to_string_pretty(self)
+        {
+            let _ = fs::write(path, content);
+        }
     }
 }
-

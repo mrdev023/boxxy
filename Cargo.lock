@@ -551,6 +551,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxxy-bookmarks"
+version = "0.0.25"
+dependencies = [
+ "async-channel",
+ "boxxy-ai-core",
+ "boxxy-model-selection",
+ "boxxy-preferences",
+ "boxxy-terminal",
+ "boxxy-themes",
+ "directories",
+ "gtk4",
+ "libadwaita",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
+ "sourceview5",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "boxxy-claw"
 version = "0.0.25"
 dependencies = [
@@ -741,6 +763,7 @@ dependencies = [
  "boxxy-ai-core",
  "boxxy-app-menu",
  "boxxy-apps",
+ "boxxy-bookmarks",
  "boxxy-claw",
  "boxxy-command-palette",
  "boxxy-keybindings",

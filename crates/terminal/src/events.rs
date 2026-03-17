@@ -11,10 +11,11 @@ pub struct TerminalEvent {
 }
 
 #[derive(Debug, Clone)]
-pub enum ClawProposal {
+pub enum TerminalProposal {
     None,
     Command(String),
-    FileWrite(String, String), // The path and content of the file
+    BookmarkTemplate(String, Vec<String>), // script, placeholders
+    FileWrite(String, String),             // The path and content of the file
 }
 
 #[derive(Debug, Clone)]

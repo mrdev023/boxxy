@@ -7,26 +7,24 @@ pub struct Store<'a> {
 }
 
 impl<'a> Store<'a> {
-    #[must_use] 
+    #[must_use]
     pub const fn new(pool: &'a SqlitePool) -> Self {
         Self { pool }
     }
 
     // --- Sessions ---
     pub async fn create_session(&self, id: &str, name: &str) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO sessions (id, name) VALUES (?, ?)"
-        )
-        .bind(id)
-        .bind(name)
-        .execute(self.pool)
-        .await?;
+        sqlx::query("INSERT INTO sessions (id, name) VALUES (?, ?)")
+            .bind(id)
+            .bind(name)
+            .execute(self.pool)
+            .await?;
         Ok(())
     }
 
     pub async fn get_session(&self, id: &str) -> Result<Option<Session>> {
         let session = sqlx::query_as::<_, Session>(
-            "SELECT id, name, created_at, updated_at FROM sessions WHERE id = ?"
+            "SELECT id, name, created_at, updated_at FROM sessions WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool)
@@ -59,7 +57,12 @@ impl<'a> Store<'a> {
         Ok(result.last_insert_rowid())
     }
 
-    pub async fn search_interactions(&self, query: &str, project_path: Option<&str>, limit: i64) -> Result<Vec<Interaction>> {
+    pub async fn search_interactions(
+        &self,
+        query: &str,
+        project_path: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<Interaction>> {
         // Prioritize current project, then global/others
         let records = sqlx::query_as::<_, Interaction>(
             r"
@@ -82,16 +85,21 @@ impl<'a> Store<'a> {
 
         // Update last_accessed_at for interactions
         for interaction in &records {
-            let _ = sqlx::query("UPDATE interactions SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?")
-                .bind(interaction.id)
-                .execute(self.pool)
-                .await;
+            let _ = sqlx::query(
+                "UPDATE interactions SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(interaction.id)
+            .execute(self.pool)
+            .await;
         }
 
         Ok(records)
     }
-    
-    pub async fn get_all_embeddings_for_session(&self, session_id: &str) -> Result<Vec<Interaction>> {
+
+    pub async fn get_all_embeddings_for_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<Interaction>> {
         let records = sqlx::query_as::<_, Interaction>(
             "SELECT id, session_id, project_path, content, metadata, embedding, created_at, last_accessed_at FROM interactions WHERE session_id = ? AND embedding IS NOT NULL"
         )
@@ -103,7 +111,7 @@ impl<'a> Store<'a> {
     }
 
     // --- Global Memories (Long-term Facts) ---
-    
+
     /// Upsert a memory by key (ZeroClaw model)
     pub async fn add_memory(
         &self,
@@ -139,7 +147,11 @@ impl<'a> Store<'a> {
         Ok(())
     }
 
-    pub async fn get_memory_by_key(&self, key: &str, project_path: Option<&str>) -> Result<Option<Memory>> {
+    pub async fn get_memory_by_key(
+        &self,
+        key: &str,
+        project_path: Option<&str>,
+    ) -> Result<Option<Memory>> {
         let path = project_path.unwrap_or("global");
         let memory = sqlx::query_as::<_, Memory>(
             "SELECT id, key, project_path, content, category, verified, pinned, created_at, updated_at, last_accessed_at, access_count FROM memories WHERE key = ? AND project_path = ?"
@@ -151,7 +163,12 @@ impl<'a> Store<'a> {
         Ok(memory)
     }
 
-    pub async fn search_memories(&self, query: &str, project_path: Option<&str>, limit: i64) -> Result<Vec<Memory>> {
+    pub async fn search_memories(
+        &self,
+        query: &str,
+        project_path: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<Memory>> {
         let records = sqlx::query_as::<_, Memory>(
             r"
             SELECT m.id, m.key, m.project_path, m.content, m.category, m.verified, m.pinned, m.created_at, m.updated_at, m.last_accessed_at, m.access_count
@@ -214,7 +231,8 @@ impl<'a> Store<'a> {
             .fetch_all(&mut *tx)
             .await?;
 
-        let current_names: std::collections::HashSet<String> = skills.iter().map(|s| s.name.clone()).collect();
+        let current_names: std::collections::HashSet<String> =
+            skills.iter().map(|s| s.name.clone()).collect();
 
         // 2. Delete skills that are no longer on disk
         for name in existing_names {
@@ -238,7 +256,7 @@ impl<'a> Store<'a> {
                     content = excluded.content,
                     pinned = excluded.pinned,
                     updated_at = CURRENT_TIMESTAMP
-                "
+                ",
             )
             .bind(&skill.name)
             .bind(&skill.description)
@@ -262,7 +280,7 @@ impl<'a> Store<'a> {
             WHERE skills_fts MATCH ?
             ORDER BY m.pinned DESC, rank
             LIMIT ?
-            "
+            ",
         )
         .bind(query)
         .bind(limit)

@@ -1,10 +1,10 @@
 use crate::config::Settings;
+use adw::prelude::*;
+use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
-use gtk::prelude::*;
-use adw::prelude::*;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub fn setup_apis_page(
     builder: &gtk::Builder,
@@ -24,7 +24,12 @@ pub fn setup_apis_page(
                 .title(format!("{} API Key", prov.name()))
                 .build();
 
-            let initial_key = settings_rc.borrow().api_keys.get(prov.name()).cloned().unwrap_or_default();
+            let initial_key = settings_rc
+                .borrow()
+                .api_keys
+                .get(prov.name())
+                .cloned()
+                .unwrap_or_default();
             row.set_text(&initial_key);
 
             let s_rc = settings_rc.clone();
@@ -72,7 +77,7 @@ pub fn setup_apis_page(
                 any_visible = true;
             }
         }
-        
+
         let ollama_visible = match_row(ollama_base_url_entry_clone.upcast_ref(), "base url ollama");
         group_ollama_api.set_visible(ollama_visible);
         dynamic_apis_group.set_visible(any_visible);

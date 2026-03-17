@@ -28,9 +28,7 @@ pub enum ClawMessage {
         cwd: String,
     },
     /// The user clicked Approve or Reject on a file write proposal.
-    FileWriteReply {
-        approved: bool,
-    },
+    FileWriteReply { approved: bool },
     /// The user requested to diagnose the last failed command (from the Lazy Error Pill).
     RequestLazyDiagnosis,
     /// The user rejected or dismissed a proposal. The agent should cancel any pending tools.
@@ -43,28 +41,18 @@ pub enum ClawMessage {
 #[derive(Debug, Clone)]
 pub enum ClawEngineEvent {
     /// The agent has finished its diagnosis.
-    DiagnosisComplete {
-        diagnosis: String,
-    },
+    DiagnosisComplete { diagnosis: String },
     /// The agent suggests a command to be injected into the terminal prompt.
-    InjectCommand {
-        command: String,
-        diagnosis: String,
-    },
+    InjectCommand { command: String, diagnosis: String },
     /// The agent proposes to write or edit a file, requiring user approval.
-    ProposeFileWrite {
-        path: String,
-        content: String,
-    },
+    ProposeFileWrite { path: String, content: String },
     /// The agent wants the user to run a command in the terminal and wait for the result.
     ProposeTerminalCommand {
         command: String,
         explanation: String,
     },
     /// Emitted when the agent starts or stops thinking (for UI indicators).
-    AgentThinking {
-        is_thinking: bool,
-    },
+    AgentThinking { is_thinking: bool },
     /// Emitted when a command failed but the agent hasn't analyzed it yet (Lazy mode).
     LazyErrorIndicator,
     /// Emitted when a proposal is rejected, dismissed, or otherwise resolved so UIs can sync state.

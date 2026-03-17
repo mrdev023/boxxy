@@ -70,8 +70,8 @@ tab > separator {
 }
 
 .terminal-menu > contents {
-	min-width: 220px;
-	min-height: 330px; /*otherwise it keeps scrolling */
+	min-width: 230px;
+	min-height: 360px; /*otherwise it keeps scrolling */
 }
 
 /* Give the preferences source view a distinct background */
@@ -291,3 +291,15 @@ tabbox separator {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+/* ── Bookmarks Gallery ─────────────────────────────────────────────────── */
+.bookmarks-gallery {
+    background-color: transparent;
+}
+
+.bookmarks-gallery row {
+	background:@window_bg_color;
+}
+
+.bookmarks-gallery .sourceview {
+    border-radius: 8px;
+}

@@ -156,7 +156,10 @@ fn test_iter() {
     assert_eq!(&4, iter.cell());
 
     // Test that iter ends at end of grid.
-    let mut final_iter = grid.iter_from(Point { line: Line(4), column: Column(4) });
+    let mut final_iter = grid.iter_from(Point {
+        line: Line(4),
+        column: Column(4),
+    });
     assert_eq!(None, final_iter.next());
     assert_indexed(23, final_iter.prev());
 }
@@ -405,7 +408,11 @@ fn grow_columns_preserves_content() {
     // Lines above should be blank.
     for r in 0..4 {
         for c in 0..15 {
-            assert_eq!(grid[Line(r)][Column(c)], Cell::default(), "row {r} col {c} should be blank");
+            assert_eq!(
+                grid[Line(r)][Column(c)],
+                Cell::default(),
+                "row {r} col {c} should be blank"
+            );
         }
     }
     // Bottom line must still hold "ls".
@@ -443,8 +450,16 @@ fn grow_then_shrink_columns_preserves_content() {
     grid.resize(true, 5, 15);
     grid.resize(true, 5, 10);
 
-    assert_eq!(grid[Line(4)][Column(0)], cell('l'), "col 0 should be 'l' after round-trip");
-    assert_eq!(grid[Line(4)][Column(1)], cell('s'), "col 1 should be 's' after round-trip");
+    assert_eq!(
+        grid[Line(4)][Column(0)],
+        cell('l'),
+        "col 0 should be 'l' after round-trip"
+    );
+    assert_eq!(
+        grid[Line(4)][Column(1)],
+        cell('s'),
+        "col 1 should be 's' after round-trip"
+    );
 }
 
 // Content at the bottom survives both vertical and horizontal grow simultaneously.
@@ -461,10 +476,12 @@ fn grow_lines_and_columns_preserves_content() {
     grid.resize(true, 8, 15);
 
     // "ls" must be visible somewhere in the new viewport.
-    let found = (0..8).any(|r| {
-        grid[Line(r)][Column(0)] == cell('l') && grid[Line(r)][Column(1)] == cell('s')
-    });
-    assert!(found, "'ls' should be visible after growing both dimensions");
+    let found = (0..8)
+        .any(|r| grid[Line(r)][Column(0)] == cell('l') && grid[Line(r)][Column(1)] == cell('s'));
+    assert!(
+        found,
+        "'ls' should be visible after growing both dimensions"
+    );
 }
 
 // Content at the bottom survives both vertical and horizontal shrink simultaneously.
@@ -482,10 +499,12 @@ fn shrink_lines_and_columns_preserves_content() {
     grid.resize(true, 8, 15);
 
     // "ls" must still be visible.
-    let found = (0..8).any(|r| {
-        grid[Line(r)][Column(0)] == cell('l') && grid[Line(r)][Column(1)] == cell('s')
-    });
-    assert!(found, "'ls' should be visible after shrinking both dimensions");
+    let found = (0..8)
+        .any(|r| grid[Line(r)][Column(0)] == cell('l') && grid[Line(r)][Column(1)] == cell('s'));
+    assert!(
+        found,
+        "'ls' should be visible after shrinking both dimensions"
+    );
 }
 
 // Content in the middle of the screen stays visible when shrinking columns.
@@ -521,9 +540,8 @@ fn shrink_lines_trailing_blanks_then_shrink_columns() {
     grid.resize(true, 3, 8);
 
     // "ls" must be in the new viewport (3 lines).
-    let found = (0..3).any(|r| {
-        grid[Line(r)][Column(0)] == cell('l') && grid[Line(r)][Column(1)] == cell('s')
-    });
+    let found = (0..3)
+        .any(|r| grid[Line(r)][Column(0)] == cell('l') && grid[Line(r)][Column(1)] == cell('s'));
     assert!(found, "'ls' should still be visible after combined shrink");
 }
 
@@ -558,7 +576,9 @@ fn shrink_columns_reflow_keeps_content_visible() {
         }
     }
     // Mark as WRAPLINE so it participates in reflow.
-    grid[Line(1)][Column(19)].flags_mut().insert(Flags::WRAPLINE);
+    grid[Line(1)][Column(19)]
+        .flags_mut()
+        .insert(Flags::WRAPLINE);
 
     // "$ " prompt at Line(2), cursor here.
     grid[Line(2)][Column(0)] = cell('$');
@@ -572,11 +592,18 @@ fn shrink_columns_reflow_keeps_content_visible() {
     grid.resize(true, 5, 10);
 
     // "$ ls" must remain in the visible viewport.
-    let cmd_visible = (0..5).any(|r| {
-        grid[Line(r)][Column(0)] == cell('$') && grid[Line(r)][Column(2)] == cell('l')
-    });
-    assert!(cmd_visible, "'$ ls' should stay visible after column shrink; history_size={}", grid.history_size());
+    let cmd_visible = (0..5)
+        .any(|r| grid[Line(r)][Column(0)] == cell('$') && grid[Line(r)][Column(2)] == cell('l'));
+    assert!(
+        cmd_visible,
+        "'$ ls' should stay visible after column shrink; history_size={}",
+        grid.history_size()
+    );
 
     // No content should have gone to history for this scenario.
-    assert_eq!(grid.history_size(), 0, "blank trailing rows should have absorbed the overflow");
+    assert_eq!(
+        grid.history_size(),
+        0,
+        "blank trailing rows should have absorbed the overflow"
+    );
 }

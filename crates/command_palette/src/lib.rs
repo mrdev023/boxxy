@@ -1,16 +1,27 @@
 use gtk4::prelude::*;
-use gtk4::glib;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-#[derive(Clone)]
-struct CommandItem {
-    title: String,
-    action: String,
-    shortcut: Option<String>,
+#[derive(Clone, Debug)]
+pub struct CommandItem {
+    pub title: String,
+    pub action: String,
+    pub parameter: Option<gtk4::glib::Variant>,
+    pub shortcut: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct CommandPaletteComponent {
     popover: gtk4::Popover,
-    _search_entry: gtk4::SearchEntry,
+    inner: Rc<RefCell<CommandPaletteInner>>,
+}
+
+struct CommandPaletteInner {
+    search_entry: gtk4::SearchEntry,
+    listbox: gtk4::ListBox,
+    scrolled_window: gtk4::ScrolledWindow,
+    static_commands: Vec<CommandItem>,
+    dynamic_commands: Vec<CommandItem>,
 }
 
 impl CommandPaletteComponent {
@@ -31,7 +42,7 @@ impl CommandPaletteComponent {
 
         let search_entry = gtk4::SearchEntry::builder()
             .placeholder_text("Search commands...")
-            .width_request(360)
+            .width_request(450)
             .activates_default(false)
             .build();
         vbox.append(&search_entry);
@@ -42,7 +53,6 @@ impl CommandPaletteComponent {
         listbox.add_css_class("navigation-sidebar");
         listbox.set_margin_top(6);
 
-        // Let the search entry capture typing events when the user navigates the listbox
         search_entry.set_key_capture_widget(Some(&listbox));
 
         let scrolled = gtk4::ScrolledWindow::builder()
@@ -56,7 +66,6 @@ impl CommandPaletteComponent {
 
         popover.set_child(Some(&vbox));
 
-        // Add Escape key handler
         let ev_ctrl = gtk4::EventControllerKey::new();
         ev_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
         let popover_esc = popover.clone();
@@ -70,147 +79,183 @@ impl CommandPaletteComponent {
         });
         popover.add_controller(ev_ctrl);
 
-        let commands = vec![
-            CommandItem { title: "New Window".to_string(), action: "win.new-window".to_string(), shortcut: Some("<Primary><Shift>N".to_string()) },
-            CommandItem { title: "New Tab".to_string(), action: "win.new-tab".to_string(), shortcut: Some("<Primary><Shift>T".to_string()) },
-            CommandItem { title: "AI Chat".to_string(), action: "win.ai-chat".to_string(), shortcut: Some("<Primary><Shift>E".to_string()) },
-            CommandItem { title: "Models Selection".to_string(), action: "win.model-selection".to_string(), shortcut: None },
-            CommandItem { title: "Themes".to_string(), action: "win.themes".to_string(), shortcut: Some("<Primary><Shift>K".to_string()) },
-            CommandItem { title: "Preferences".to_string(), action: "win.preferences".to_string(), shortcut: Some("<Primary>comma".to_string()) },
-            CommandItem { title: "Keyboard Shortcuts".to_string(), action: "win.shortcuts".to_string(), shortcut: Some("<Primary><Shift>question".to_string()) },
-            CommandItem { title: "About".to_string(), action: "win.about".to_string(), shortcut: None },
-            CommandItem { title: "GTK Inspector".to_string(), action: "app.inspector".to_string(), shortcut: None },
+        let static_commands = vec![
+            CommandItem {
+                title: "New Window".to_string(),
+                action: "win.new-window".to_string(),
+                parameter: None,
+                shortcut: Some("<Primary><Shift>N".to_string()),
+            },
+            CommandItem {
+                title: "New Tab".to_string(),
+                action: "win.new-tab".to_string(),
+                parameter: None,
+                shortcut: Some("<Primary><Shift>T".to_string()),
+            },
+            CommandItem {
+                title: "AI Chat".to_string(),
+                action: "win.ai-chat".to_string(),
+                parameter: None,
+                shortcut: Some("<Primary><Shift>E".to_string()),
+            },
+            CommandItem {
+                title: "Claw".to_string(),
+                action: "win.claw".to_string(),
+                parameter: None,
+                shortcut: None,
+            },
+            CommandItem {
+                title: "Bookmarks".to_string(),
+                action: "win.bookmarks".to_string(),
+                parameter: None,
+                shortcut: None,
+            },
+            CommandItem {
+                title: "Models Selection".to_string(),
+                action: "win.model-selection".to_string(),
+                parameter: None,
+                shortcut: None,
+            },
+            CommandItem {
+                title: "Themes".to_string(),
+                action: "win.themes".to_string(),
+                parameter: None,
+                shortcut: Some("<Primary><Shift>K".to_string()),
+            },
+            CommandItem {
+                title: "Preferences".to_string(),
+                action: "win.preferences".to_string(),
+                parameter: None,
+                shortcut: Some("<Primary>comma".to_string()),
+            },
+            CommandItem {
+                title: "Keyboard Shortcuts".to_string(),
+                action: "win.shortcuts".to_string(),
+                parameter: None,
+                shortcut: Some("<Primary><Shift>question".to_string()),
+            },
+            CommandItem {
+                title: "About".to_string(),
+                action: "win.about".to_string(),
+                parameter: None,
+                shortcut: None,
+            },
+            CommandItem {
+                title: "GTK Inspector".to_string(),
+                action: "app.inspector".to_string(),
+                parameter: None,
+                shortcut: None,
+            },
         ];
 
-        for cmd in &commands {
-            let row = gtk4::ListBoxRow::new();
-            let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
-            hbox.set_margin_start(12);
-            hbox.set_margin_end(12);
-            hbox.set_margin_top(8);
-            hbox.set_margin_bottom(8);
+        let inner = Rc::new(RefCell::new(CommandPaletteInner {
+            search_entry: search_entry.clone(),
+            listbox: listbox.clone(),
+            scrolled_window: scrolled.clone(),
+            static_commands,
+            dynamic_commands: Vec::new(),
+        }));
 
-            // Left side: Title and Action
-            let left_vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
-            let title_label = gtk4::Label::builder()
-                .label(&cmd.title)
-                .halign(gtk4::Align::Start)
-                .build();
-            let action_label = gtk4::Label::builder()
-                .label(&cmd.action)
-                .halign(gtk4::Align::Start)
-                .css_classes(vec!["dim-label".to_string(), "caption-heading".to_string(), "monospace".to_string()])
-                .build();
-            
-            left_vbox.append(&title_label);
-            left_vbox.append(&action_label);
-            
-            left_vbox.set_hexpand(true);
-            hbox.append(&left_vbox);
+        let comp = Self {
+            popover: popover.clone(),
+            inner: inner.clone(),
+        };
 
-            // Right side: Shortcut Keys
-            if let Some(ref sc) = cmd.shortcut {
-                let shortcut_label = libadwaita::ShortcutLabel::new(sc);
-                shortcut_label.set_valign(gtk4::Align::Center);
-                shortcut_label.add_css_class("palette-shortcut");
-                hbox.append(&shortcut_label);
-            }
+        comp.rebuild_list();
 
-            row.set_child(Some(&hbox));
-            listbox.append(&row);
-        }
-
-        let _search_entry_clone = search_entry.clone();
-        let listbox_clone = listbox.clone();
-        let cmds_for_search = commands.clone();
+        let inner_search = inner.clone();
         search_entry.connect_search_changed(move |entry| {
-            listbox_clone.invalidate_filter();
+            let inner = inner_search.borrow();
+            inner.listbox.invalidate_filter();
             let text = entry.text().to_string().to_lowercase();
-            
+
             let mut found = false;
-            // Auto-select the first visible item
-            for (i, cmd) in cmds_for_search.iter().enumerate() {
+            let all_cmds = inner.all_commands();
+            for (i, cmd) in all_cmds.iter().enumerate() {
                 if text.is_empty() || cmd.title.to_lowercase().contains(&text) {
-                    if let Some(row) = listbox_clone.row_at_index(i as i32) {
-                        listbox_clone.select_row(Some(&row));
+                    if let Some(row) = inner.listbox.row_at_index(i as i32) {
+                        inner.listbox.select_row(Some(&row));
                         found = true;
                     }
                     break;
                 }
             }
-            
+
             if !found {
-                listbox_clone.unselect_all();
+                inner.listbox.unselect_all();
             }
         });
 
-        // Use the native search entry activation to trigger the selected row action
-        let listbox_activate = listbox.clone();
-        let cmds_for_activate = commands.clone();
-        let popover_for_activate = popover.clone();
+        let inner_activate = inner.clone();
+        let pop_activate = popover.clone();
         search_entry.connect_activate(move |_| {
-            if let Some(row) = listbox_activate.selected_row() {
+            let inner = inner_activate.borrow();
+            if let Some(row) = inner.listbox.selected_row() {
                 let idx = row.index() as usize;
-                if idx < cmds_for_activate.len() {
-                    let action_name = cmds_for_activate[idx].action.clone();
-                    let pop_clone = popover_for_activate.clone();
+                let all_cmds = inner.all_commands();
+                if idx < all_cmds.len() {
+                    let cmd = &all_cmds[idx];
+                    let action_name = cmd.action.clone();
+                    let param = cmd.parameter.clone();
+                    let pop_clone = pop_activate.clone();
                     gtk4::glib::idle_add_local(move || {
-                        if let Some(window) = pop_clone.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
-                            let _ = window.activate_action(&action_name, None);
+                        if let Some(window) = pop_clone
+                            .root()
+                            .and_then(|r| r.downcast::<gtk4::Window>().ok())
+                        {
+                            let _ = window.activate_action(&action_name, param.as_ref());
                         }
                         gtk4::glib::ControlFlow::Break
                     });
-                    popover_for_activate.popdown();
+                    pop_activate.popdown();
                 }
             }
         });
 
-        let cmds2 = commands.clone();
-        let search_entry_filter = search_entry.clone();
+        let inner_filter = inner.clone();
         listbox.set_filter_func(move |row| {
+            let inner = inner_filter.borrow();
             let index = row.index() as usize;
-            if index >= cmds2.len() {
+            let all_cmds = inner.all_commands();
+            if index >= all_cmds.len() {
                 return false;
             }
-            let title = cmds2[index].title.to_lowercase();
-            let text = search_entry_filter.text().to_string().to_lowercase();
+            let title = all_cmds[index].title.to_lowercase();
+            let text = inner.search_entry.text().to_string().to_lowercase();
             text.is_empty() || title.contains(&text)
         });
 
-        let popover_clone = popover.clone();
-        let cmds3 = commands.clone();
+        let inner_row_act = inner.clone();
+        let pop_row_act = popover.clone();
         listbox.connect_row_activated(move |_, row| {
+            let inner = inner_row_act.borrow();
             let index = row.index() as usize;
-            if index < cmds3.len() {
-                let action_name = &cmds3[index].action;
-                // Defer action execution slightly to let popover close cleanly
-                let action = action_name.clone();
-                let pop_clone = popover_clone.clone();
+            let all_cmds = inner.all_commands();
+            if index < all_cmds.len() {
+                let action_name = all_cmds[index].action.clone();
+                let param = all_cmds[index].parameter.clone();
+                let pop_clone = pop_row_act.clone();
                 gtk4::glib::idle_add_local(move || {
-                    if let Some(window) = pop_clone.root().and_then(|r| r.downcast::<gtk4::Window>().ok()) {
-                        let _ = window.activate_action(&action, None);
+                    if let Some(window) = pop_clone
+                        .root()
+                        .and_then(|r| r.downcast::<gtk4::Window>().ok())
+                    {
+                        let _ = window.activate_action(&action_name, param.as_ref());
                     }
                     gtk4::glib::ControlFlow::Break
                 });
             }
-            popover_clone.popdown();
+            pop_row_act.popdown();
         });
 
-        // On show, focus search entry and select first row
-        let search_entry_focus = search_entry.clone();
-        let listbox_focus = listbox.clone();
-        let scrolled_focus = scrolled.clone();
         popover.connect_map(move |_| {
-            search_entry_focus.set_text("");
-            // ensure all items visible again
-            listbox_focus.invalidate_filter();
+            let inner = inner.borrow();
+            inner.search_entry.set_text("");
+            inner.listbox.invalidate_filter();
+            inner.scrolled_window.vadjustment().set_value(0.0);
 
-            // Reset scroll position to top
-            scrolled_focus.vadjustment().set_value(0.0);
-
-            // Defer focus and selection slightly to ensure popover is fully ready
-            let entry = search_entry_focus.clone();
-            let list = listbox_focus.clone();
+            let entry = inner.search_entry.clone();
+            let list = inner.listbox.clone();
             gtk4::glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
                 entry.grab_focus();
                 if let Some(first_row) = list.row_at_index(0) {
@@ -220,71 +265,116 @@ impl CommandPaletteComponent {
             });
         });
 
-        // Add Up/Down key handling for the search entry to navigate the listbox
         let entry_key_ctrl = gtk4::EventControllerKey::new();
-        let cmds_for_nav = commands.clone();
-        let search_entry_nav = search_entry.clone();
-        entry_key_ctrl.connect_key_pressed(gtk4::glib::clone!(
-            #[weak]
-            listbox,
-            #[upgrade_or]
-            gtk4::glib::Propagation::Proceed,
-            move |_, keyval, _, _| {
-                let text = search_entry_nav.text().to_string().to_lowercase();
-                let is_visible = |idx: usize| -> bool {
-                    if idx >= cmds_for_nav.len() { return false; }
-                    text.is_empty() || cmds_for_nav[idx].title.to_lowercase().contains(&text)
-                };
+        let inner_nav = comp.inner.clone();
+        entry_key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
+            let inner = inner_nav.borrow();
+            let text = inner.search_entry.text().to_string().to_lowercase();
+            let all_cmds = inner.all_commands();
+            let is_visible = |idx: usize| -> bool {
+                if idx >= all_cmds.len() {
+                    return false;
+                }
+                text.is_empty() || all_cmds[idx].title.to_lowercase().contains(&text)
+            };
 
-                match keyval {
-                    gtk4::gdk::Key::Up => {
-                        if let Some(row) = listbox.selected_row() {
-                            let mut idx = row.index() - 1;
-                            while idx >= 0 {
-                                if is_visible(idx as usize) {
-                                    if let Some(prev) = listbox.row_at_index(idx) {
-                                        listbox.select_row(Some(&prev));
-                                        
-                                        // Scroll to show the row, then return focus to search entry immediately
-                                        prev.grab_focus();
-                                        search_entry_nav.grab_focus();
-                                    }
-                                    break;
-                                }
-                                idx -= 1;
-                            }
-                        }
-                        gtk4::glib::Propagation::Stop
-                    }
-                    gtk4::gdk::Key::Down => {
-                        let mut idx = if let Some(row) = listbox.selected_row() {
-                            row.index() + 1
-                        } else {
-                            0
-                        };
-                        let max_idx = cmds_for_nav.len() as i32;
-                        while idx < max_idx {
+            match keyval {
+                gtk4::gdk::Key::Up => {
+                    if let Some(row) = inner.listbox.selected_row() {
+                        let mut idx = row.index() - 1;
+                        while idx >= 0 {
                             if is_visible(idx as usize) {
-                                if let Some(next) = listbox.row_at_index(idx) {
-                                    listbox.select_row(Some(&next));
-                                    
-                                    // Scroll to show the row, then return focus to search entry immediately
-                                    next.grab_focus();
-                                    search_entry_nav.grab_focus();
+                                if let Some(prev) = inner.listbox.row_at_index(idx) {
+                                    inner.listbox.select_row(Some(&prev));
+                                    prev.grab_focus();
+                                    inner.search_entry.grab_focus();
                                 }
                                 break;
                             }
-                            idx += 1;
+                            idx -= 1;
                         }
-                        gtk4::glib::Propagation::Stop
                     }
-                    _ => gtk4::glib::Propagation::Proceed,
+                    gtk4::glib::Propagation::Stop
                 }
+                gtk4::gdk::Key::Down => {
+                    let mut idx = if let Some(row) = inner.listbox.selected_row() {
+                        row.index() + 1
+                    } else {
+                        0
+                    };
+                    let max_idx = all_cmds.len() as i32;
+                    while idx < max_idx {
+                        if is_visible(idx as usize) {
+                            if let Some(next) = inner.listbox.row_at_index(idx) {
+                                inner.listbox.select_row(Some(&next));
+                                next.grab_focus();
+                                inner.search_entry.grab_focus();
+                            }
+                            break;
+                        }
+                        idx += 1;
+                    }
+                    gtk4::glib::Propagation::Stop
+                }
+                _ => gtk4::glib::Propagation::Proceed,
             }
-        ));
+        });
         search_entry.add_controller(entry_key_ctrl);
 
-        Self { popover, _search_entry: search_entry }
+        comp
+    }
+
+    fn rebuild_list(&self) {
+        let inner = self.inner.borrow();
+        while let Some(child) = inner.listbox.first_child() {
+            inner.listbox.remove(&child);
+        }
+
+        let all_cmds = inner.all_commands();
+        for cmd in all_cmds {
+            let row = gtk4::ListBoxRow::new();
+            let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+            hbox.set_margin_start(12);
+            hbox.set_margin_end(12);
+            hbox.set_margin_top(8);
+            hbox.set_margin_bottom(8);
+
+            let left_vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
+            let title_label = gtk4::Label::builder()
+                .label(&cmd.title)
+                .halign(gtk4::Align::Start)
+                .build();
+            let action_label = gtk4::Label::builder()
+                .label(&cmd.action)
+                .halign(gtk4::Align::Start)
+                .css_classes(vec![
+                    "dim-label".to_string(),
+                    "caption-heading".to_string(),
+                    "monospace".to_string(),
+                ])
+                .build();
+
+            left_vbox.append(&title_label);
+            left_vbox.append(&action_label);
+
+            left_vbox.set_hexpand(true);
+            hbox.append(&left_vbox);
+
+            if let Some(ref sc) = cmd.shortcut {
+                let shortcut_label = libadwaita::ShortcutLabel::new(sc);
+                shortcut_label.set_valign(gtk4::Align::Center);
+                shortcut_label.add_css_class("palette-shortcut");
+                hbox.append(&shortcut_label);
+            }
+
+            row.set_child(Some(&hbox));
+            inner.listbox.append(&row);
+        }
+    }
+
+    pub fn set_dynamic_commands(&self, commands: Vec<CommandItem>) {
+        self.inner.borrow_mut().dynamic_commands = commands;
+        self.rebuild_list();
     }
 
     pub fn widget(&self) -> &gtk4::Popover {
@@ -299,18 +389,17 @@ impl CommandPaletteComponent {
             self.popover.set_parent(parent);
         }
 
-        // Ensure center alignment relative to the pointing rect
         self.popover.set_halign(gtk4::Align::Center);
         self.popover.set_valign(gtk4::Align::Start);
         self.popover.set_position(gtk4::PositionType::Bottom);
 
-        // Center horizontally in parent
         let width = parent.width();
         let rect = gtk4::gdk::Rectangle::new(width / 2, 60, 0, 0);
         self.popover.set_pointing_to(Some(&rect));
 
         self.popover.popup();
     }
+
     pub fn show_as_menu(&self, button: &gtk4::Button) {
         if self.popover.parent().as_ref() != Some(button.upcast_ref()) {
             if self.popover.parent().is_some() {
@@ -319,15 +408,19 @@ impl CommandPaletteComponent {
             self.popover.set_parent(button);
         }
 
-        // Reset alignments so it acts like a normal popover under the button
         self.popover.set_halign(gtk4::Align::Fill);
         self.popover.set_valign(gtk4::Align::Fill);
         self.popover.set_position(gtk4::PositionType::Bottom);
-
-        // Clear custom pointing rect so it points at the whole button
         self.popover.set_pointing_to(None::<&gtk4::gdk::Rectangle>);
-
         self.popover.popup();
+    }
+}
+
+impl CommandPaletteInner {
+    fn all_commands(&self) -> Vec<CommandItem> {
+        let mut all = self.static_commands.clone();
+        all.extend(self.dynamic_commands.clone());
+        all
     }
 }
 

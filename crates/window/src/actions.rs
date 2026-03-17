@@ -1,7 +1,7 @@
-use gtk4::prelude::*;
-use gtk4::gio;
-use async_channel::Sender;
 use crate::state::AppInput;
+use async_channel::Sender;
+use gtk4::gio;
+use gtk4::prelude::*;
 
 pub fn setup_actions(window: &libadwaita::ApplicationWindow, sender: Sender<AppInput>) {
     let action_group = gio::SimpleActionGroup::new();
@@ -28,13 +28,27 @@ pub fn setup_actions(window: &libadwaita::ApplicationWindow, sender: Sender<AppI
     add_action!("toggle-sidebar", AppInput::ToggleSidebar);
     add_action!("preferences", AppInput::OpenPreferences);
     add_action!("mini-apps", AppInput::OpenBoxxyApps);
+    add_action!("bookmarks", AppInput::OpenBookmarks);
     add_action!("shortcuts", AppInput::OpenShortcuts);
     add_action!("about", AppInput::OpenAbout);
     add_action!("open-in-files", AppInput::OpenInFiles);
     add_action!("zoom-in", AppInput::ZoomIn);
     add_action!("zoom-out", AppInput::ZoomOut);
+    add_action!("reset-zoom", AppInput::ResetZoom);
     add_action!("copy", AppInput::Copy);
     add_action!("paste", AppInput::Paste);
+
+    let execute_bm = gio::SimpleAction::new(
+        "execute-bookmark",
+        Some(gtk4::glib::VariantTy::new("(ss)").unwrap()),
+    );
+    let s = sender.clone();
+    execute_bm.connect_activate(move |_, param| {
+        if let Some((name, script)) = param.and_then(|p| p.get::<(String, String)>()) {
+            let _ = s.send_blocking(AppInput::ExecuteBookmark(name, script));
+        }
+    });
+    action_group.add_action(&execute_bm);
     add_action!("split-vertical", AppInput::SplitVertical);
     add_action!("split-horizontal", AppInput::SplitHorizontal);
     add_action!("close-split", AppInput::CloseSplit);

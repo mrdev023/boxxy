@@ -1,12 +1,12 @@
-use std::rc::Rc;
-use gtk4::{gdk, gio, glib};
-use gtk4::prelude::*;
-use gtk4 as gtk;
-use boxxy_vte::terminal::TerminalWidget;
-use boxxy_app_menu::{AppMenuComponent, AppMenuContext};
 use crate::PaneOutput;
 use crate::search_bar::SearchBarComponent;
+use boxxy_app_menu::{AppMenuComponent, AppMenuContext};
+use boxxy_vte::terminal::TerminalWidget;
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use gtk4::{gdk, gio, glib};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(super) fn setup_gestures(
     terminal: &TerminalWidget,
@@ -57,7 +57,10 @@ pub(super) fn setup_gestures(
     let search_bar_clone_ev = search_bar.clone();
     let ev_ctrl_search = gtk::EventControllerKey::new();
     ev_ctrl_search.connect_key_pressed(move |_, keyval, _, state| {
-        if (keyval == gtk::gdk::Key::f || keyval == gtk::gdk::Key::F) && state.contains(gtk::gdk::ModifierType::CONTROL_MASK) && state.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+        if (keyval == gtk::gdk::Key::f || keyval == gtk::gdk::Key::F)
+            && state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            && state.contains(gtk::gdk::ModifierType::SHIFT_MASK)
+        {
             if !search_bar_clone_ev.is_visible() {
                 search_bar_clone_ev.reveal();
             } else {
@@ -81,7 +84,7 @@ pub(super) fn setup_gestures(
     let middle_gesture = gtk::GestureClick::new();
     middle_gesture.set_button(gdk::BUTTON_MIDDLE);
     middle_gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-    
+
     let term_for_middle_click = terminal.clone();
     middle_gesture.connect_pressed(move |gesture: &gtk::GestureClick, _n_press, _x, _y| {
         gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -119,7 +122,7 @@ pub(super) fn setup_gestures(
             let (match_opt, _tag) = term_for_click.check_match_at(x, y);
             if let Some(matched) = match_opt {
                 let matched_str = matched.to_string();
-                
+
                 if matched_str.starts_with("http://") || matched_str.starts_with("https://") {
                     path_to_copy = Some(matched_str);
                 } else {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{RwLock, OnceCell};
+use tokio::sync::{OnceCell, RwLock};
 
 #[derive(Clone, Debug)]
 pub struct PaneState {
@@ -22,9 +22,10 @@ pub struct WorkspaceRegistry {
 static WORKSPACE: OnceCell<Arc<WorkspaceRegistry>> = OnceCell::const_new();
 
 pub async fn global_workspace() -> Arc<WorkspaceRegistry> {
-    WORKSPACE.get_or_init(|| async {
-        Arc::new(WorkspaceRegistry::new())
-    }).await.clone()
+    WORKSPACE
+        .get_or_init(|| async { Arc::new(WorkspaceRegistry::new()) })
+        .await
+        .clone()
 }
 
 impl WorkspaceRegistry {
@@ -35,7 +36,13 @@ impl WorkspaceRegistry {
         }
     }
 
-    pub async fn update_pane_state(&self, id: String, cwd: String, last_command: Option<String>, snapshot: Option<String>) {
+    pub async fn update_pane_state(
+        &self,
+        id: String,
+        cwd: String,
+        last_command: Option<String>,
+        snapshot: Option<String>,
+    ) {
         let mut panes = self.panes.write().await;
         let entry = panes.entry(id.clone()).or_insert_with(|| PaneState {
             id,
@@ -70,11 +77,16 @@ impl WorkspaceRegistry {
         panes.get(&id).and_then(|p| p.last_snapshot.clone())
     }
 
-    pub async fn get_radar_for_project(&self, project_path: &str, current_pane_id: String) -> String {
+    pub async fn get_radar_for_project(
+        &self,
+        project_path: &str,
+        current_pane_id: String,
+    ) -> String {
         let panes = self.panes.read().await;
         let mut radar = String::new();
-        
-        let peers: Vec<_> = panes.values()
+
+        let peers: Vec<_> = panes
+            .values()
             .filter(|p| p.id != current_pane_id && p.cwd == project_path)
             .collect();
 
@@ -83,8 +95,15 @@ impl WorkspaceRegistry {
             radar.push_str("You can read these panes using `read_pane_buffer(id)` if needed.\n");
             for peer in peers {
                 let cmd = peer.last_command.as_deref().unwrap_or("idle");
-                let status = peer.status.as_deref().map(|s| format!(" | Status: {}", s)).unwrap_or_default();
-                radar.push_str(&format!("- Pane {}: Last command `{}`{}\n", peer.id, cmd, status));
+                let status = peer
+                    .status
+                    .as_deref()
+                    .map(|s| format!(" | Status: {}", s))
+                    .unwrap_or_default();
+                radar.push_str(&format!(
+                    "- Pane {}: Last command `{}`{}\n",
+                    peer.id, cmd, status
+                ));
             }
         }
 

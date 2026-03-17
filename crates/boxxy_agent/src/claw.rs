@@ -1,7 +1,7 @@
-use zbus::interface;
-use zbus::fdo;
-use tokio::process::Command;
 use std::process::Stdio;
+use tokio::process::Command;
+use zbus::fdo;
+use zbus::interface;
 
 #[derive(Default)]
 pub struct AgentClaw;
@@ -17,27 +17,31 @@ impl AgentClaw {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| fdo::Error::Failed(format!("Failed to spawn bash: {}", e)))?;
-            
-        let output = child.wait_with_output().await
+
+        let output = child
+            .wait_with_output()
+            .await
             .map_err(|e| fdo::Error::Failed(format!("Failed to wait for output: {}", e)))?;
-            
+
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let exit_code = output.status.code().unwrap_or(-1);
-        
+
         Ok((exit_code, stdout, stderr))
     }
-    
+
     /// Read a file from the host system.
     async fn read_file(&self, path: String) -> fdo::Result<String> {
         let blacklisted = load_blacklist();
-        
+
         for black_path in blacklisted {
             if path.contains(&black_path) {
-                return Err(fdo::Error::Failed("Path is blacklisted for security reasons".to_string()));
+                return Err(fdo::Error::Failed(
+                    "Path is blacklisted for security reasons".to_string(),
+                ));
             }
         }
-        
+
         match tokio::fs::read_to_string(&path).await {
             Ok(content) => Ok(content),
             Err(e) => Err(fdo::Error::Failed(format!("Failed to read file: {}", e))),
@@ -47,13 +51,15 @@ impl AgentClaw {
     /// Write a file to the host system.
     async fn write_file(&self, path: String, content: String) -> fdo::Result<()> {
         let blacklisted = load_blacklist();
-        
+
         for black_path in blacklisted {
             if path.contains(&black_path) {
-                return Err(fdo::Error::Failed("Path is blacklisted for security reasons".to_string()));
+                return Err(fdo::Error::Failed(
+                    "Path is blacklisted for security reasons".to_string(),
+                ));
             }
         }
-        
+
         match tokio::fs::write(&path, content).await {
             Ok(_) => Ok(()),
             Err(e) => Err(fdo::Error::Failed(format!("Failed to write file: {}", e))),

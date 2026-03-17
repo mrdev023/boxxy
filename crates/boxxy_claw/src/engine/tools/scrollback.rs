@@ -1,7 +1,7 @@
-use rig::tool::Tool;
-use rig::completion::ToolDefinition;
-use serde::{Deserialize, Serialize};
 use crate::engine::ClawEngineEvent;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct ReadScrollbackArgs {
@@ -31,7 +31,8 @@ impl Tool for ReadScrollbackTool {
             description: "Read older lines from your terminal's scrollback history. \
             By default you only see the last 100 lines. Use this tool if an error or context \
             you need to analyze happened further up in the terminal history. \
-            Provides structured semantic blocks (PROMPT, COMMAND, OUTPUT).".to_string(),
+            Provides structured semantic blocks (PROMPT, COMMAND, OUTPUT)."
+                .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -51,7 +52,7 @@ impl Tool for ReadScrollbackTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        
+
         let req = ClawEngineEvent::RequestScrollback {
             max_lines: args.max_lines,
             offset_lines: args.offset_lines,
@@ -59,12 +60,16 @@ impl Tool for ReadScrollbackTool {
         };
 
         if let Err(e) = self.tx_ui.send(req).await {
-            return Err(std::io::Error::other(format!("Failed to send scrollback request: {e}")));
+            return Err(std::io::Error::other(format!(
+                "Failed to send scrollback request: {e}"
+            )));
         }
 
         match reply_rx.await {
             Ok(text) => Ok(ReadScrollbackOutput { text }),
-            Err(e) => Err(std::io::Error::other(format!("Failed to receive scrollback: {e}"))),
+            Err(e) => Err(std::io::Error::other(format!(
+                "Failed to receive scrollback: {e}"
+            ))),
         }
     }
 }

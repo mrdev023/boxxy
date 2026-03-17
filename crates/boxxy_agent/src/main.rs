@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
-use std::os::unix::io::{FromRawFd, OwnedFd};
-use tokio::io::unix::AsyncFd;
-use tokio::io::Interest;
-use tokio::net::UnixStream;
-use tokio::signal::unix::{signal, SignalKind};
-use zbus::connection::Builder;
 use boxxy_agent::ipc::BoxxyAgent;
+use std::os::unix::io::{FromRawFd, OwnedFd};
+use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
+use tokio::net::UnixStream;
+use tokio::signal::unix::{SignalKind, signal};
+use zbus::connection::Builder;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,21 +21,28 @@ async fn main() -> Result<()> {
     let fd_arg = args.iter().find(|a| a.starts_with("--socket-fd="));
 
     let stream = if let Some(fd_str) = fd_arg {
-        let fd_num: i32 = fd_str.strip_prefix("--socket-fd=").unwrap().parse()
+        let fd_num: i32 = fd_str
+            .strip_prefix("--socket-fd=")
+            .unwrap()
+            .parse()
             .context("Failed to parse --socket-fd")?;
         log::info!("Using inherited FD: {}", fd_num);
-        
+
         // Log environment for debugging host escape
         log::info!("Agent HOME: {:?}", std::env::var("HOME"));
         log::info!("Agent SHELL: {:?}", std::env::var("SHELL"));
         log::info!("Agent PATH: {:?}", std::env::var("PATH"));
 
         let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd_num) };
-        std_stream.set_nonblocking(true).context("Failed to set socket non-blocking")?;
+        std_stream
+            .set_nonblocking(true)
+            .context("Failed to set socket non-blocking")?;
         UnixStream::from_std(std_stream).context("Failed to create tokio UnixStream from std")?
     } else {
         // Fallback for native path: UI passes the Unix socket path as the first argument.
-        let socket_path = args.get(1).context("Expected --socket-fd or socket path as first argument")?;
+        let socket_path = args
+            .get(1)
+            .context("Expected --socket-fd or socket path as first argument")?;
         log::info!("Connecting to socket: {}", socket_path);
         UnixStream::connect(socket_path)
             .await
@@ -70,10 +77,9 @@ async fn main() -> Result<()> {
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
     }
 
-    let mut sigterm = signal(SignalKind::terminate())
-        .context("Failed to set up SIGTERM handler")?;
-    let mut sighup = signal(SignalKind::hangup())
-        .context("Failed to set up SIGHUP handler")?;
+    let mut sigterm =
+        signal(SignalKind::terminate()).context("Failed to set up SIGTERM handler")?;
+    let mut sighup = signal(SignalKind::hangup()).context("Failed to set up SIGHUP handler")?;
 
     // Wait for shutdown: SIGTERM/SIGHUP from parent death (PDEATHSIG), or socket
     // HUP when the UI closes its end of the socket on exit.

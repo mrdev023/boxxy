@@ -1,9 +1,9 @@
-use gtk4 as gtk;
-use gtk::prelude::*;
-use gtk::pango;
-use sourceview5::prelude::*;
+use crate::markdown::{Segment, parse_segments, push_escaped, to_pango};
 use crate::types::{ChatMessage, Role};
-use crate::markdown::{parse_segments, Segment, to_pango, push_escaped};
+use gtk::pango;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use sourceview5::prelude::*;
 
 pub fn build_code_block(lang: &str, code: &str) -> gtk::Box {
     let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -36,9 +36,10 @@ pub fn build_code_block(lang: &str, code: &str) -> gtk::Box {
 
     // Syntax highlighting by language
     if !lang.is_empty()
-        && let Some(language) = sourceview5::LanguageManager::default().language(lang) {
-            buffer.set_language(Some(&language));
-        }
+        && let Some(language) = sourceview5::LanguageManager::default().language(lang)
+    {
+        buffer.set_language(Some(&language));
+    }
 
     // Pick a style scheme that matches dark/light mode
     let scheme_id = if libadwaita::StyleManager::default().is_dark() {

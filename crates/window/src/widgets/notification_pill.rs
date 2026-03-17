@@ -1,9 +1,9 @@
-use gtk4 as gtk;
+use crate::widgets::notification::Notification;
+use gtk::CompositeTemplate;
+use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::glib;
-use gtk::CompositeTemplate;
-use crate::widgets::notification::Notification;
+use gtk4 as gtk;
 
 mod imp {
     use super::*;
@@ -15,7 +15,7 @@ mod imp {
         pub icon: TemplateChild<gtk::Image>,
         #[template_child]
         pub label: TemplateChild<gtk::Label>,
-        
+
         pub notification: std::cell::RefCell<Option<Notification>>,
     }
 

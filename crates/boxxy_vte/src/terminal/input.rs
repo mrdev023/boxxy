@@ -34,33 +34,51 @@ pub fn translate_key(key: Key, modifiers: ModifierType, is_app_cursor: bool) -> 
             return Some(bytes);
         }
         Key::Up => {
-            if is_app_cursor { bytes.extend_from_slice(b"\x1bOA"); }
-            else { bytes.extend_from_slice(b"\x1b[A"); }
+            if is_app_cursor {
+                bytes.extend_from_slice(b"\x1bOA");
+            } else {
+                bytes.extend_from_slice(b"\x1b[A");
+            }
             return Some(bytes);
         }
         Key::Down => {
-            if is_app_cursor { bytes.extend_from_slice(b"\x1bOB"); }
-            else { bytes.extend_from_slice(b"\x1b[B"); }
+            if is_app_cursor {
+                bytes.extend_from_slice(b"\x1bOB");
+            } else {
+                bytes.extend_from_slice(b"\x1b[B");
+            }
             return Some(bytes);
         }
         Key::Right => {
-            if is_app_cursor { bytes.extend_from_slice(b"\x1bOC"); }
-            else { bytes.extend_from_slice(b"\x1b[C"); }
+            if is_app_cursor {
+                bytes.extend_from_slice(b"\x1bOC");
+            } else {
+                bytes.extend_from_slice(b"\x1b[C");
+            }
             return Some(bytes);
         }
         Key::Left => {
-            if is_app_cursor { bytes.extend_from_slice(b"\x1bOD"); }
-            else { bytes.extend_from_slice(b"\x1b[D"); }
+            if is_app_cursor {
+                bytes.extend_from_slice(b"\x1bOD");
+            } else {
+                bytes.extend_from_slice(b"\x1b[D");
+            }
             return Some(bytes);
         }
         Key::Home => {
-            if is_app_cursor { bytes.extend_from_slice(b"\x1bOH"); }
-            else { bytes.extend_from_slice(b"\x1b[H"); }
+            if is_app_cursor {
+                bytes.extend_from_slice(b"\x1bOH");
+            } else {
+                bytes.extend_from_slice(b"\x1b[H");
+            }
             return Some(bytes);
         }
         Key::End => {
-            if is_app_cursor { bytes.extend_from_slice(b"\x1bOF"); }
-            else { bytes.extend_from_slice(b"\x1b[F"); }
+            if is_app_cursor {
+                bytes.extend_from_slice(b"\x1bOF");
+            } else {
+                bytes.extend_from_slice(b"\x1b[F");
+            }
             return Some(bytes);
         }
         Key::Page_Up => {
@@ -140,9 +158,5 @@ pub fn translate_key(key: Key, modifiers: ModifierType, is_app_cursor: bool) -> 
         }
     }
 
-    if bytes.is_empty() {
-        None
-    } else {
-        Some(bytes)
-    }
+    if bytes.is_empty() { None } else { Some(bytes) }
 }

@@ -1,7 +1,7 @@
-use gtk4 as gtk;
 use gtk::prelude::*;
-use std::rc::Rc;
+use gtk4 as gtk;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct ClawIndicator {
@@ -38,12 +38,10 @@ impl ClawIndicator {
         hbox.set_margin_end(4);
 
         // We wrap the main content in a flat button so it's clickable
-        let main_btn = gtk::Button::builder()
-            .css_classes(["flat"])
-            .build();
-        
+        let main_btn = gtk::Button::builder().css_classes(["flat"]).build();
+
         let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        
+
         let spinner = gtk::Spinner::new();
         spinner.add_css_class("claw-spinner");
         btn_box.append(&spinner);
@@ -52,11 +50,11 @@ impl ClawIndicator {
         icon.add_css_class("accent");
         icon.set_pixel_size(16);
         btn_box.append(&icon);
-        
+
         let label = gtk::Label::new(Some("Working"));
         label.add_css_class("caption");
         btn_box.append(&label);
-        
+
         main_btn.set_child(Some(&btn_box));
         hbox.append(&main_btn);
 
@@ -79,7 +77,7 @@ impl ClawIndicator {
         revealer.set_child(Some(&frame));
 
         let action_type = Rc::new(RefCell::new(0));
-        
+
         let action_clone = action_type.clone();
         main_btn.connect_clicked(move |_| {
             let action = *action_clone.borrow();
@@ -114,7 +112,7 @@ impl ClawIndicator {
         self.main_btn.set_can_focus(false);
         self.revealer.set_reveal_child(true);
     }
-    
+
     pub fn show_lazy_error(&self) {
         *self.action_type.borrow_mut() = 1;
         self.spinner.stop();
@@ -124,7 +122,7 @@ impl ClawIndicator {
         self.label.set_text("Fix Available");
         self.main_btn.set_can_focus(true);
         self.revealer.set_reveal_child(true);
-        
+
         // Auto-hide after 5 seconds
         let rev_clone = self.revealer.clone();
         gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(5000), move || {
@@ -143,7 +141,7 @@ impl ClawIndicator {
         self.label.set_text("Solution Ready");
         self.main_btn.set_can_focus(true);
         self.revealer.set_reveal_child(true);
-        
+
         // Auto-hide after 5 seconds
         let rev_clone = self.revealer.clone();
         gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(5000), move || {

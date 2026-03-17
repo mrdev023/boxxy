@@ -1,9 +1,9 @@
-use rig::tool::Tool;
-use rig::completion::ToolDefinition;
-use serde::{Deserialize, Serialize};
-use boxxy_agent::ipc::AgentClawProxy;
 use crate::engine::ClawEngineEvent;
 use crate::engine::session::SessionState;
+use boxxy_agent::ipc::AgentClawProxy;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct FileReadArgs {
@@ -19,7 +19,10 @@ fn resolve_path(base: &str, path: &str) -> String {
     if base.is_empty() {
         path.to_string()
     } else {
-        std::path::Path::new(base).join(path).to_string_lossy().to_string()
+        std::path::Path::new(base)
+            .join(path)
+            .to_string_lossy()
+            .to_string()
     }
 }
 
@@ -30,7 +33,7 @@ pub struct FileReadTool {
 
 impl Tool for FileReadTool {
     const NAME: &'static str = "file_read";
-    
+
     type Error = std::io::Error;
     type Args = FileReadArgs;
     type Output = FileReadOutput;
@@ -82,7 +85,7 @@ pub struct FileWriteTool {
 
 impl Tool for FileWriteTool {
     const NAME: &'static str = "file_write";
-    
+
     type Error = std::io::Error;
     type Args = FileWriteArgs;
     type Output = FileWriteOutput;
@@ -111,22 +114,34 @@ impl Tool for FileWriteTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let path = resolve_path(&self.current_dir, &args.path);
-        
+
         {
             let mut state = self.state.lock().await;
             state.pending_file_reply = Some(tx);
         }
 
-        if let Err(e) = self.tx_ui.send(ClawEngineEvent::ProposeFileWrite {
-            path: path.clone(),
-            content: args.content.clone(),
-        }).await {
-            return Err(std::io::Error::other(format!("Failed to send proposal to UI: {e}")));
+        if let Err(e) = self
+            .tx_ui
+            .send(ClawEngineEvent::ProposeFileWrite {
+                path: path.clone(),
+                content: args.content.clone(),
+            })
+            .await
+        {
+            return Err(std::io::Error::other(format!(
+                "Failed to send proposal to UI: {e}"
+            )));
         }
 
-        let _ = self.tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: false }).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::AgentThinking { is_thinking: false })
+            .await;
         let approved = rx.await.unwrap_or(false);
-        let _ = self.tx_ui.send(ClawEngineEvent::AgentThinking { is_thinking: true }).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::AgentThinking { is_thinking: true })
+            .await;
 
         if approved {
             match self.proxy.write_file(path.clone(), args.content).await {
@@ -134,7 +149,9 @@ impl Tool for FileWriteTool {
                     success: true,
                     message: format!("Successfully wrote to {path}"),
                 }),
-                Err(e) => Err(std::io::Error::other(format!("IPC Error writing file: {e}"))),
+                Err(e) => Err(std::io::Error::other(format!(
+                    "IPC Error writing file: {e}"
+                ))),
             }
         } else {
             Ok(FileWriteOutput {

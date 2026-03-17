@@ -1,10 +1,10 @@
-pub mod config;
-pub mod component;
-pub mod shortcuts;
 pub mod about;
-pub mod apis;
-pub mod previews;
 pub mod advanced;
+pub mod apis;
 pub mod appearance;
-pub use config::{AppState, CursorShape, Settings, ImagePreviewTrigger, SETTINGS_EVENT_BUS};
+pub mod component;
+pub mod config;
+pub mod previews;
+pub mod shortcuts;
 pub use component::PreferencesComponent;
+pub use config::{AppState, CursorShape, ImagePreviewTrigger, SETTINGS_EVENT_BUS, Settings};

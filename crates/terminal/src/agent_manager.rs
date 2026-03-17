@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use boxxy_agent::ipc::{AgentClawProxy, AgentProxy, SpawnOptions};
 use tokio::net::UnixStream;
 use zbus::connection::Builder;
-use boxxy_agent::ipc::{SpawnOptions, AgentProxy, AgentClawProxy};
 use zbus::zvariant::OwnedFd;
 
 #[derive(Clone)]
@@ -17,15 +17,20 @@ impl AgentManager {
             let (local_stream, remote_stream) = tokio::net::UnixStream::pair()?;
             log::info!("Attempting to spawn host agent...");
             if let Err(e) = Self::spawn_agent_on_host(&remote_stream).await {
-                log::warn!("Failed to spawn host agent: {:?}. Will try sandbox fallback.", e);
+                log::warn!(
+                    "Failed to spawn host agent: {:?}. Will try sandbox fallback.",
+                    e
+                );
             } else {
                 log::info!("Host agent spawned, waiting for connection...");
             }
-            
+
             let host_proxy = match tokio::time::timeout(
                 std::time::Duration::from_millis(1500),
-                Self::connect_to_proxy(local_stream)
-            ).await {
+                Self::connect_to_proxy(local_stream),
+            )
+            .await
+            {
                 Ok(Ok(proxies)) => {
                     log::info!("Host agent connected successfully.");
                     Some(proxies)
@@ -55,10 +60,11 @@ impl AgentManager {
 
             let (proxy, claw_proxy) = tokio::time::timeout(
                 std::time::Duration::from_millis(1500),
-                Self::connect_to_proxy(local_stream)
-            ).await
+                Self::connect_to_proxy(local_stream),
+            )
+            .await
             .context("Sandbox fallback agent connection timed out")??;
-            
+
             log::info!("Sandbox fallback agent connected.");
             Ok(Self { proxy, claw_proxy })
         } else {
@@ -68,15 +74,18 @@ impl AgentManager {
 
             let (proxy, claw_proxy) = tokio::time::timeout(
                 std::time::Duration::from_millis(2000),
-                Self::connect_to_proxy(local_stream)
-            ).await
+                Self::connect_to_proxy(local_stream),
+            )
+            .await
             .context("Native agent connection timed out")??;
 
             Ok(Self { proxy, claw_proxy })
         }
     }
 
-    async fn connect_to_proxy(stream: UnixStream) -> Result<(AgentProxy<'static>, AgentClawProxy<'static>)> {
+    async fn connect_to_proxy(
+        stream: UnixStream,
+    ) -> Result<(AgentProxy<'static>, AgentClawProxy<'static>)> {
         let guid = zbus::Guid::generate();
         let connection = Builder::unix_stream(stream)
             .p2p()
@@ -90,13 +99,13 @@ impl AgentManager {
             .build()
             .await
             .context("Failed to create AgentProxy")?;
-            
+
         let claw_proxy = AgentClawProxy::builder(&connection)
             .destination("play.mii.Boxxy.AgentClaw")?
             .build()
             .await
             .context("Failed to create AgentClawProxy")?;
-            
+
         Ok((proxy, claw_proxy))
     }
 
@@ -122,7 +131,11 @@ impl AgentManager {
         use std::os::unix::io::AsRawFd;
         let fd = remote_stream.as_raw_fd();
         let agent_path = Self::find_agent_host_path();
-        log::info!("Spawning host agent: {} via FD 3 (mapped from {})", agent_path, fd);
+        log::info!(
+            "Spawning host agent: {} via FD 3 (mapped from {})",
+            agent_path,
+            fd
+        );
 
         let mut cmd = std::process::Command::new("flatpak-spawn");
         cmd.args([
@@ -130,7 +143,7 @@ impl AgentManager {
             "--watch-bus",
             "--forward-fd=3",
             &agent_path,
-            "--socket-fd=3"
+            "--socket-fd=3",
         ]);
         cmd.stderr(std::process::Stdio::piped());
 
@@ -157,7 +170,10 @@ impl AgentManager {
         if let Some(stderr) = child.stderr.take() {
             tokio::task::spawn_blocking(move || {
                 use std::io::BufRead;
-                for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                for line in std::io::BufReader::new(stderr)
+                    .lines()
+                    .map_while(Result::ok)
+                {
                     log::warn!("[flatpak-spawn] {}", line);
                 }
             });
@@ -251,27 +267,44 @@ impl AgentManager {
     }
 
     pub async fn get_preferred_shell(&self) -> Result<String> {
-        self.proxy.get_preferred_shell().await.context("Agent get_preferred_shell failed")
+        self.proxy
+            .get_preferred_shell()
+            .await
+            .context("Agent get_preferred_shell failed")
     }
 
     pub async fn create_pty(&self) -> Result<OwnedFd> {
-        self.proxy.create_pty().await.context("Agent create_pty failed")
+        self.proxy
+            .create_pty()
+            .await
+            .context("Agent create_pty failed")
     }
 
     pub async fn spawn_process(&self, pty_master: OwnedFd, options: SpawnOptions) -> Result<u32> {
-        self.proxy.spawn(pty_master, options).await.context("Agent spawn failed")
+        self.proxy
+            .spawn(pty_master, options)
+            .await
+            .context("Agent spawn failed")
     }
 
     pub async fn get_cwd(&self, pid: u32) -> Result<String> {
-        self.proxy.get_cwd(pid).await.context("Agent get_cwd failed")
+        self.proxy
+            .get_cwd(pid)
+            .await
+            .context("Agent get_cwd failed")
     }
 
     pub async fn get_foreground_process(&self, pid: u32) -> Result<String> {
-        self.proxy.get_foreground_process(pid).await.context("Agent get_foreground_process failed")
+        self.proxy
+            .get_foreground_process(pid)
+            .await
+            .context("Agent get_foreground_process failed")
     }
 
     pub async fn get_running_processes(&self, pid: u32) -> Result<Vec<(u32, String)>> {
-        self.proxy.get_running_processes(pid).await.context("Agent get_running_processes failed")
+        self.proxy
+            .get_running_processes(pid)
+            .await
+            .context("Agent get_running_processes failed")
     }
 }
-

@@ -1,9 +1,9 @@
-use rig::tool::Tool;
+use chrono::Local;
 use rig::completion::ToolDefinition;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
-use chrono::Local;
 
 #[derive(Deserialize)]
 pub struct MemoryArgs {
@@ -21,7 +21,7 @@ pub struct MemoryTool;
 
 impl Tool for MemoryTool {
     const NAME: &'static str = "remember_fact";
-    
+
     type Error = std::io::Error;
     type Args = MemoryArgs;
     type Output = MemoryOutput;
@@ -48,7 +48,7 @@ impl Tool for MemoryTool {
         if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
             let config_dir = dirs.config_dir();
             let memory_path = config_dir.join("boxxyclaw").join("CLAW_STATE.md");
-            
+
             // Ensure directory exists
             if let Some(parent) = memory_path.parent() {
                 let _ = std::fs::create_dir_all(parent);

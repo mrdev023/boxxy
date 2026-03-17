@@ -1,10 +1,10 @@
 use crate::config::{CursorShape, Settings};
-use libadwaita as adw;
-use gtk4 as gtk;
-use gtk::{pango, gdk};
 use adw::prelude::*;
-use std::rc::Rc;
+use gtk::{gdk, pango};
+use gtk4 as gtk;
+use libadwaita as adw;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct AppearanceWidgets {
     pub theme_row: adw::ActionRow,
@@ -30,8 +30,10 @@ pub fn setup_appearance_page(
     let hide_scrollbars_switch: adw::SwitchRow = builder.object("hide_scrollbars_switch").unwrap();
     let invert_scroll_switch: adw::SwitchRow = builder.object("invert_scroll_switch").unwrap();
     let dim_inactive_switch: adw::SwitchRow = builder.object("dim_inactive_switch").unwrap();
-    let always_show_tabs_switch: adw::SwitchRow = builder.object("always_show_tabs_switch").unwrap();
-    let fixed_width_tabs_switch: adw::SwitchRow = builder.object("fixed_width_tabs_switch").unwrap();
+    let always_show_tabs_switch: adw::SwitchRow =
+        builder.object("always_show_tabs_switch").unwrap();
+    let fixed_width_tabs_switch: adw::SwitchRow =
+        builder.object("fixed_width_tabs_switch").unwrap();
     let chat_width_spin: adw::SpinRow = builder.object("chat_width_spin").unwrap();
 
     let group_font: adw::PreferencesGroup = builder.object("group_font").unwrap();
@@ -53,20 +55,28 @@ pub fn setup_appearance_page(
     let cb = on_change.clone();
     font_button.connect_font_desc_notify(move |btn| {
         if let Some(desc) = btn.font_desc()
-            && let Some(family) = desc.family() {
-                let size_pt = (desc.size() / pango::SCALE).max(6) as u16;
-                let mut s = s_rc.borrow_mut();
-                if s.font_name != family || s.font_size != size_pt {
-                    s.font_name = family.to_string();
-                    s.font_size = size_pt;
-                    s.save();
-                    cb(s.clone());
-                }
+            && let Some(family) = desc.family()
+        {
+            let size_pt = (desc.size() / pango::SCALE).max(6) as u16;
+            let mut s = s_rc.borrow_mut();
+            if s.font_name != family || s.font_size != size_pt {
+                s.font_name = family.to_string();
+                s.font_size = size_pt;
+                s.save();
+                cb(s.clone());
             }
+        }
     });
 
     // 2. Adjustments
-    let padding_adj = gtk::Adjustment::new(settings_rc.borrow().padding as f64, 0.0, 60.0, 2.0, 8.0, 0.0);
+    let padding_adj = gtk::Adjustment::new(
+        settings_rc.borrow().padding as f64,
+        0.0,
+        60.0,
+        2.0,
+        8.0,
+        0.0,
+    );
     padding_spin.set_adjustment(Some(&padding_adj));
     padding_spin.set_value(settings_rc.borrow().padding as f64);
     let s_rc = settings_rc.clone();
@@ -81,7 +91,14 @@ pub fn setup_appearance_page(
         }
     });
 
-    let line_spacing_adj = gtk::Adjustment::new(settings_rc.borrow().cell_height_scale, 1.0, 3.0, 0.1, 0.5, 0.0);
+    let line_spacing_adj = gtk::Adjustment::new(
+        settings_rc.borrow().cell_height_scale,
+        1.0,
+        3.0,
+        0.1,
+        0.5,
+        0.0,
+    );
     line_spacing_spin.set_adjustment(Some(&line_spacing_adj));
     line_spacing_spin.set_value(settings_rc.borrow().cell_height_scale);
     let s_rc = settings_rc.clone();
@@ -95,7 +112,14 @@ pub fn setup_appearance_page(
         }
     });
 
-    let col_spacing_adj = gtk::Adjustment::new(settings_rc.borrow().cell_width_scale, 1.0, 3.0, 0.1, 0.5, 0.0);
+    let col_spacing_adj = gtk::Adjustment::new(
+        settings_rc.borrow().cell_width_scale,
+        1.0,
+        3.0,
+        0.1,
+        0.5,
+        0.0,
+    );
     col_spacing_spin.set_adjustment(Some(&col_spacing_adj));
     col_spacing_spin.set_value(settings_rc.borrow().cell_width_scale);
     let s_rc = settings_rc.clone();
@@ -109,7 +133,14 @@ pub fn setup_appearance_page(
         }
     });
 
-    let chat_width_adj = gtk::Adjustment::new(settings_rc.borrow().ai_chat_width as f64, 360.0, 800.0, 10.0, 50.0, 0.0);
+    let chat_width_adj = gtk::Adjustment::new(
+        settings_rc.borrow().ai_chat_width as f64,
+        360.0,
+        800.0,
+        10.0,
+        50.0,
+        0.0,
+    );
     chat_width_spin.set_adjustment(Some(&chat_width_adj));
     chat_width_spin.set_value(settings_rc.borrow().ai_chat_width as f64);
     let s_rc = settings_rc.clone();
@@ -239,7 +270,7 @@ pub fn setup_appearance_page(
     if let Ok(rgba) = gdk::RGBA::parse(&settings_rc.borrow().cursor_color) {
         cursor_color_button.set_rgba(&rgba);
     }
-    
+
     // Add color picker to the row (as a prefix to keep it to the left of the switch)
     cursor_color_row.add_prefix(&cursor_color_button);
 
@@ -316,23 +347,50 @@ pub fn setup_appearance_page(
         let t2 = match_row(padding_spin_clone.upcast_ref(), "padding px");
         let t3 = match_row(line_spacing_spin_clone.upcast_ref(), "line spacing");
         let t4 = match_row(col_spacing_spin_clone.upcast_ref(), "column spacing");
-        let t5 = match_row(preserve_cwd_switch_clone.upcast_ref(), "preserve working directory new tabs open in active tab directory");
+        let t5 = match_row(
+            preserve_cwd_switch_clone.upcast_ref(),
+            "preserve working directory new tabs open in active tab directory",
+        );
         let c1 = match_row(cursor_shape_combo_clone.upcast_ref(), "cursor shape");
         let c3 = match_row(cursor_color_row_clone.upcast_ref(), "cursor custom color");
-        let c4 = match_row(cursor_blinking_switch_clone.upcast_ref(), "blinking cursor fades in out");
-        let l1 = match_row(hide_scrollbars_switch_clone.upcast_ref(), "hide scrollbars do not show vertical");
-        let l2 = match_row(invert_scroll_switch_clone.upcast_ref(), "invert scroll direction reverse mouse wheel");
-        let l3 = match_row(dim_inactive_switch_clone.upcast_ref(), "dim inactive panes terminal splits slightly");
-        let l4 = match_row(always_show_tabs_switch_clone.upcast_ref(), "always show tab bar");
-        let l5 = match_row(fixed_width_tabs_switch_clone.upcast_ref(), "fixed width tabs do not expand");
-        let l6 = match_row(chat_width_spin_clone.upcast_ref(), "sidebar width px hacky mouse resize overlay split view");
+        let c4 = match_row(
+            cursor_blinking_switch_clone.upcast_ref(),
+            "blinking cursor fades in out",
+        );
+        let l1 = match_row(
+            hide_scrollbars_switch_clone.upcast_ref(),
+            "hide scrollbars do not show vertical",
+        );
+        let l2 = match_row(
+            invert_scroll_switch_clone.upcast_ref(),
+            "invert scroll direction reverse mouse wheel",
+        );
+        let l3 = match_row(
+            dim_inactive_switch_clone.upcast_ref(),
+            "dim inactive panes terminal splits slightly",
+        );
+        let l4 = match_row(
+            always_show_tabs_switch_clone.upcast_ref(),
+            "always show tab bar",
+        );
+        let l5 = match_row(
+            fixed_width_tabs_switch_clone.upcast_ref(),
+            "fixed width tabs do not expand",
+        );
+        let l6 = match_row(
+            chat_width_spin_clone.upcast_ref(),
+            "sidebar width px hacky mouse resize overlay split view",
+        );
 
         group_font.set_visible(f1);
         group_terminal.set_visible(t1 || t2 || t3 || t4 || t5);
         group_cursor.set_visible(c1 || c3 || c4);
         group_layout.set_visible(l1 || l2 || l3 || l4 || l5 || l6);
-        
-        group_font.is_visible() || group_terminal.is_visible() || group_cursor.is_visible() || group_layout.is_visible()
+
+        group_font.is_visible()
+            || group_terminal.is_visible()
+            || group_cursor.is_visible()
+            || group_layout.is_visible()
     });
 
     (widgets, filter)

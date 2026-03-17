@@ -5,22 +5,22 @@ use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::time::Duration;
-use std::os::fd::AsRawFd;
 
-use log::error;
-use tokio::io::unix::AsyncFd;
-use arc_swap::ArcSwap;
+use crate::engine::ansi;
 use crate::engine::event::{self, Event, EventListener, WindowSize};
-use crate::engine::term::ClipboardType;
 use crate::engine::grid::Scroll;
 use crate::engine::index::{Column, Direction, Point, Side};
 use crate::engine::selection::{Selection, SelectionType};
-use crate::engine::term::{Term, RenderState};
-use crate::engine::tty::{EventedPty, EventedReadWrite};
+use crate::engine::term::ClipboardType;
+use crate::engine::term::{RenderState, Term};
 use crate::engine::tty;
-use crate::engine::ansi;
+use crate::engine::tty::{EventedPty, EventedReadWrite};
+use arc_swap::ArcSwap;
+use log::error;
+use tokio::io::unix::AsyncFd;
 
 /// Max bytes to read from the PTY before forced terminal synchronization.
 pub(crate) const READ_BUFFER_SIZE: usize = 0x10_0000;
@@ -82,20 +82,25 @@ where
     ) -> EventLoopResult<T, U> {
         let (tx, rx) = async_channel::unbounded();
         let render_state = Arc::new(ArcSwap::from_pointee(RenderState::new(&terminal)));
-        Ok((EventLoop {
-            pty,
-            tx,
-            rx,
-            terminal,
-            render_state: render_state.clone(),
-            event_proxy,
-            drain_on_exit,
-            ref_test,
-        }, render_state))
+        Ok((
+            EventLoop {
+                pty,
+                tx,
+                rx,
+                terminal,
+                render_state: render_state.clone(),
+                event_proxy,
+                drain_on_exit,
+                ref_test,
+            },
+            render_state,
+        ))
     }
 
     pub fn channel(&self) -> EventLoopSender {
-        EventLoopSender { sender: self.tx.clone() }
+        EventLoopSender {
+            sender: self.tx.clone(),
+        }
     }
 
     /// Spawn the event loop as a background Tokio task.
@@ -105,9 +110,13 @@ where
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
 
             let pty_fd = self.pty.reader().as_raw_fd();
-            let async_pty_reader = AsyncFd::new(pty_fd).expect("Failed to create AsyncFd for PTY reader");
+            let async_pty_reader =
+                AsyncFd::new(pty_fd).expect("Failed to create AsyncFd for PTY reader");
 
-            let async_signals = self.pty.child_event_fd().map(|fd| AsyncFd::new(fd).expect("Failed to create AsyncFd for signals"));
+            let async_signals = self
+                .pty
+                .child_event_fd()
+                .map(|fd| AsyncFd::new(fd).expect("Failed to create AsyncFd for signals"));
 
             let mut pipe = if self.ref_test {
                 Some(File::create("./boxxy.recording").expect("create boxxy recording"))
@@ -121,9 +130,13 @@ where
                 let sync_timeout = state.parser.sync_timeout().sync_timeout();
                 let needs_write = state.needs_write();
                 if needs_write {
-                    log::trace!("EventLoop: loop start, needs_write=true, write_list_len={}, writing={}", state.write_list.len(), state.writing.is_some());
+                    log::trace!(
+                        "EventLoop: loop start, needs_write=true, write_list_len={}, writing={}",
+                        state.write_list.len(),
+                        state.writing.is_some()
+                    );
                 }
-                
+
                 let sleep_fut = async {
                     if let Some(timeout) = sync_timeout {
                         tokio::time::sleep_until(tokio::time::Instant::from_std(timeout)).await;
@@ -142,7 +155,7 @@ where
                 };
 
                 let needs_write = state.needs_write();
-                
+
                 let write_fut = async {
                     if needs_write {
                         // The PTY reader and writer use the same underlying FD in our implementation.
@@ -173,7 +186,7 @@ where
                                     let is_app_cursor = self.terminal.mode().contains(crate::engine::term::TermMode::APP_CURSOR);
                                     let seq_up = if is_app_cursor { b"\x1bOA" } else { b"\x1b[A" };
                                     let seq_down = if is_app_cursor { b"\x1bOB" } else { b"\x1b[B" };
-                                    
+
                                     let lines = match scroll {
                                         Scroll::Delta(d) => d,
                                         Scroll::PageUp => 5,
@@ -181,7 +194,7 @@ where
                                         Scroll::Top => 50,
                                         Scroll::Bottom => -50,
                                     };
-                                    
+
                                     if lines > 0 {
                                         for _ in 0..lines {
                                             state.write_list.push_back(Cow::Borrowed(seq_up));
@@ -378,7 +391,7 @@ where
                         if unprocessed == 0 {
                             break;
                         }
-                    },
+                    }
                     _ => return Err(err),
                 },
             }
@@ -387,7 +400,9 @@ where
                 writer.write_all(&buf[..unprocessed]).unwrap();
             }
 
-            state.parser.advance(&mut self.terminal, &buf[..unprocessed]);
+            state
+                .parser
+                .advance(&mut self.terminal, &buf[..unprocessed]);
 
             processed += unprocessed;
             unprocessed = 0;
@@ -398,7 +413,8 @@ where
         }
 
         if state.parser.sync_bytes_count() < processed && processed > 0 {
-            self.render_state.store(Arc::new(RenderState::new(&self.terminal)));
+            self.render_state
+                .store(Arc::new(RenderState::new(&self.terminal)));
             self.event_proxy.send_event(Event::Wakeup);
         }
 
@@ -410,28 +426,35 @@ where
         state.ensure_next();
 
         'write_many: while let Some(mut current) = state.take_current() {
-            log::trace!("EventLoop: pty_write current chunk len={}", current.remaining_bytes().len());
+            log::trace!(
+                "EventLoop: pty_write current chunk len={}",
+                current.remaining_bytes().len()
+            );
             'write_one: loop {
                 match self.pty.writer().write(current.remaining_bytes()) {
                     Ok(0) => {
                         state.set_current(Some(current));
                         break 'write_many;
-                    },
+                    }
                     Ok(n) => {
-                        log::trace!("EventLoop: wrote {} bytes to PTY: {:?}", n, &current.remaining_bytes()[..n]);
+                        log::trace!(
+                            "EventLoop: wrote {} bytes to PTY: {:?}",
+                            n,
+                            &current.remaining_bytes()[..n]
+                        );
                         current.advance(n);
                         if current.finished() {
                             state.goto_next();
                             break 'write_one;
                         }
-                    },
+                    }
                     Err(err) => {
                         state.set_current(Some(current));
                         match err.kind() {
                             ErrorKind::Interrupted | ErrorKind::WouldBlock => break 'write_many,
                             _ => return Err(err),
                         }
-                    },
+                    }
                 }
             }
         }
@@ -458,7 +481,9 @@ impl event::Notify for Notifier {
             return Ok(());
         }
 
-        self.0.send(Msg::Input(bytes)).map_err(|e| std::io::Error::new(std::io::ErrorKind::BrokenPipe, e.to_string()))
+        self.0
+            .send(Msg::Input(bytes))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::BrokenPipe, e.to_string()))
     }
 }
 
@@ -539,7 +564,10 @@ impl State {
 impl Writing {
     #[inline]
     fn new(c: Cow<'static, [u8]>) -> Writing {
-        Writing { source: c, written: 0 }
+        Writing {
+            source: c,
+            written: 0,
+        }
     }
 
     #[inline]

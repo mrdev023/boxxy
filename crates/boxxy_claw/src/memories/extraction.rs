@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use boxxy_db::Db;
 use boxxy_db::store::Store;
-use log::info;
 use boxxy_model_selection::ModelProvider;
+use log::info;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub async fn extract_implicit_memory(
     db: Arc<Mutex<Option<Db>>>,
@@ -19,13 +19,10 @@ pub async fn extract_implicit_memory(
         "You are a background memory observer. Your job is to silently extract permanent facts, preferences, and project-specific paths from the conversation. \
         Output ONLY valid JSON. \
         If the user stated a permanent fact, return a JSON array under the key 'facts', with each object containing 'key' (snake_case) and 'content' (the fact). \
-        If the user's message is just a command or transient question, output exactly `{}`. Do not hallucinate."
+        If the user's message is just a command or transient question, output exactly `{}`. Do not hallucinate.",
     );
 
-    let prompt = format!(
-        "USER: {}\n\nASSISTANT: {}",
-        user_prompt, assistant_response
-    );
+    let prompt = format!("USER: {}\n\nASSISTANT: {}", user_prompt, assistant_response);
 
     if let Ok(response) = agent.prompt(&prompt).await {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response) {
@@ -50,7 +47,10 @@ pub async fn extract_implicit_memory(
                                         false,
                                     )
                                     .await;
-                                info!("Background Observer extracted Fact for project {}: {} -> {}", project_path, key, content);
+                                info!(
+                                    "Background Observer extracted Fact for project {}: {} -> {}",
+                                    project_path, key, content
+                                );
                             }
                         }
                         drop(db_guard);

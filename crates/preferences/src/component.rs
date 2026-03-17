@@ -1,9 +1,9 @@
-use crate::config::{Settings};
-use libadwaita::prelude::*;
-use libadwaita as adw;
+use crate::config::Settings;
 use gtk4 as gtk;
-use std::rc::Rc;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct PreferencesComponent {
@@ -24,7 +24,11 @@ impl std::fmt::Debug for PreferencesComponent {
 }
 
 impl PreferencesComponent {
-    pub fn new<F1: Fn(Settings) + 'static, F2: Fn() + 'static, F3: Fn() + 'static>(on_settings_changed: F1, on_open_themes: F2, on_reload_engine: F3) -> Self {
+    pub fn new<F1: Fn(Settings) + 'static, F2: Fn() + 'static, F3: Fn() + 'static>(
+        on_settings_changed: F1,
+        on_open_themes: F2,
+        on_reload_engine: F3,
+    ) -> Self {
         let settings_rc = Rc::new(RefCell::new(Settings::load()));
         let cb_rc = Rc::new(on_settings_changed);
 
@@ -66,13 +70,31 @@ impl PreferencesComponent {
         category_list.connect_row_selected(move |_, row| {
             if let Some(r) = row {
                 let name = match r.widget_name().as_str() {
-                    "nav_appearance" => { title_clone.set_title("Appearance"); "appearance" },
-                    "nav_previews" => { title_clone.set_title("Previews"); "previews" },
-                    "nav_apis" => { title_clone.set_title("APIs"); "apis" },
-                    "nav_shortcuts" => { title_clone.set_title("Shortcuts"); "shortcuts" },
-                    "nav_advanced" => { title_clone.set_title("Advanced"); "advanced" },
-                    "nav_about" => { title_clone.set_title("About"); "about" },
-                    _ => "appearance"
+                    "nav_appearance" => {
+                        title_clone.set_title("Appearance");
+                        "appearance"
+                    }
+                    "nav_previews" => {
+                        title_clone.set_title("Previews");
+                        "previews"
+                    }
+                    "nav_apis" => {
+                        title_clone.set_title("APIs");
+                        "apis"
+                    }
+                    "nav_shortcuts" => {
+                        title_clone.set_title("Shortcuts");
+                        "shortcuts"
+                    }
+                    "nav_advanced" => {
+                        title_clone.set_title("Advanced");
+                        "advanced"
+                    }
+                    "nav_about" => {
+                        title_clone.set_title("About");
+                        "about"
+                    }
+                    _ => "appearance",
                 };
                 stack_clone.set_visible_child_name(name);
             }
@@ -83,10 +105,22 @@ impl PreferencesComponent {
         let page_about: adw::PreferencesPage = builder.object("page_about").unwrap();
 
         // Initialize submodules
-        let (appearance_widgets, appearance_filter) = crate::appearance::setup_appearance_page(&builder, settings_rc.clone(), cb_rc.clone(), Rc::new(on_open_themes));
-        let previews_filter = crate::previews::setup_previews_page(&builder, settings_rc.clone(), cb_rc.clone());
-        let apis_filter = crate::apis::setup_apis_page(&builder, settings_rc.clone(), cb_rc.clone());
-        let advanced_filter = crate::advanced::setup_advanced_page(&builder, settings_rc.clone(), cb_rc.clone(), Rc::new(on_reload_engine));
+        let (appearance_widgets, appearance_filter) = crate::appearance::setup_appearance_page(
+            &builder,
+            settings_rc.clone(),
+            cb_rc.clone(),
+            Rc::new(on_open_themes),
+        );
+        let previews_filter =
+            crate::previews::setup_previews_page(&builder, settings_rc.clone(), cb_rc.clone());
+        let apis_filter =
+            crate::apis::setup_apis_page(&builder, settings_rc.clone(), cb_rc.clone());
+        let advanced_filter = crate::advanced::setup_advanced_page(
+            &builder,
+            settings_rc.clone(),
+            cb_rc.clone(),
+            Rc::new(on_reload_engine),
+        );
         let shortcuts_filter = crate::shortcuts::populate_shortcuts_page(&page_shortcuts);
         let about_filter = crate::about::populate_about_page(&page_about);
 
@@ -105,7 +139,7 @@ impl PreferencesComponent {
 
         search_entry.connect_search_changed(move |entry| {
             let query = entry.text().to_lowercase();
-            
+
             nav_appearance_clone.set_visible(appearance_filter(&query));
             nav_previews_clone.set_visible(previews_filter(&query));
             nav_apis_clone.set_visible(apis_filter(&query));
@@ -114,18 +148,29 @@ impl PreferencesComponent {
             nav_about_clone.set_visible(about_filter(&query));
 
             if let Some(selected) = list_clone.selected_row()
-                && !selected.is_visible() {
-                    for i in 0..6 {
-                        if let Some(row) = list_clone.row_at_index(i)
-                            && row.is_visible() {
-                                list_clone.select_row(Some(&row));
-                                break;
-                            }
+                && !selected.is_visible()
+            {
+                for i in 0..6 {
+                    if let Some(row) = list_clone.row_at_index(i)
+                        && row.is_visible()
+                    {
+                        list_clone.select_row(Some(&row));
+                        break;
                     }
                 }
+            }
         });
 
-        Self { dialog, stack, nav_shortcuts, nav_about, search_entry, theme_row, chat_width_spin, settings_rc }
+        Self {
+            dialog,
+            stack,
+            nav_shortcuts,
+            nav_about,
+            search_entry,
+            theme_row,
+            chat_width_spin,
+            settings_rc,
+        }
     }
 
     pub fn show(&self, parent: &gtk::Window) {
@@ -144,7 +189,11 @@ impl PreferencesComponent {
     }
 
     pub fn show_page(&self, page_name: &str) {
-        if let Some(list_box) = self.nav_shortcuts.parent().and_then(|p| p.downcast::<gtk::ListBox>().ok()) {
+        if let Some(list_box) = self
+            .nav_shortcuts
+            .parent()
+            .and_then(|p| p.downcast::<gtk::ListBox>().ok())
+        {
             if page_name == "shortcuts" {
                 list_box.select_row(Some(&self.nav_shortcuts));
             } else if page_name == "about" {
@@ -163,7 +212,8 @@ impl PreferencesComponent {
         *self.settings_rc.borrow_mut() = settings.clone();
         self.theme_row.set_subtitle(&settings.theme);
         if (self.chat_width_spin.value() - settings.ai_chat_width as f64).abs() > 1e-6 {
-            self.chat_width_spin.set_value(settings.ai_chat_width as f64);
+            self.chat_width_spin
+                .set_value(settings.ai_chat_width as f64);
         }
     }
 

@@ -10,7 +10,10 @@ pub fn load_session_context() -> String {
 
         // 1. Load Default Character (Boxxy)
         // For now, we just load Boxxy. Later, we'll allow selection.
-        let boxxy_md = boxxyclaw_dir.join("characters").join("boxxy").join("BOXXY.md");
+        let boxxy_md = boxxyclaw_dir
+            .join("characters")
+            .join("boxxy")
+            .join("BOXXY.md");
         if let Ok(content) = std::fs::read_to_string(boxxy_md) {
             context.push_str("\n--- CHARACTER ---\n");
             context.push_str(&content);
@@ -21,8 +24,10 @@ pub fn load_session_context() -> String {
         let memory_md = boxxyclaw_dir.join("CLAW_STATE.md");
         if let Ok(content) = std::fs::read_to_string(memory_md) {
             context.push_str("\n--- LONG-TERM MEMORY ---\n");
-            context.push_str("Below are facts, preferences, and lessons you've learned in past sessions. \
-            Respect these rules and use this information to be more helpful.\n\n");
+            context.push_str(
+                "Below are facts, preferences, and lessons you've learned in past sessions. \
+            Respect these rules and use this information to be more helpful.\n\n",
+            );
             context.push_str(&content);
             context.push('\n');
         }
@@ -31,19 +36,30 @@ pub fn load_session_context() -> String {
     context
 }
 
-pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_path: &str) -> String {
+pub async fn retrieve_memories(
+    db: &Option<boxxy_db::Db>,
+    query: &str,
+    project_path: &str,
+) -> String {
     if let Some(db) = db.as_ref() {
         let store = boxxy_db::store::Store::new(db.pool());
         let settings = boxxy_preferences::Settings::load();
 
-        let data = gtk4::gio::resources_lookup_data("/play/mii/Boxxy/prompts/memory_expansion.md", gtk4::gio::ResourceLookupFlags::NONE)
-            .expect("Failed to load memory_expansion prompt resource");
-        let expansion_prompt_template = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
-        
+        let data = gtk4::gio::resources_lookup_data(
+            "/play/mii/Boxxy/prompts/memory_expansion.md",
+            gtk4::gio::ResourceLookupFlags::NONE,
+        )
+        .expect("Failed to load memory_expansion prompt resource");
+        let expansion_prompt_template =
+            String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+
         let expansion_prompt = expansion_prompt_template.replace("{{query}}", query);
 
-        let model = settings.memory_model.as_ref().unwrap_or(&settings.claw_model);
-        
+        let model = settings
+            .memory_model
+            .as_ref()
+            .unwrap_or(&settings.claw_model);
+
         let creds = boxxy_ai_core::AiCredentials::new(
             settings.api_keys.clone(),
             settings.ollama_base_url.clone(),
@@ -52,12 +68,12 @@ pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_p
         let agent = boxxy_ai_core::create_agent(
             model,
             &creds,
-            "You are a search optimizer. Output only comma-separated keywords."
+            "You are a search optimizer. Output only comma-separated keywords.",
         );
 
         // Fallback to basic cleaned query if expansion fails
         let mut fts_query = query.replace('"', "").replace('\'', "").replace('?', "");
-        
+
         if let Ok(keywords) = agent.prompt(&expansion_prompt).await {
             let cleaned = keywords.trim().replace(", ", " OR ").replace(',', " OR ");
             // FTS5 can fail if the LLM outputs weird syntax, but we'll try it
@@ -84,7 +100,10 @@ pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_p
 
         // 1. Search Long-term Memories (Facts)
         // We pull more records initially (e.g., 20) and then filter by budget
-        if let Ok(memories) = store.search_memories(&fts_query, Some(project_path), 20).await {
+        if let Ok(memories) = store
+            .search_memories(&fts_query, Some(project_path), 20)
+            .await
+        {
             if !memories.is_empty() && current_budget_chars < max_budget_chars {
                 result.push_str("\n--- RELEVANT PREFERENCES & FACTS ---\n");
                 for mem in memories {
@@ -99,10 +118,15 @@ pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_p
         }
 
         // 2. Search Past Interactions (Summaries)
-        if let Ok(interactions) = store.search_interactions(&fts_query, Some(project_path), 20).await {
+        if let Ok(interactions) = store
+            .search_interactions(&fts_query, Some(project_path), 20)
+            .await
+        {
             if !interactions.is_empty() && current_budget_chars < max_budget_chars {
-                result.push_str("\n--- RELEVANT PAST INTERACTIONS ---\n\
-                Below are relevant experiences or facts you've encountered in previous sessions:\n");
+                result.push_str(
+                    "\n--- RELEVANT PAST INTERACTIONS ---\n\
+                Below are relevant experiences or facts you've encountered in previous sessions:\n",
+                );
                 for interaction in interactions {
                     let line = format!("- {}\n", interaction.content);
                     if current_budget_chars + line.len() > max_budget_chars {
@@ -123,18 +147,22 @@ pub async fn retrieve_memories(db: &Option<boxxy_db::Db>, query: &str, project_p
 }
 
 pub async fn summarize_and_store(
-    db: &Option<boxxy_db::Db>, 
-    user_query: &str, 
-    assistant_response: &str, 
+    db: &Option<boxxy_db::Db>,
+    user_query: &str,
+    assistant_response: &str,
     project_path: &str,
-    creds: boxxy_ai_core::AiCredentials
+    creds: boxxy_ai_core::AiCredentials,
 ) {
     let settings = boxxy_preferences::Settings::load();
-    
-    let data = gtk4::gio::resources_lookup_data("/play/mii/Boxxy/prompts/memory_summarizer.md", gtk4::gio::ResourceLookupFlags::NONE)
-        .expect("Failed to load memory_summarizer prompt resource");
-    let summarizer_prompt_template = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
-    
+
+    let data = gtk4::gio::resources_lookup_data(
+        "/play/mii/Boxxy/prompts/memory_summarizer.md",
+        gtk4::gio::ResourceLookupFlags::NONE,
+    )
+    .expect("Failed to load memory_summarizer prompt resource");
+    let summarizer_prompt_template =
+        String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+
     let summarizer_prompt = summarizer_prompt_template
         .replace("{{user_query}}", user_query)
         .replace("{{assistant_response}}", assistant_response);
@@ -143,15 +171,21 @@ pub async fn summarize_and_store(
     let agent = boxxy_ai_core::create_agent(
         &settings.claw_model,
         &creds,
-        "You are a concise summarizer. Output only the summary."
+        "You are a concise summarizer. Output only the summary.",
     );
 
     if let Ok(summary) = agent.prompt(&summarizer_prompt).await {
         if let Some(db) = db.as_ref() {
             let store = boxxy_db::store::Store::new(db.pool());
             // Store in interactions table (episodic memory)
-            let _ = store.add_interaction("global", Some(project_path), summary.trim(), None, None).await;
-            debug!("Stored new interaction summary for project {}: {}", project_path, summary.trim());
+            let _ = store
+                .add_interaction("global", Some(project_path), summary.trim(), None, None)
+                .await;
+            debug!(
+                "Stored new interaction summary for project {}: {}",
+                project_path,
+                summary.trim()
+            );
         }
     }
 }

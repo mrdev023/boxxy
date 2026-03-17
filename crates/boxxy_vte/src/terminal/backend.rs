@@ -1,12 +1,12 @@
-use std::sync::Arc;
 use std::io::{Read, Write};
 use std::os::unix::io::{AsRawFd, OwnedFd};
+use std::sync::Arc;
 
-use crate::engine::event::{Event, EventListener, WindowSize, OnResize};
-use crate::engine::event_loop::{EventLoop, Notifier, Msg};
-use crate::engine::term::{Config, Term, RenderState};
-use crate::engine::tty::{self, Options, EventedPty, EventedReadWrite, ChildEvent};
+use crate::engine::event::{Event, EventListener, OnResize, WindowSize};
+use crate::engine::event_loop::{EventLoop, Msg, Notifier};
 use crate::engine::grid::Dimensions;
+use crate::engine::term::{Config, RenderState, Term};
+use crate::engine::tty::{self, ChildEvent, EventedPty, EventedReadWrite, Options};
 use arc_swap::ArcSwap;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -37,7 +37,11 @@ pub struct ProxyAgentPty {
 impl Read for ProxyAgentPty {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let n = unsafe {
-            libc::read(self.master_fd.as_raw_fd(), buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+            libc::read(
+                self.master_fd.as_raw_fd(),
+                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.len(),
+            )
         };
         if n < 0 {
             let err = std::io::Error::last_os_error();
@@ -53,7 +57,11 @@ impl Read for ProxyAgentPty {
 impl Write for ProxyAgentPty {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let n = unsafe {
-            libc::write(self.master_fd.as_raw_fd(), buf.as_ptr() as *const libc::c_void, buf.len())
+            libc::write(
+                self.master_fd.as_raw_fd(),
+                buf.as_ptr() as *const libc::c_void,
+                buf.len(),
+            )
         };
         if n < 0 {
             let err = std::io::Error::last_os_error();
@@ -64,7 +72,9 @@ impl Write for ProxyAgentPty {
         }
         Ok(n as usize)
     }
-    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 impl AsRawFd for ProxyAgentPty {
@@ -77,8 +87,12 @@ impl EventedReadWrite for ProxyAgentPty {
     type Reader = Self;
     type Writer = Self;
 
-    fn reader(&mut self) -> &mut Self::Reader { self }
-    fn writer(&mut self) -> &mut Self::Writer { self }
+    fn reader(&mut self) -> &mut Self::Reader {
+        self
+    }
+    fn writer(&mut self) -> &mut Self::Writer {
+        self
+    }
 }
 
 impl OnResize for ProxyAgentPty {
@@ -173,19 +187,16 @@ impl TerminalBackend {
         let pending_wakeups = Arc::new(AtomicUsize::new(0));
 
         // Build the terminal state machine.
-        let proxy = GtkEventProxy { sender, pending_wakeups: pending_wakeups.clone() };
+        let proxy = GtkEventProxy {
+            sender,
+            pending_wakeups: pending_wakeups.clone(),
+        };
         let config = Config::default();
         let term = Term::new(config, &dim_size, proxy.clone());
 
         // Build the event loop and extract the channel half (Notifier) we need
         // to send input to the PTY without holding a reference to the loop.
-        let (event_loop, render_state) = EventLoop::new(
-            term,
-            proxy,
-            pty,
-            false,
-            false,
-        ).unwrap();
+        let (event_loop, render_state) = EventLoop::new(term, proxy, pty, false, false).unwrap();
 
         let notifier = Notifier(event_loop.channel());
 
@@ -219,19 +230,16 @@ impl TerminalBackend {
             pixel_height: 480,
         };
 
-        let proxy = GtkEventProxy { sender, pending_wakeups: pending_wakeups.clone() };
+        let proxy = GtkEventProxy {
+            sender,
+            pending_wakeups: pending_wakeups.clone(),
+        };
         let config = Config::default();
         let term = Term::new(config, &dim_size, proxy.clone());
 
         let pty = ProxyAgentPty { master_fd };
 
-        let (event_loop, render_state) = EventLoop::new(
-            term,
-            proxy,
-            pty,
-            false,
-            false,
-        ).unwrap();
+        let (event_loop, render_state) = EventLoop::new(term, proxy, pty, false, false).unwrap();
 
         let notifier = Notifier(event_loop.channel());
 
@@ -251,12 +259,21 @@ impl TerminalBackend {
     }
 
     pub fn clear_pending_wakeups(&self) {
-        self.pending_wakeups.store(0, std::sync::atomic::Ordering::SeqCst);
+        self.pending_wakeups
+            .store(0, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Resize the terminal grid and notify the PTY (triggers `SIGWINCH` in the
     /// child process).  No-ops when the dimensions have not changed.
-    pub fn resize(&self, columns: usize, lines: usize, cell_width: f64, cell_height: f64, pixel_width: i32, pixel_height: i32) {
+    pub fn resize(
+        &self,
+        columns: usize,
+        lines: usize,
+        cell_width: f64,
+        cell_height: f64,
+        pixel_width: i32,
+        pixel_height: i32,
+    ) {
         let win_size = WindowSize {
             num_cols: columns as u16,
             num_lines: lines as u16,
@@ -293,7 +310,11 @@ impl TerminalBackend {
         let _ = self.notifier.0.send(Msg::UpdateSelection(sel));
     }
 
-    pub fn update_selection(&self, point: crate::engine::index::Point, side: crate::engine::index::Side) {
+    pub fn update_selection(
+        &self,
+        point: crate::engine::index::Point,
+        side: crate::engine::index::Side,
+    ) {
         let _ = self.notifier.0.send(Msg::UpdateSelectionExt(point, side));
     }
 
@@ -305,13 +326,26 @@ impl TerminalBackend {
         let _ = self.notifier.0.send(Msg::CopySelection(clipboard_type));
     }
 
-    pub fn search(&self, query: String, direction: crate::engine::index::Direction, case_insensitive: bool) {
-        let _ = self.notifier.0.send(Msg::Search(query, direction, case_insensitive));
+    pub fn search(
+        &self,
+        query: String,
+        direction: crate::engine::index::Direction,
+        case_insensitive: bool,
+    ) {
+        let _ = self
+            .notifier
+            .0
+            .send(Msg::Search(query, direction, case_insensitive));
     }
 
     pub async fn get_text_snapshot(&self, max_lines: usize, offset_lines: usize) -> Option<String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        if self.notifier.0.send(Msg::GetTextSnapshot(max_lines, offset_lines, tx)).is_ok() {
+        if self
+            .notifier
+            .0
+            .send(Msg::GetTextSnapshot(max_lines, offset_lines, tx))
+            .is_ok()
+        {
             rx.await.ok()
         } else {
             None

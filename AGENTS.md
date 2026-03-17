@@ -15,16 +15,20 @@ To prevent UI starvation and zombie processes, the application utilizes a **sing
 
 ## Coding Guidelines
 
-### 1. Modularity & Scoping
+### 1. Rust Code Style
+- **Formatting:** Always format with `cargo fmt --all` after writing or editing Rust files to ensure consistency across the workspace.
+- **Enforcement:** Code must pass `cargo fmt --all -- --check` with zero diff. This project strictly follows the Rust 2024 style guidelines as configured in `rustfmt.toml`.
+
+### 2. Modularity & Scoping
 - **File Length Limit:** Keep source files under **700 lines of code** whenever possible. If a file exceeds this, refactor it into smaller, well-scoped modules.
 - **Structural Integrity:** Use directory-based modules (e.g., `pane/mod.rs`) for complex components. Avoid monolithic `lib.rs` files; use them primarily for module declarations and public API exports.
 
-### 2. UI & Resource Management
+### 3. UI & Resource Management
 - **Declarative UI:** Do NOT write massive XML strings inside Rust source code. Always extract GTK widget trees into `.ui` XML files located in the `resources/ui/` directory.
 - **GResource Integration:** Register all `.ui`, `.md` (prompts), `.css`, and icon files in `resources/resources.gresource.xml`. Load them at runtime via `gtk::Builder::from_resource` or `gio::resources_lookup_data`.
 - **Build Automation:** Ensure all resources are tracked in `crates/app/build.rs` for automatic recompilation.
 
-### 3. Concurrency & Performance
+### 4. Concurrency & Performance
 - **Non-Blocking UI:** Never perform synchronous disk I/O, heavy parsing, or network calls on the main GTK thread. Use `glib::spawn_future_local` and delegate heavy tasks to the global Tokio runtime.
 - **RefCell Safety:** Avoid holding `RefCell` borrows across `.await` points to prevent runtime panics.
 

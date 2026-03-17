@@ -53,7 +53,7 @@ pub struct SkillRecord {
 
 // Helper methods for embeddings (used in interactions)
 impl Interaction {
-    #[must_use] 
+    #[must_use]
     pub fn parse_embedding(blob: Option<Vec<u8>>) -> Option<Vec<f32>> {
         blob.map(|bytes| {
             let mut f32s = Vec::with_capacity(bytes.len() / 4);
@@ -64,7 +64,7 @@ impl Interaction {
         })
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn serialize_embedding(f32s: &[f32]) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(f32s.len() * 4);
         for &f in f32s {

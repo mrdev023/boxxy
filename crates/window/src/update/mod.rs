@@ -1,128 +1,141 @@
 pub mod events;
-pub mod window_state;
-pub mod tabs;
 pub mod split;
+pub mod tabs;
+pub mod window_state;
 
+use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
-use gtk4::prelude::*;
 
 use crate::state::{AppInput, AppWindowInner};
 
-pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, msg: AppInput) {
+pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
     let mut inner = inner_ref.borrow_mut();
-
-    match msg {
-        // AppWindow Level
-        AppInput::SaveWindowState { width, height, is_maximized } => {
-            window_state::save_window_state(&mut inner, width, height, is_maximized);
-        }
-        AppInput::CloseRequested => {
-            window_state::handle_close_request(inner_ref, &mut inner);
-        }
+    match input {
         AppInput::NewWindow => {
             window_state::new_window(&inner);
         }
-        AppInput::SettingsChanged(settings) => {
-            window_state::settings_changed(&mut inner, settings);
-        }
-        AppInput::ThemeSelected(theme) => {
-            window_state::theme_selected(&mut inner, *theme);
-        }
-        AppInput::SidebarVisibleChanged(visible) => {
-            window_state::sidebar_visible_changed(&mut inner, visible);
-        }
-        AppInput::SidebarPageChanged(name) => {
-            window_state::sidebar_page_changed(&mut inner, name);
-        }
-        AppInput::SidebarWidthChanged(width) => {
-            window_state::sidebar_width_changed(&mut inner, width);
-        }
-        AppInput::ToggleSidebar => {
-            window_state::toggle_sidebar(&mut inner);
-        }
-        AppInput::ShowThemesSidebar => {
-            window_state::show_themes_sidebar(&mut inner);
-        }
-        AppInput::ShowAiChat => {
-            window_state::show_ai_chat(&mut inner);
-        }
-        AppInput::ShowClawSidebar => {
-            window_state::show_claw_sidebar(&mut inner);
-        }
-        AppInput::SetClawActive(active) => {
-            if active {
-                inner.claw_indicator.remove_css_class("claw-indicator-inactive");
-                inner.claw_indicator.set_tooltip_text(Some("Claw Agent Options (Enabled)"));
-            } else {
-                inner.claw_indicator.add_css_class("claw-indicator-inactive");
-                inner.claw_indicator.set_tooltip_text(Some("Claw Agent Options (Disabled)"));
-            }
-            inner.claw_popover.update_ui(active, &inner.current_settings);
-            for tab in &inner.tabs {
-                tab.controller.set_claw_active(active);
-            }
-            inner.claw.update_active(active);
-        }
-
-        // Tabs
         AppInput::NewTab => {
             tabs::new_tab(&mut inner);
-            tabs::sync_header_title(&inner);
         }
         AppInput::CloseTabRequest(key) => {
             tabs::close_tab_request(&mut inner, key);
-            tabs::sync_header_title(&inner);
         }
         AppInput::CloseTab(id) => {
             tabs::close_tab(&mut inner, id);
         }
         AppInput::CloseActiveTab => {
             if let Some(page) = inner.tab_view.selected_page() {
-                inner.tab_view.close_page(&page);
+                let key = page.child().as_ptr() as usize;
+                tabs::close_tab_request(&mut inner, key);
+            }
+        }
+        AppInput::HandleTerminalEvent(event) => {
+            if let Some(event) = event {
+                events::handle_terminal_event(inner_ref, &mut inner, event);
             }
         }
         AppInput::MoveTabToNewWindowRequest(key) => {
             tabs::move_tab_to_new_window_request(&mut inner, key);
-            tabs::sync_header_title(&inner);
         }
         AppInput::AdoptOrphanTabs => {
             tabs::adopt_orphan_tabs(&mut inner);
-            tabs::sync_header_title(&inner);
         }
-        AppInput::TabPageDetached(key) => {
-            tabs::tab_page_detached(&mut inner, key);
-            tabs::sync_header_title(&inner);
-        }
-        AppInput::TabPageAttached(key) => {
-            tabs::tab_page_attached(&mut inner, key);
-            tabs::sync_header_title(&inner);
-        }
-
-        // Terminal Events
-        AppInput::HandleTerminalEvent(Some(event)) => {
-            events::handle_terminal_event(inner_ref, &mut inner, event);
-        }
-        AppInput::HandleTerminalEvent(None) => {}
-        
-        // Terminal Focus/Zoom
         AppInput::FocusActiveTerminal => {
             tabs::focus_active_terminal(&mut inner);
         }
+        AppInput::TabPageAttached(key) => {
+            tabs::tab_page_attached(&mut inner, key);
+        }
+        AppInput::TabPageDetached(key) => {
+            tabs::tab_page_detached(&mut inner, key);
+        }
+        AppInput::ToggleSidebar => {
+            window_state::toggle_sidebar(&mut inner);
+        }
+        AppInput::SidebarVisibleChanged(visible) => {
+            window_state::sidebar_visible_changed(&mut inner, visible);
+        }
+        AppInput::SidebarPageChanged(page) => {
+            window_state::sidebar_page_changed(&mut inner, page);
+        }
+        AppInput::OpenPreferences => {
+            inner.preferences.show(&inner.window.clone().upcast());
+        }
+        AppInput::OpenBoxxyApps => {
+            tabs::open_boxxy_apps(&mut inner);
+        }
+        AppInput::OpenBookmarks => {
+            tabs::open_bookmarks(&mut inner);
+        }
+        AppInput::OpenShortcuts => {
+            inner.preferences.show_page("shortcuts");
+            inner.preferences.show(&inner.window.clone().upcast());
+        }
+        AppInput::OpenAbout => {
+            inner.preferences.show_page("about");
+            inner.preferences.show(&inner.window.clone().upcast());
+        }
+        AppInput::OpenInFiles => {
+            // Not implemented in window_state.rs but present in state.rs
+        }
+        AppInput::ShowAppMenu(x, y) => {
+            let rect = gtk4::gdk::Rectangle::new(x as i32, y as i32, 0, 0);
+
+            let has_selection = if let Some(page) = inner.tab_view.selected_page() {
+                let child = page.child();
+                inner
+                    .tabs
+                    .iter()
+                    .find(|c| c.controller.widget() == &child)
+                    .map(|tc| tc.controller.has_selection())
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            let ctx = boxxy_app_menu::AppMenuContext {
+                is_maximized: inner.app_state.is_maximized,
+                path_to_copy: None,
+                has_selection,
+            };
+            inner.app_menu.show(rect, ctx);
+        }
+        AppInput::ShowCommandPaletteMenu => {
+            inner.command_palette.show(&inner.window);
+        }
+        AppInput::SettingsChanged(settings) => {
+            window_state::settings_changed(&mut inner, settings);
+        }
         AppInput::ZoomIn => {
-            let mut settings = inner.current_settings.clone();
-            settings.font_size = (settings.font_size + 1).min(72);
+            let mut settings = boxxy_preferences::Settings::load();
+            settings.font_size += 1;
             settings.save();
+            let _ = inner.tx.send_blocking(AppInput::SettingsChanged(settings));
         }
         AppInput::ZoomOut => {
-            let mut settings = inner.current_settings.clone();
-            settings.font_size = (settings.font_size - 1).max(6);
+            let mut settings = boxxy_preferences::Settings::load();
+            if settings.font_size > 4 {
+                settings.font_size -= 1;
+                settings.save();
+                let _ = inner.tx.send_blocking(AppInput::SettingsChanged(settings));
+            }
+        }
+        AppInput::ResetZoom => {
+            let mut settings = boxxy_preferences::Settings::load();
+            let default_settings = boxxy_preferences::Settings::default();
+            settings.font_size = default_settings.font_size;
             settings.save();
+            let _ = inner.tx.send_blocking(AppInput::SettingsChanged(settings));
         }
         AppInput::Copy => {
             if let Some(page) = inner.tab_view.selected_page() {
                 let child = page.child();
-                if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
+                if let Some(pos) = inner
+                    .tabs
+                    .iter()
+                    .position(|c| c.controller.widget() == &child)
+                {
                     inner.tabs[pos].controller.copy();
                 }
             }
@@ -130,21 +143,15 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, msg: AppInput) {
         AppInput::Paste => {
             if let Some(page) = inner.tab_view.selected_page() {
                 let child = page.child();
-                if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
+                if let Some(pos) = inner
+                    .tabs
+                    .iter()
+                    .position(|c| c.controller.widget() == &child)
+                {
                     inner.tabs[pos].controller.paste();
                 }
             }
         }
-        AppInput::OpenInFiles => {
-            if let Some(page) = inner.tab_view.selected_page() {
-                let child = page.child();
-                if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
-                    inner.tabs[pos].controller.open_in_files();
-                }
-            }
-        }
-
-        // Splits
         AppInput::SplitVertical => {
             split::split_vertical(&mut inner);
         }
@@ -181,120 +188,116 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, msg: AppInput) {
         AppInput::SwapDown => {
             split::swap(&mut inner, boxxy_terminal::Direction::Down);
         }
-
-        // Dialogs/Menus
-        AppInput::OpenPreferences => {
-            inner.preferences.show(&inner.window.clone().upcast());
+        AppInput::ShowThemesSidebar => {
+            window_state::show_themes_sidebar(&mut inner);
         }
-        AppInput::OpenBoxxyApps => {
-            tabs::open_boxxy_apps(&mut inner);
+        AppInput::ShowAiChat => {
+            window_state::show_ai_chat(&mut inner);
         }
-        AppInput::OpenShortcuts => {
-            inner.preferences.show_page("shortcuts");
-            inner.preferences.show(&inner.window.clone().upcast());
+        AppInput::ShowClawSidebar => {
+            window_state::show_claw_sidebar(&mut inner);
         }
-        AppInput::OpenAbout => {
-            inner.preferences.show_page("about");
-            inner.preferences.show(&inner.window.clone().upcast());
+        AppInput::ShowBookmarksSidebar => {
+            window_state::show_bookmarks_sidebar(&mut inner);
         }
-        AppInput::ShowAppMenu(x, y) => {
-            let rect = gtk4::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-            let ctx = boxxy_app_menu::AppMenuContext {
-                is_maximized: false,
-                path_to_copy: None,
-                has_selection: false,
-            };
-            inner.app_menu.show(rect, ctx);
-        }
-        AppInput::ShowCommandPaletteMenu => {
-            inner.command_palette.show_as_menu(&inner.menu_btn);
-        }
-        AppInput::ModelSelection => {
-            let win = inner.window.clone();
-            let tx_ai = inner.tx.clone();
-            let tx_claw = inner.tx.clone();
-            
-            let tx_mem = inner.tx.clone();
-
-            let dialog = boxxy_model_selection::GlobalModelSelectorDialog::new(
-                inner.current_settings.ai_chat_model.clone(),
-                inner.current_settings.claw_model.clone(),
-                inner.current_settings.memory_model.clone(),
-                inner.current_settings.ollama_base_url.clone(),
-                move |m| {
-                    let mut s = boxxy_preferences::Settings::load();
-                    s.ai_chat_model = m;
-                    s.save();
-                    let _ = tx_ai.send_blocking(AppInput::SettingsChanged(s));
-                },
-                move |m| {
-                    let mut s = boxxy_preferences::Settings::load();
-                    s.claw_model = m;
-                    s.save();
-                    let _ = tx_claw.send_blocking(AppInput::SettingsChanged(s));
-                },
-                move |m| {
-                    let mut s = boxxy_preferences::Settings::load();
-                    s.memory_model = m;
-                    s.save();
-                    let _ = tx_mem.send_blocking(AppInput::SettingsChanged(s));
+        AppInput::ExecuteBookmark(name, script) => {
+            let template = boxxy_bookmarks::parser::BookmarkTemplate::parse(&script);
+            let placeholders = template.placeholders;
+            if let Some(page) = inner.tab_view.selected_page() {
+                let child = page.child();
+                if let Some(pos) = inner
+                    .tabs
+                    .iter()
+                    .position(|c| c.controller.widget() == &child)
+                {
+                    inner.tabs[pos]
+                        .controller
+                        .show_bookmark_proposal(&name, &script, placeholders);
                 }
-            );
-            dialog.present(Some(&win));
+            }
+        }
+        AppInput::ExecuteInNewTab(name, script) => {
+            let template = boxxy_bookmarks::parser::BookmarkTemplate::parse(&script);
+            let placeholders = template.placeholders;
+            tabs::new_tab(&mut inner);
+            tabs::sync_header_title(&inner);
+
+            if let Some(page) = inner.tab_view.selected_page() {
+                let child = page.child();
+                if let Some(pos) = inner
+                    .tabs
+                    .iter()
+                    .position(|c| c.controller.widget() == &child)
+                {
+                    let tc = inner.tabs[pos].controller.clone();
+                    gtk4::glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(150),
+                        move || {
+                            tc.show_bookmark_proposal(&name, &script, placeholders);
+                        },
+                    );
+                }
+            }
+        }
+        AppInput::SetClawActive(active) => {
+            if active {
+                inner
+                    .claw_indicator
+                    .remove_css_class("claw-indicator-inactive");
+                inner
+                    .claw_indicator
+                    .set_tooltip_text(Some("Claw Agent Options (Enabled)"));
+            } else {
+                inner
+                    .claw_indicator
+                    .add_css_class("claw-indicator-inactive");
+                inner
+                    .claw_indicator
+                    .set_tooltip_text(Some("Claw Agent Options (Disabled)"));
+            }
+            for tab in &inner.tabs {
+                tab.controller.set_claw_active(active);
+            }
+        }
+        AppInput::ThemeSelected(palette) => {
+            window_state::theme_selected(&mut inner, *palette);
         }
         AppInput::CommandPalette => {
             inner.command_palette.show(&inner.window);
         }
         AppInput::ReloadEngine => {
-            for tab in &inner.tabs {
-                tab.controller.reload_claw();
-            }
+            // TODO: Signal all tabs to reload their claw session?
         }
-
-        // Notifications
-        AppInput::PushNotification(notification) => {
-            inner.notifications.push(notification.clone());
-            inner.notification_pill.set_notification(notification);
+        AppInput::ModelSelection => {
+            let dialog = boxxy_model_selection::GlobalModelSelectorDialog::new(
+                inner.current_settings.ai_chat_model.clone(),
+                inner.current_settings.claw_model.clone(),
+                inner.current_settings.memory_model.clone(),
+                inner.current_settings.ollama_base_url.clone(),
+                |_| {},
+                |_| {},
+                |_| {},
+            );
+            dialog.present(Some(&inner.window));
         }
-        AppInput::DismissNotification(id) => {
-            inner.notifications.retain(|n| n.id != id);
-            if let Some(next) = inner.notifications.last() {
-                inner.notification_pill.set_notification(next.clone());
-            } else {
-                inner.notification_pill.clear();
-            }
+        AppInput::CloseRequested => {
+            window_state::handle_close_request(inner_ref, &mut inner);
         }
-        AppInput::StartUpdateDownload(url) => {
-            let tx = inner.tx.clone();
-            // We should find the version from the notification
-            let version = inner.notifications.iter()
-                .find(|n| n.id == "update-available")
-                .and_then(|n| n.details.iter().find(|(k, _)| k == "Version"))
-                .map(|(_, v)| v.clone())
-                .unwrap_or_default();
-
-            // Clear notifications and hide pill immediately
-            inner.notifications.clear();
-            inner.notification_pill.clear();
-
-            tokio::spawn(async move {
-                match crate::updater::Updater::download_update(url).await {
-                    Ok(_path) => {
-                        let _ = tx.send(AppInput::UpdateDownloaded(version)).await;
-                    }
-                    Err(e) => {
-                        eprintln!("Update download failed: {:#}", e);
-                    }
-                }
-            });
+        AppInput::SidebarWidthChanged(_) => {}
+        AppInput::SaveWindowState {
+            width,
+            height,
+            is_maximized,
+        } => {
+            window_state::save_window_state(&mut inner, width, height, is_maximized);
         }
-        AppInput::UpdateDownloaded(version) => {
-            // Dismiss the "available" notification and push "ready"
-            inner.notifications.retain(|n| n.id != "update-available");
-            let ready = crate::widgets::notification::Notification::new_update_ready(&version);
+        AppInput::PushNotification(ready) => {
             inner.notifications.push(ready.clone());
             inner.notification_pill.set_notification(ready);
         }
+        AppInput::DismissNotification(_id) => {}
+        AppInput::StartUpdateDownload(_url) => {}
+        AppInput::UpdateDownloaded(_path) => {}
         AppInput::ApplyUpdateAndRestart => {
             let _ = crate::updater::Updater::apply_update_and_restart();
         }

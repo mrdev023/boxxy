@@ -1,6 +1,6 @@
-use libadwaita as adw;
-use gtk4 as gtk;
 use adw::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> bool> {
     let mut elements = Vec::new();
@@ -72,7 +72,8 @@ pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> b
     let site_row_clone = site_row.clone();
     site_row.connect_activated(move |_| {
         let uri = site_row_clone.subtitle().unwrap().to_string();
-        let _ = gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
+        let _ =
+            gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
     });
 
     let ext_icon2 = gtk::Image::from_icon_name("external-link-symbolic");
@@ -87,7 +88,8 @@ pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> b
     let issues_row_clone = issues_row.clone();
     issues_row.connect_activated(move |_| {
         let uri = issues_row_clone.subtitle().unwrap().to_string();
-        let _ = gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
+        let _ =
+            gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
     });
 
     group.add(&version_row);
@@ -108,10 +110,14 @@ pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> b
                 let subtitle = row.subtitle().unwrap_or_default().to_lowercase();
                 let m = query.is_empty() || title.contains(query) || subtitle.contains(query);
                 row.set_visible(m);
-                if m { group_visible = true; }
+                if m {
+                    group_visible = true;
+                }
             }
             group.set_visible(group_visible);
-            if group_visible { page_visible = true; }
+            if group_visible {
+                page_visible = true;
+            }
         }
         page_visible
     })

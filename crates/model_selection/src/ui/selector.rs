@@ -1,5 +1,5 @@
 use crate::models::ModelProvider;
-use crate::registry::{get_providers, AiProvider};
+use crate::registry::{AiProvider, get_providers};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::RefCell;
@@ -25,7 +25,11 @@ struct SingleModelSelectorInner {
 }
 
 impl SingleModelSelector {
-    pub fn new<F: Fn(ModelProvider) + 'static>(initial: ModelProvider, ollama_url: String, on_change: F) -> Self {
+    pub fn new<F: Fn(ModelProvider) + 'static>(
+        initial: ModelProvider,
+        ollama_url: String,
+        on_change: F,
+    ) -> Self {
         let providers = get_providers();
         let main_vbox = gtk::Box::new(gtk::Orientation::Vertical, 10);
         main_vbox.set_margin_start(10);
@@ -37,7 +41,7 @@ impl SingleModelSelector {
         let provider_label = gtk::Label::new(Some("Provider"));
         provider_label.set_halign(gtk::Align::Start);
         provider_label.add_css_class("dim-label");
-        
+
         let provider_names: Vec<&str> = providers.iter().map(|p| p.name()).collect();
         let provider_list = gtk::StringList::new(&provider_names);
         let provider_dropdown = gtk::DropDown::new(Some(provider_list), None::<&gtk::Expression>);
@@ -56,7 +60,8 @@ impl SingleModelSelector {
         thinking_label.set_halign(gtk::Align::Start);
         thinking_label.add_css_class("dim-label");
         let thinking_list = gtk::StringList::new(&[]);
-        let thinking_dropdown = gtk::DropDown::new(Some(thinking_list.clone()), None::<&gtk::Expression>);
+        let thinking_dropdown =
+            gtk::DropDown::new(Some(thinking_list.clone()), None::<&gtk::Expression>);
 
         options_vbox.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         options_vbox.append(&thinking_label);
@@ -78,10 +83,17 @@ impl SingleModelSelector {
             updating: false,
             ollama_url: ollama_url.clone(),
             providers,
-            last_selected_ollama_model: if let ModelProvider::Ollama(ref m) = initial { m.clone() } else { String::new() },
+            last_selected_ollama_model: if let ModelProvider::Ollama(ref m) = initial {
+                m.clone()
+            } else {
+                String::new()
+            },
         }));
 
-        let self_ = Self { widget: main_vbox, inner };
+        let self_ = Self {
+            widget: main_vbox,
+            inner,
+        };
         self_.set_model_provider_internal(initial);
 
         let on_change = Rc::new(on_change);
@@ -90,7 +102,9 @@ impl SingleModelSelector {
             let on_change = on_change.clone();
             Rc::new(move || {
                 let inner = s_clone.inner.borrow();
-                if inner.updating { return; }
+                if inner.updating {
+                    return;
+                }
 
                 let p_idx = inner.provider_dropdown.selected();
                 let m_idx = inner.model_dropdown.selected();
@@ -98,7 +112,11 @@ impl SingleModelSelector {
 
                 if let Some(prov_def) = inner.providers.get(p_idx as usize) {
                     let mut m_name = None;
-                    if let Some(item) = inner.model_list.item(m_idx).and_then(|o| o.downcast::<gtk::StringObject>().ok()) {
+                    if let Some(item) = inner
+                        .model_list
+                        .item(m_idx)
+                        .and_then(|o| o.downcast::<gtk::StringObject>().ok())
+                    {
                         let s = item.string().to_string();
                         if s != "Loading..." && s != "Ollama Offline" {
                             m_name = Some(s);
@@ -106,9 +124,11 @@ impl SingleModelSelector {
                     }
 
                     let new_prov = prov_def.create_model_provider(m_idx, m_name, Some(t_idx));
-                    
+
                     if let ModelProvider::Ollama(ref name) = new_prov {
-                        if name.is_empty() { return; }
+                        if name.is_empty() {
+                            return;
+                        }
                         if let Ok(mut inner_mut) = s_clone.inner.try_borrow_mut() {
                             inner_mut.last_selected_ollama_model = name.clone();
                         }
@@ -126,16 +146,20 @@ impl SingleModelSelector {
                 let mut should_update = false;
                 {
                     if let Ok(mut inner) = s_clone.inner.try_borrow_mut() {
-                        if inner.updating { return; }
+                        if inner.updating {
+                            return;
+                        }
                         inner.updating = true;
 
                         let p_idx = dropdown.selected();
                         inner.model_list.splice(0, inner.model_list.n_items(), &[]);
-                        inner.thinking_list.splice(0, inner.thinking_list.n_items(), &[]);
+                        inner
+                            .thinking_list
+                            .splice(0, inner.thinking_list.n_items(), &[]);
 
                         if let Some(prov_def) = inner.providers.get(p_idx as usize) {
                             let is_ollama = prov_def.name() == "Ollama";
-                            
+
                             if !is_ollama {
                                 for model in prov_def.get_models() {
                                     inner.model_list.append(&model);
@@ -144,7 +168,9 @@ impl SingleModelSelector {
                                 for level in &levels {
                                     inner.thinking_list.append(level);
                                 }
-                                inner.options_vbox.set_visible(prov_def.supports_thinking(0));
+                                inner
+                                    .options_vbox
+                                    .set_visible(prov_def.supports_thinking(0));
                                 inner.model_dropdown.set_selected(0);
                                 if inner.thinking_list.n_items() > 0 {
                                     inner.thinking_dropdown.set_selected(0);
@@ -163,40 +189,50 @@ impl SingleModelSelector {
                                 let us = Rc::clone(&update_state);
                                 gtk::glib::spawn_future_local(async move {
                                     let client = reqwest::Client::new();
-                                    let endpoint = format!("{}/api/tags", url.trim_end_matches('/'));
+                                    let endpoint =
+                                        format!("{}/api/tags", url.trim_end_matches('/'));
                                     let mut fetched = vec![];
                                     if let Ok(resp) = client.get(&endpoint).send().await
                                         && let Ok(json) = resp.json::<serde_json::Value>().await
-                                            && let Some(arr) = json.get("models").and_then(|m| m.as_array()) {
-                                                for m in arr {
-                                                    if let Some(n) = m.get("name").and_then(|s| s.as_str()) {
-                                                        fetched.push(n.to_string());
-                                                    }
-                                                }
+                                        && let Some(arr) =
+                                            json.get("models").and_then(|m| m.as_array())
+                                    {
+                                        for m in arr {
+                                            if let Some(n) = m.get("name").and_then(|s| s.as_str())
+                                            {
+                                                fetched.push(n.to_string());
                                             }
+                                        }
+                                    }
 
                                     if let Ok(mut inner) = s_clone2.inner.try_borrow_mut()
-                                        && inner.provider_dropdown.selected() as usize == 1 { // Still Ollama
-                                            inner.updating = true;
-                                            inner.model_list.splice(0, inner.model_list.n_items(), &[]);
-                                            if fetched.is_empty() {
-                                                inner.model_list.append("Ollama Offline");
-                                            } else {
-                                                for f in fetched {
-                                                    inner.model_list.append(&f);
-                                                }
+                                        && inner.provider_dropdown.selected() as usize == 1
+                                    {
+                                        // Still Ollama
+                                        inner.updating = true;
+                                        inner.model_list.splice(0, inner.model_list.n_items(), &[]);
+                                        if fetched.is_empty() {
+                                            inner.model_list.append("Ollama Offline");
+                                        } else {
+                                            for f in fetched {
+                                                inner.model_list.append(&f);
                                             }
-                                            inner.model_dropdown.set_selected(0);
-                                            inner.updating = false;
-                                            drop(inner);
-                                            us();
                                         }
+                                        inner.model_dropdown.set_selected(0);
+                                        inner.updating = false;
+                                        drop(inner);
+                                        us();
+                                    }
                                 });
                             }
                         }
-                    } else { return; }
+                    } else {
+                        return;
+                    }
                 }
-                if should_update { update_state(); }
+                if should_update {
+                    update_state();
+                }
             }
         });
 
@@ -207,35 +243,47 @@ impl SingleModelSelector {
                 let mut should_update = false;
                 {
                     if let Ok(mut inner) = s_clone.inner.try_borrow_mut() {
-                        if inner.updating { return; }
+                        if inner.updating {
+                            return;
+                        }
                         let p_idx = inner.provider_dropdown.selected();
-                        
+
                         let prov_name = if let Some(prov) = inner.providers.get(p_idx as usize) {
                             Some(prov.name())
-                        } else { None };
+                        } else {
+                            None
+                        };
 
                         if let Some(name) = prov_name {
                             if name != "Ollama" {
                                 inner.updating = true;
                                 let m_idx = dropdown.selected();
-                                inner.thinking_list.splice(0, inner.thinking_list.n_items(), &[]);
-                                
-                                let levels = inner.providers[p_idx as usize].get_thinking_levels(m_idx);
+                                inner
+                                    .thinking_list
+                                    .splice(0, inner.thinking_list.n_items(), &[]);
+
+                                let levels =
+                                    inner.providers[p_idx as usize].get_thinking_levels(m_idx);
                                 for level in &levels {
                                     inner.thinking_list.append(level);
                                 }
                                 if inner.thinking_list.n_items() > 0 {
                                     inner.thinking_dropdown.set_selected(0);
                                 }
-                                let supports = inner.providers[p_idx as usize].supports_thinking(m_idx);
+                                let supports =
+                                    inner.providers[p_idx as usize].supports_thinking(m_idx);
                                 inner.options_vbox.set_visible(supports);
                                 inner.updating = false;
                                 should_update = true;
                             }
                         }
-                    } else { return; }
+                    } else {
+                        return;
+                    }
                 }
-                if should_update { update_state(); }
+                if should_update {
+                    update_state();
+                }
             }
         });
 
@@ -244,10 +292,11 @@ impl SingleModelSelector {
             let s_clone = self_.clone();
             move |_| {
                 if let Ok(inner) = s_clone.inner.try_borrow()
-                    && !inner.updating {
-                        drop(inner);
-                        update_state();
-                    }
+                    && !inner.updating
+                {
+                    drop(inner);
+                    update_state();
+                }
             }
         });
 
@@ -260,19 +309,24 @@ impl SingleModelSelector {
             let mut fetched = vec![];
             if let Ok(resp) = client.get(&endpoint).send().await
                 && let Ok(json) = resp.json::<serde_json::Value>().await
-                    && let Some(arr) = json.get("models").and_then(|m| m.as_array()) {
-                        for m in arr {
-                            if let Some(n) = m.get("name").and_then(|s| s.as_str()) {
-                                fetched.push(n.to_string());
-                            }
-                        }
+                && let Some(arr) = json.get("models").and_then(|m| m.as_array())
+            {
+                for m in arr {
+                    if let Some(n) = m.get("name").and_then(|s| s.as_str()) {
+                        fetched.push(n.to_string());
                     }
-            
+                }
+            }
+
             if let Ok(mut inner) = s_clone2.inner.try_borrow_mut() {
                 if inner.provider_dropdown.selected() as usize == 1 && !fetched.is_empty() {
                     let mut current_model = String::new();
                     let m_idx = inner.model_dropdown.selected();
-                    if let Some(item) = inner.model_list.item(m_idx).and_then(|o| o.downcast::<gtk::StringObject>().ok()) {
+                    if let Some(item) = inner
+                        .model_list
+                        .item(m_idx)
+                        .and_then(|o| o.downcast::<gtk::StringObject>().ok())
+                    {
                         current_model = item.string().to_string();
                     }
                     inner.updating = true;
@@ -281,14 +335,21 @@ impl SingleModelSelector {
                     let mut found_pos = None;
                     for (i, f) in fetched.iter().enumerate() {
                         inner.model_list.append(f);
-                        if f == &current_model { found_pos = Some(i as u32); }
+                        if f == &current_model {
+                            found_pos = Some(i as u32);
+                        }
                     }
 
                     if found_pos.is_none() {
-                        if !current_model.is_empty() && current_model != "Ollama Offline" && current_model != "Loading..." {
+                        if !current_model.is_empty()
+                            && current_model != "Ollama Offline"
+                            && current_model != "Loading..."
+                        {
                             inner.model_list.append(&current_model);
                             found_pos = Some((fetched.len()) as u32);
-                        } else { found_pos = Some(0); }
+                        } else {
+                            found_pos = Some(0);
+                        }
                     }
 
                     inner.model_dropdown.set_selected(found_pos.unwrap());
@@ -317,16 +378,24 @@ impl SingleModelSelector {
             if let Some(p_idx) = inner.providers.iter().position(|p| p.name() == prov_name) {
                 inner.provider_dropdown.set_selected(p_idx as u32);
                 let prov_def = &inner.providers[p_idx];
-                
+
                 let is_ollama = prov_name == "Ollama";
                 if !is_ollama {
                     inner.model_list.splice(0, inner.model_list.n_items(), &[]);
                     for m in prov_def.get_models() {
                         inner.model_list.append(&m);
                     }
-                    prov_def.sync_ui(&provider, &inner.model_dropdown, &inner.thinking_dropdown, &inner.model_list, &inner.thinking_list);
+                    prov_def.sync_ui(
+                        &provider,
+                        &inner.model_dropdown,
+                        &inner.thinking_dropdown,
+                        &inner.model_list,
+                        &inner.thinking_list,
+                    );
                     let m_idx = inner.model_dropdown.selected();
-                    inner.options_vbox.set_visible(prov_def.supports_thinking(m_idx));
+                    inner
+                        .options_vbox
+                        .set_visible(prov_def.supports_thinking(m_idx));
                 } else {
                     inner.model_list.append("Loading...");
                     inner.options_vbox.set_visible(false);
@@ -342,27 +411,37 @@ impl SingleModelSelector {
                         let mut fetched = vec![];
                         if let Ok(resp) = client.get(&endpoint).send().await
                             && let Ok(json) = resp.json::<serde_json::Value>().await
-                                && let Some(arr) = json.get("models").and_then(|m| m.as_array()) {
-                                    for m in arr {
-                                        if let Some(n) = m.get("name").and_then(|s| s.as_str()) {
-                                            fetched.push(n.to_string());
-                                        }
-                                    }
+                            && let Some(arr) = json.get("models").and_then(|m| m.as_array())
+                        {
+                            for m in arr {
+                                if let Some(n) = m.get("name").and_then(|s| s.as_str()) {
+                                    fetched.push(n.to_string());
                                 }
+                            }
+                        }
 
                         if let Ok(mut inner) = s_clone2.inner.try_borrow_mut()
-                            && inner.provider_dropdown.selected() as usize == 1 {
-                                inner.updating = true;
-                                inner.model_list.splice(0, inner.model_list.n_items(), &[]);
-                                let prov_def = &inner.providers[1];
-                                if fetched.is_empty() {
-                                    inner.model_list.append("Ollama Offline");
-                                } else {
-                                    for f in fetched { inner.model_list.append(&f); }
+                            && inner.provider_dropdown.selected() as usize == 1
+                        {
+                            inner.updating = true;
+                            inner.model_list.splice(0, inner.model_list.n_items(), &[]);
+                            let prov_def = &inner.providers[1];
+                            if fetched.is_empty() {
+                                inner.model_list.append("Ollama Offline");
+                            } else {
+                                for f in fetched {
+                                    inner.model_list.append(&f);
                                 }
-                                prov_def.sync_ui(&prov_clone, &inner.model_dropdown, &inner.thinking_dropdown, &inner.model_list, &inner.thinking_list);
-                                inner.updating = false;
                             }
+                            prov_def.sync_ui(
+                                &prov_clone,
+                                &inner.model_dropdown,
+                                &inner.thinking_dropdown,
+                                &inner.model_list,
+                                &inner.thinking_list,
+                            );
+                            inner.updating = false;
+                        }
                     });
                 }
             }

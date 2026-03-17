@@ -1,29 +1,21 @@
+use boxxy_preferences::Settings;
+use gtk4::gio;
 use libadwaita::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
-use boxxy_preferences::Settings;
-use gtk4::gio;
 
 use crate::init::AppInit;
 use crate::state::AppWindowInner;
 use crate::ui::AppWindow;
 
-pub fn save_window_state(
-    inner: &mut AppWindowInner,
-    width: i32,
-    height: i32,
-    is_maximized: bool,
-) {
+pub fn save_window_state(inner: &mut AppWindowInner, width: i32, height: i32, is_maximized: bool) {
     inner.app_state.window_width = width;
     inner.app_state.window_height = height;
     inner.app_state.is_maximized = is_maximized;
     inner.app_state.save();
 }
 
-pub fn handle_close_request(
-    inner_ref: &Rc<RefCell<AppWindowInner>>,
-    inner: &mut AppWindowInner,
-) {
+pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut AppWindowInner) {
     let mut pids = Vec::new();
     for tab in &inner.tabs {
         pids.extend(tab.controller.get_pids());
@@ -93,8 +85,8 @@ pub fn handle_close_request(
 }
 
 pub fn new_window(inner: &AppWindowInner) {
-    if let Some(app) = gio::Application::default()
-        .and_then(|a| a.downcast::<libadwaita::Application>().ok())
+    if let Some(app) =
+        gio::Application::default().and_then(|a| a.downcast::<libadwaita::Application>().ok())
     {
         let working_dir = if inner.current_settings.preserve_working_dir {
             inner.tab_view.selected_page().and_then(|page| {
@@ -123,45 +115,44 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
     inner.current_settings = settings.clone();
     let parsed = boxxy_themes::load_palette(settings.theme.as_str());
     let is_dark = libadwaita::StyleManager::default().is_dark();
-    let variant = parsed.as_ref().map(|p| {
-        if is_dark {
-            p.dark
-        } else {
-            p.light
-        }
-    });
+    let variant = parsed
+        .as_ref()
+        .map(|p| if is_dark { p.dark } else { p.light });
 
     for tab in &inner.tabs {
         tab.controller.update_settings(settings.clone(), variant);
     }
-    
+
     inner.tab_bar.set_autohide(!settings.always_show_tabs);
     inner.tab_bar.set_expand_tabs(!settings.fixed_width_tabs);
-    
-    inner.claw.update_diagnosis_mode(&settings.claw_auto_diagnosis_mode);
-    inner.claw.update_terminal_suggestions(settings.claw_terminal_suggestions);
-    inner.claw_popover.update_ui(inner.claw.is_active(), &settings);
-    
+
+    inner
+        .claw
+        .update_diagnosis_mode(&settings.claw_auto_diagnosis_mode);
+    inner
+        .claw
+        .update_terminal_suggestions(settings.claw_terminal_suggestions);
+    inner
+        .claw_popover
+        .update_ui(inner.claw.is_active(), &settings);
+
     super::tabs::sync_header_title(inner);
 }
 
 pub fn theme_selected(inner: &mut AppWindowInner, palette: boxxy_themes::ParsedPaletteStatic) {
     inner.current_settings.theme = palette.id.to_string();
     inner.current_settings.save();
-    
+
     let is_dark = libadwaita::StyleManager::default().is_dark();
-    let variant = if is_dark {
-        palette.dark
-    } else {
-        palette.light
-    };
+    let variant = if is_dark { palette.dark } else { palette.light };
 
     for tab in &inner.tabs {
-        tab.controller.update_settings(inner.current_settings.clone(), Some(variant));
+        tab.controller
+            .update_settings(inner.current_settings.clone(), Some(variant));
     }
-    
+
     inner.preferences.sync_settings(&inner.current_settings);
-    
+
     boxxy_themes::apply_palette(Some(&palette), is_dark);
 }
 
@@ -176,7 +167,9 @@ pub fn sidebar_visible_changed(inner: &mut AppWindowInner, visible: bool) {
 
 pub fn sidebar_page_changed(inner: &mut AppWindowInner, name: String) {
     if name == "claw" {
-        inner.claw.update_diagnosis_mode(&inner.current_settings.claw_auto_diagnosis_mode);
+        inner
+            .claw
+            .update_diagnosis_mode(&inner.current_settings.claw_auto_diagnosis_mode);
     }
     inner.app_state.active_sidebar_page = name;
     inner.app_state.save();
@@ -203,9 +196,9 @@ pub fn show_themes_sidebar(inner: &mut AppWindowInner) {
             .window
             .content()
             .and_then(|c| c.downcast::<libadwaita::OverlaySplitView>().ok())
-        {
-            split.set_show_sidebar(true);
-        }
+    {
+        split.set_show_sidebar(true);
+    }
     inner.view_stack.set_visible_child_name("themes");
 }
 
@@ -215,21 +208,35 @@ pub fn show_ai_chat(inner: &mut AppWindowInner) {
             .window
             .content()
             .and_then(|c| c.downcast::<libadwaita::OverlaySplitView>().ok())
-        {
-            split.set_show_sidebar(true);
-        }
+    {
+        split.set_show_sidebar(true);
+    }
     inner.view_stack.set_visible_child_name("ai_chat");
 }
 
 pub fn show_claw_sidebar(inner: &mut AppWindowInner) {
-    inner.claw.update_diagnosis_mode(&inner.current_settings.claw_auto_diagnosis_mode);
+    inner
+        .claw
+        .update_diagnosis_mode(&inner.current_settings.claw_auto_diagnosis_mode);
     if !inner.sidebar_visible
         && let Some(split) = inner
             .window
             .content()
             .and_then(|c| c.downcast::<libadwaita::OverlaySplitView>().ok())
-        {
-            split.set_show_sidebar(true);
-        }
+    {
+        split.set_show_sidebar(true);
+    }
     inner.view_stack.set_visible_child_name("claw");
+}
+
+pub fn show_bookmarks_sidebar(inner: &mut AppWindowInner) {
+    if !inner.sidebar_visible
+        && let Some(split) = inner
+            .window
+            .content()
+            .and_then(|c| c.downcast::<libadwaita::OverlaySplitView>().ok())
+    {
+        split.set_show_sidebar(true);
+    }
+    inner.view_stack.set_visible_child_name("bookmarks");
 }

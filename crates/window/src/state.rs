@@ -1,14 +1,15 @@
-use boxxy_sidebar::AiSidebarComponent;
 use boxxy_app_menu::AppMenuComponent;
 use boxxy_apps::BoxxyAppsComponent;
+use boxxy_bookmarks::{sidebar::BookmarksSidebarComponent, tab::BookmarksTabComponent};
 use boxxy_claw::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;
 use boxxy_preferences::{AppState, PreferencesComponent, Settings};
+use boxxy_sidebar::AiSidebarComponent;
 use boxxy_terminal::TerminalEvent;
-use std::cell::Cell;
-use std::rc::Rc;
 use gtk4 as gtk;
 use libadwaita as adw;
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::init::TerminalController;
 use crate::widgets::notification::Notification;
@@ -28,6 +29,7 @@ pub enum AppInput {
     SidebarPageChanged(String),
     OpenPreferences,
     OpenBoxxyApps,
+    OpenBookmarks,
     OpenShortcuts,
     OpenAbout,
     OpenInFiles,
@@ -37,6 +39,9 @@ pub enum AppInput {
     ShowThemesSidebar,
     ShowAiChat,
     ShowClawSidebar,
+    ShowBookmarksSidebar,
+    ExecuteBookmark(String, String), // Name, Script
+    ExecuteInNewTab(String, String), // Name, Script
     SetClawActive(bool),
     ModelSelection,
     ThemeSelected(Box<boxxy_themes::ParsedPaletteStatic>),
@@ -44,6 +49,7 @@ pub enum AppInput {
     ReloadEngine,
     ZoomIn,
     ZoomOut,
+    ResetZoom,
     Copy,
     Paste,
     SplitVertical,
@@ -95,6 +101,9 @@ pub struct AppWindowInner {
     pub app_menu: AppMenuComponent,
     pub ai_chat: AiSidebarComponent,
     pub claw: ClawSidebarComponent,
+    pub bookmarks_sidebar: BookmarksSidebarComponent,
+    pub bookmarks_controller: Option<BookmarksTabComponent>,
+    pub bookmarks_page: Option<adw::TabPage>,
     pub theme_selector: boxxy_themes::ThemeSelectorComponent,
     pub command_palette: CommandPaletteComponent,
     pub current_settings: Settings,

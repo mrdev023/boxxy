@@ -1,10 +1,10 @@
+use boxxy_db::Db;
+use boxxy_db::store::Store;
+use boxxy_model_selection::ModelProvider;
+use log::{debug, info};
 use rig::message::Message;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use boxxy_db::Db;
-use boxxy_db::store::Store;
-use log::{info, debug};
-use boxxy_model_selection::ModelProvider;
 
 pub async fn flush_history(
     db: Arc<Mutex<Option<Db>>>,
@@ -21,7 +21,7 @@ pub async fn flush_history(
 
     // We take the first 10 messages (5 turns) to summarize and remove
     let evicted_messages = history.drain(0..10).collect::<Vec<_>>();
-    
+
     let mut text_to_summarize = String::new();
     for msg in evicted_messages {
         match msg {
@@ -42,16 +42,20 @@ pub async fn flush_history(
         }
     }
 
-    let data = gtk4::gio::resources_lookup_data("/play/mii/Boxxy/prompts/memory_flush.md", gtk4::gio::ResourceLookupFlags::NONE)
-        .expect("Failed to load memory_flush prompt resource");
-    let flush_prompt_template = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
-    
+    let data = gtk4::gio::resources_lookup_data(
+        "/play/mii/Boxxy/prompts/memory_flush.md",
+        gtk4::gio::ResourceLookupFlags::NONE,
+    )
+    .expect("Failed to load memory_flush prompt resource");
+    let flush_prompt_template =
+        String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+
     let flush_prompt = flush_prompt_template.replace("{{text_to_summarize}}", &text_to_summarize);
 
     let agent = boxxy_ai_core::create_agent(
         claw_model,
         creds,
-        "You are a concise memory extraction system. Output only valid JSON."
+        "You are a concise memory extraction system. Output only valid JSON.",
     );
 
     if let Ok(response) = agent.prompt(&flush_prompt).await {
@@ -64,20 +68,43 @@ pub async fn flush_history(
                 // 1. Save Facts
                 if let Some(facts) = json.get("facts").and_then(|f| f.as_array()) {
                     for fact in facts {
-                        if let (Some(key), Some(content)) = (fact.get("key").and_then(|k| k.as_str()), fact.get("content").and_then(|c| c.as_str())) {
+                        if let (Some(key), Some(content)) = (
+                            fact.get("key").and_then(|k| k.as_str()),
+                            fact.get("content").and_then(|c| c.as_str()),
+                        ) {
                             // Implicitly extracted facts are NOT verified by default and NOT pinned
-                            let _ = store.add_memory(key, Some(project_path), content, Some("extracted"), false, false).await;
-                            debug!("Flushed Fact for project {}: {} -> {}", project_path, key, content);
+                            let _ = store
+                                .add_memory(
+                                    key,
+                                    Some(project_path),
+                                    content,
+                                    Some("extracted"),
+                                    false,
+                                    false,
+                                )
+                                .await;
+                            debug!(
+                                "Flushed Fact for project {}: {} -> {}",
+                                project_path, key, content
+                            );
                         }
                     }
                 }
 
                 // 2. Save Summary as an interaction
                 if let Some(summary) = json.get("summary").and_then(|s| s.as_str()) {
-                    let _ = store.add_interaction("global", Some(project_path), summary, Some("flush_summary"), None).await;
+                    let _ = store
+                        .add_interaction(
+                            "global",
+                            Some(project_path),
+                            summary,
+                            Some("flush_summary"),
+                            None,
+                        )
+                        .await;
                     debug!("Flushed Summary for project {}: {}", project_path, summary);
                 }
-                
+
                 drop(db_guard);
                 let _ = crate::memories::db::sync_memories_to_markdown(db.clone()).await;
             }

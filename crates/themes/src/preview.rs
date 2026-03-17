@@ -1,8 +1,8 @@
-use gtk4 as gtk;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use gtk4 as gtk;
 
 mod imp {
     use super::*;
@@ -48,19 +48,25 @@ mod imp {
                 layout.set_text(&name);
                 layout.set_ellipsize(gtk::pango::EllipsizeMode::End);
                 layout.set_width((width - 150.0).max(0.0) as i32 * gtk::pango::SCALE);
-                
+
                 // Set bold font
                 let mut font_desc = gtk::pango::FontDescription::new();
                 font_desc.set_weight(gtk::pango::Weight::Bold);
                 layout.set_font_description(Some(&font_desc));
-                
+
                 let (_, logical) = layout.extents();
                 let text_height = logical.height() as f32 / gtk::pango::SCALE as f32;
-                
-                let fg = self.fg_color.borrow().unwrap_or_else(|| gdk::RGBA::new(1.0, 1.0, 1.0, 1.0));
-                
+
+                let fg = self
+                    .fg_color
+                    .borrow()
+                    .unwrap_or_else(|| gdk::RGBA::new(1.0, 1.0, 1.0, 1.0));
+
                 snapshot.save();
-                snapshot.translate(&gtk::graphene::Point::new(12.0, (height - text_height) / 2.0));
+                snapshot.translate(&gtk::graphene::Point::new(
+                    12.0,
+                    (height - text_height) / 2.0,
+                ));
                 snapshot.append_layout(&layout, &fg);
                 snapshot.restore();
             }
@@ -70,28 +76,30 @@ mod imp {
             if !colors.is_empty() {
                 let square_size = 14.0_f32;
                 let spacing = 6.0_f32;
-                let total_width = (square_size * colors.len() as f32) + (spacing * (colors.len().saturating_sub(1)) as f32);
+                let total_width = (square_size * colors.len() as f32)
+                    + (spacing * (colors.len().saturating_sub(1)) as f32);
                 let mut x = width - total_width - 12.0; // 12px right margin
 
                 for color in colors.iter() {
-                    let rect = gtk::graphene::Rect::new(x, (height - square_size) / 2.0, square_size, square_size);
+                    let rect = gtk::graphene::Rect::new(
+                        x,
+                        (height - square_size) / 2.0,
+                        square_size,
+                        square_size,
+                    );
                     let radius = gtk::graphene::Size::new(4.0, 4.0);
                     let rounded = gtk::gsk::RoundedRect::new(rect, radius, radius, radius, radius);
-                    
+
                     snapshot.push_rounded_clip(&rounded);
                     snapshot.append_color(color, &rect);
                     snapshot.pop();
-                    
+
                     x += square_size + spacing;
                 }
             }
         }
 
-        fn measure(
-            &self,
-            orientation: gtk::Orientation,
-            _for_size: i32,
-        ) -> (i32, i32, i32, i32) {
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
             match orientation {
                 gtk::Orientation::Horizontal => (200, 200, -1, -1),
                 gtk::Orientation::Vertical => (36, 36, -1, -1), // Give the row a decent height

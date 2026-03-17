@@ -1,13 +1,13 @@
-use gtk4 as gtk;
-use gtk::prelude::*;
-use gtk::glib;
-use std::rc::Rc;
-use std::cell::RefCell;
-use boxxy_model_selection::{ModelProvider, GlobalModelSelectorDialog};
-use rig::message::Message;
-use crate::types::{ChatMessage, Role};
 use crate::commands::CommandRegistry;
+use crate::types::{ChatMessage, Role};
 use crate::widgets::build_message_widget;
+use boxxy_model_selection::{GlobalModelSelectorDialog, ModelProvider};
+use gtk::glib;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use rig::message::Message;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct AiSidebarComponent {
@@ -71,7 +71,7 @@ impl AiSidebarComponent {
 
         let autocomplete_popover = gtk::Popover::new();
         autocomplete_popover.set_position(gtk::PositionType::Top);
-        autocomplete_popover.set_autohide(false); 
+        autocomplete_popover.set_autohide(false);
         autocomplete_popover.set_has_arrow(false);
         autocomplete_popover.set_parent(&input_entry);
         autocomplete_popover.add_css_class("autocomplete-popover");
@@ -79,13 +79,13 @@ impl AiSidebarComponent {
         let autocomplete_list = gtk::ListBox::new();
         autocomplete_list.set_selection_mode(gtk::SelectionMode::Single);
         autocomplete_list.add_css_class("boxed-list");
-        autocomplete_list.set_focusable(false); 
+        autocomplete_list.set_focusable(false);
 
         let autocomplete_scroll = gtk::ScrolledWindow::new();
         autocomplete_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         autocomplete_scroll.set_propagate_natural_height(true);
         autocomplete_scroll.set_max_content_height(300);
-        autocomplete_scroll.set_focusable(false); 
+        autocomplete_scroll.set_focusable(false);
         autocomplete_scroll.set_child(Some(&autocomplete_list));
 
         autocomplete_popover.set_child(Some(&autocomplete_scroll));
@@ -146,8 +146,14 @@ impl AiSidebarComponent {
                 if inner.model_provider != ai_model {
                     inner.model_provider = ai_model.clone();
                 }
-                inner.model_selector.ai_chat_selector.set_model_provider(ai_model);
-                inner.model_selector.claw_selector.set_model_provider(apps_model);
+                inner
+                    .model_selector
+                    .ai_chat_selector
+                    .set_model_provider(ai_model);
+                inner
+                    .model_selector
+                    .claw_selector
+                    .set_model_provider(apps_model);
             }
         });
 
@@ -223,22 +229,25 @@ impl AiSidebarComponent {
         });
 
         let comp_clone = comp.clone();
-        comp.inner.borrow().autocomplete_list.connect_row_activated(move |_list, row| {
-            let cmd = row.widget_name().to_string();
-            let c_clone = comp_clone.clone();
+        comp.inner
+            .borrow()
+            .autocomplete_list
+            .connect_row_activated(move |_list, row| {
+                let cmd = row.widget_name().to_string();
+                let c_clone = comp_clone.clone();
 
-            glib::idle_add_local_once(move || {
-                {
-                    let inner = c_clone.inner.borrow();
-                    inner.input_buffer.set_text(format!("{} ", cmd));
-                    inner.autocomplete_popover.popdown();
-                    inner.input_entry.grab_focus();
-                    inner.input_entry.set_position(-1);
-                }
+                glib::idle_add_local_once(move || {
+                    {
+                        let inner = c_clone.inner.borrow();
+                        inner.input_buffer.set_text(format!("{} ", cmd));
+                        inner.autocomplete_popover.popdown();
+                        inner.input_entry.grab_focus();
+                        inner.input_entry.set_position(-1);
+                    }
 
-                c_clone.send_message();
+                    c_clone.send_message();
+                });
             });
-        });
 
         let key_controller = gtk::EventControllerKey::new();
         let comp_clone = comp.clone();
@@ -253,14 +262,18 @@ impl AiSidebarComponent {
                         list.select_row(list.row_at_index(current_idx - 1).as_ref());
                         return glib::Propagation::Stop;
                     } else if key == gtk::gdk::Key::Down
-                        && let Some(next_row) = list.row_at_index(current_idx + 1) {
-                            list.select_row(Some(&next_row));
-                            return glib::Propagation::Stop;
-                        }
+                        && let Some(next_row) = list.row_at_index(current_idx + 1)
+                    {
+                        list.select_row(Some(&next_row));
+                        return glib::Propagation::Stop;
+                    }
                 } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::Tab {
                     let row_name = {
                         let inner = comp_clone.inner.borrow();
-                        inner.autocomplete_list.selected_row().map(|r| r.widget_name().to_string())
+                        inner
+                            .autocomplete_list
+                            .selected_row()
+                            .map(|r| r.widget_name().to_string())
                     };
 
                     if let Some(cmd) = row_name {
@@ -334,7 +347,7 @@ impl AiSidebarComponent {
             (
                 inner.input_buffer.text().to_string(),
                 inner.is_loading,
-                inner.command_registry.clone()
+                inner.command_registry.clone(),
             )
         };
 
@@ -357,13 +370,18 @@ impl AiSidebarComponent {
             (content.clone(), hist)
         };
 
-        let user_msg = ChatMessage { role: Role::User, content: content.clone() };
+        let user_msg = ChatMessage {
+            role: Role::User,
+            content: content.clone(),
+        };
         inner.history.push(user_msg.clone());
         inner.message_list.append(&build_message_widget(&user_msg));
         inner.input_buffer.set_text("");
 
         inner.is_loading = true;
-        inner.action_btn.set_icon_name("media-playback-stop-symbolic");
+        inner
+            .action_btn
+            .set_icon_name("media-playback-stop-symbolic");
         inner.action_btn.set_tooltip_text(Some("Stop Generating"));
 
         inner.input_entry.grab_focus();
@@ -382,15 +400,20 @@ impl AiSidebarComponent {
             settings.ollama_base_url.clone(),
         );
 
-        let data = gtk::gio::resources_lookup_data("/play/mii/Boxxy/prompts/ai_chat.md", gtk::gio::ResourceLookupFlags::NONE)
-            .expect("Failed to load ai_chat prompt resource");
-        let system_prompt = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+        let data = gtk::gio::resources_lookup_data(
+            "/play/mii/Boxxy/prompts/ai_chat.md",
+            gtk::gio::ResourceLookupFlags::NONE,
+        )
+        .expect("Failed to load ai_chat prompt resource");
+        let system_prompt =
+            String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
 
         let comp_clone = self.clone();
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         let handle = tokio::spawn(async move {
-            let agent = boxxy_ai_core::create_agent(&provider, &creds, &system_prompt);            let res = agent.chat(&prompt, history_to_send).await;
+            let agent = boxxy_ai_core::create_agent(&provider, &creds, &system_prompt);
+            let res = agent.chat(&prompt, history_to_send).await;
             let _ = tx.send(res);
         });
 
@@ -412,7 +435,10 @@ impl AiSidebarComponent {
             return;
         }
 
-        let ai_msg = ChatMessage { role: Role::Assistant, content };
+        let ai_msg = ChatMessage {
+            role: Role::Assistant,
+            content,
+        };
         inner.history.push(ai_msg.clone());
         inner.message_list.append(&build_message_widget(&ai_msg));
 

@@ -1,14 +1,14 @@
-use gtk4::prelude::*;
-use libadwaita::prelude::*;
-use libadwaita as adw;
-use gtk4 as gtk;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::sync::Arc;
 use crate::engine::BoxxyAppEngine;
-use gtk::glib;
 use boxxy_model_selection::ModelProvider;
+use gtk::glib;
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
+use std::cell::RefCell;
 use std::fs;
+use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct CreateAppDialog {
@@ -41,7 +41,7 @@ impl std::fmt::Debug for CreateAppDialog {
 impl CreateAppDialog {
     pub fn new<F: Fn() + 'static>(engine: Rc<RefCell<BoxxyAppEngine>>, on_saved: F) -> Self {
         let on_saved = Arc::new(on_saved);
-        
+
         let ui_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <object class="AdwWindow" id="dialog">
@@ -276,16 +276,20 @@ impl CreateAppDialog {
         inner.is_loading = true;
         let provider = inner.model_provider.clone();
         let c = self.clone();
-        
+
         let settings = boxxy_preferences::Settings::load();
         let creds = boxxy_ai_core::AiCredentials::new(
             settings.api_keys.clone(),
             settings.ollama_base_url.clone(),
         );
 
-        let data = gtk::gio::resources_lookup_data("/play/mii/Boxxy/prompts/boxxy_app_generator.md", gtk::gio::ResourceLookupFlags::NONE)
-            .expect("Failed to load app generator prompt resource");
-        let system_prompt = String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+        let data = gtk::gio::resources_lookup_data(
+            "/play/mii/Boxxy/prompts/boxxy_app_generator.md",
+            gtk::gio::ResourceLookupFlags::NONE,
+        )
+        .expect("Failed to load app generator prompt resource");
+        let system_prompt =
+            String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
 
         let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -381,24 +385,34 @@ impl CreateAppDialog {
 
     fn update_ui(&self) {
         let inner = self.inner.borrow();
-        
+
         inner.spinner.set_spinning(inner.is_loading);
         inner.spinner.set_visible(inner.is_loading);
-        
+
         if inner.is_loading {
             inner.row.set_title("Generating App...");
-            inner.action_btn.set_icon_name("media-playback-stop-symbolic");
-            inner.action_btn.set_css_classes(&["circular", "destructive-action"]);
+            inner
+                .action_btn
+                .set_icon_name("media-playback-stop-symbolic");
+            inner
+                .action_btn
+                .set_css_classes(&["circular", "destructive-action"]);
             inner.action_btn.set_tooltip_text(Some("Cancel"));
         } else {
             inner.row.set_title("AI Generation");
             inner.action_btn.set_icon_name("paper-plane-symbolic");
-            inner.action_btn.set_css_classes(&["circular", "suggested-action"]);
+            inner
+                .action_btn
+                .set_css_classes(&["circular", "suggested-action"]);
             inner.action_btn.set_tooltip_text(Some("Generate"));
         }
 
         inner.action_btn.set_sensitive(true);
-        inner.filename_box.set_visible(inner.generated_code.is_some());
-        inner.save_btn.set_sensitive(!inner.is_loading && inner.generated_code.is_some());
+        inner
+            .filename_box
+            .set_visible(inner.generated_code.is_some());
+        inner
+            .save_btn
+            .set_sensitive(!inner.is_loading && inner.generated_code.is_some());
     }
 }

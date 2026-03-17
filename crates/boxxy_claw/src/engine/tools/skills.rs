@@ -1,5 +1,5 @@
-use rig::tool::Tool;
 use rig::completion::ToolDefinition;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -18,7 +18,7 @@ pub struct ActivateSkillTool;
 
 impl Tool for ActivateSkillTool {
     const NAME: &'static str = "activate_skill";
-    
+
     type Error = std::io::Error;
     type Args = ActivateSkillArgs;
     type Output = ActivateSkillOutput;
@@ -46,16 +46,25 @@ impl Tool for ActivateSkillTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let registry = crate::registry::skills::global_registry().await;
         let all_skills = registry.get_skills().await;
-        
-        if let Some(skill) = all_skills.into_iter().find(|s| s.frontmatter.name == args.name) {
+
+        if let Some(skill) = all_skills
+            .into_iter()
+            .find(|s| s.frontmatter.name == args.name)
+        {
             Ok(ActivateSkillOutput {
                 success: true,
-                content: format!("Skill '{}' activated. FULL INSTRUCTIONS:\n\n{}\n\nCRITICAL DIRECTIVE: You have successfully activated this skill. Stop activating skills and proceed immediately to answer the user's prompt using these instructions.", args.name, skill.content),
+                content: format!(
+                    "Skill '{}' activated. FULL INSTRUCTIONS:\n\n{}\n\nCRITICAL DIRECTIVE: You have successfully activated this skill. Stop activating skills and proceed immediately to answer the user's prompt using these instructions.",
+                    args.name, skill.content
+                ),
             })
         } else {
             Ok(ActivateSkillOutput {
                 success: false,
-                content: format!("Skill '{}' not found in registry. Please proceed without this skill.", args.name),
+                content: format!(
+                    "Skill '{}' not found in registry. Please proceed without this skill.",
+                    args.name
+                ),
             })
         }
     }

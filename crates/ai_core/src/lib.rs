@@ -1,7 +1,7 @@
+use boxxy_model_selection::ModelProvider;
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Prompt};
 use rig::message::Message;
-use rig::client::CompletionClient;
-use boxxy_model_selection::ModelProvider;
 
 pub mod utils;
 
@@ -14,7 +14,11 @@ pub enum BoxxyAgent {
 }
 
 impl BoxxyAgent {
-    pub async fn chat(&self, prompt: &str, history: Vec<Message>) -> Result<String, rig::completion::PromptError> {
+    pub async fn chat(
+        &self,
+        prompt: &str,
+        history: Vec<Message>,
+    ) -> Result<String, rig::completion::PromptError> {
         match self {
             Self::Gemini(agent) => agent.chat(prompt, history).await,
             Self::Ollama(agent) => agent.chat(prompt, history).await,
@@ -47,21 +51,21 @@ impl AiCredentials {
 }
 
 pub fn create_agent(
-    provider: &ModelProvider, 
+    provider: &ModelProvider,
     creds: &AiCredentials,
-    system_prompt: &str
+    system_prompt: &str,
 ) -> BoxxyAgent {
     match provider {
         ModelProvider::Gemini(model, _thinking) => {
             let key = creds.api_keys.get("Gemini").cloned().unwrap_or_default();
             let client = rig::providers::gemini::Client::new(key.trim()).unwrap();
             let gemini_model = client.completion_model(model.api_name());
-            
+
             let agent = rig::agent::AgentBuilder::new(gemini_model)
                 .preamble(system_prompt)
                 .build();
             BoxxyAgent::Gemini(agent)
-        },
+        }
         ModelProvider::Ollama(model_name) => {
             let client: rig::providers::ollama::Client = rig::providers::ollama::Client::builder()
                 .api_key(rig::client::Nothing)
@@ -69,17 +73,17 @@ pub fn create_agent(
                 .build()
                 .unwrap();
             let ollama_model = client.completion_model(model_name.as_str());
-            
+
             let agent = rig::agent::AgentBuilder::new(ollama_model)
                 .preamble(system_prompt)
                 .build();
             BoxxyAgent::Ollama(agent)
-        },
+        }
         ModelProvider::Anthropic(model) => {
             let key = creds.api_keys.get("Anthropic").cloned().unwrap_or_default();
             let client = rig::providers::anthropic::Client::new(key.trim()).unwrap();
             let anthropic_model = client.completion_model(model.api_name());
-            
+
             let agent = rig::agent::AgentBuilder::new(anthropic_model)
                 .preamble(system_prompt)
                 .build();

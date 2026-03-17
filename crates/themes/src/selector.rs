@@ -1,12 +1,12 @@
-use gtk4 as gtk;
-use gtk::glib;
+use crate::preview::ThemePreview;
+use crate::{ParsedPaletteStatic, THEMES};
 use gtk::gio;
+use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use std::rc::Rc;
+use gtk4 as gtk;
 use std::cell::Cell;
-use crate::{ParsedPaletteStatic, THEMES};
-use crate::preview::ThemePreview;
+use std::rc::Rc;
 
 mod imp {
     use super::*;
@@ -51,7 +51,7 @@ pub struct ThemeSelectorComponent {
 impl ThemeSelectorComponent {
     pub fn new<F: Fn(ParsedPaletteStatic) + 'static>(on_select: F) -> Self {
         let store = gio::ListStore::new::<PaletteObject>();
-        
+
         for theme in THEMES.iter() {
             store.append(&PaletteObject::new(*theme));
         }
@@ -66,7 +66,7 @@ impl ThemeSelectorComponent {
         selection_model.set_autoselect(false);
 
         let factory = gtk::SignalListItemFactory::new();
-        
+
         factory.connect_setup(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
             let preview = ThemePreview::new();
@@ -79,12 +79,22 @@ impl ThemeSelectorComponent {
 
         factory.connect_bind(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-            let preview = list_item.child().unwrap().downcast::<ThemePreview>().unwrap();
+            let preview = list_item
+                .child()
+                .unwrap()
+                .downcast::<ThemePreview>()
+                .unwrap();
 
-            let item = list_item.item().unwrap().downcast::<PaletteObject>().unwrap();
+            let item = list_item
+                .item()
+                .unwrap()
+                .downcast::<PaletteObject>()
+                .unwrap();
             if let Some(palette) = item.get_palette() {
-                let bg = gtk::gdk::RGBA::parse(palette.light.background).unwrap_or(gtk::gdk::RGBA::BLACK);
-                let fg = gtk::gdk::RGBA::parse(palette.light.foreground).unwrap_or(gtk::gdk::RGBA::WHITE);
+                let bg = gtk::gdk::RGBA::parse(palette.light.background)
+                    .unwrap_or(gtk::gdk::RGBA::BLACK);
+                let fg = gtk::gdk::RGBA::parse(palette.light.foreground)
+                    .unwrap_or(gtk::gdk::RGBA::WHITE);
 
                 let mut colors = Vec::new();
                 for i in 1..=6 {
@@ -104,7 +114,7 @@ impl ThemeSelectorComponent {
             .margin_bottom(8)
             .build();
         list_view.add_css_class("navigation-sidebar");
-            
+
         let on_select_rc = Rc::new(on_select);
 
         // Debounce source ID: cancel any pending timer when selection changes
@@ -117,20 +127,24 @@ impl ThemeSelectorComponent {
                 id.remove();
             }
 
-            let Some(item) = sel.selected_item() else { return };
-            let Ok(obj) = item.downcast::<PaletteObject>() else { return };
-            let Some(palette) = obj.get_palette() else { return };
+            let Some(item) = sel.selected_item() else {
+                return;
+            };
+            let Ok(obj) = item.downcast::<PaletteObject>() else {
+                return;
+            };
+            let Some(palette) = obj.get_palette() else {
+                return;
+            };
 
             let on_select_clone = on_select_rc.clone();
             let debounce_id_clone = debounce_id.clone();
 
-            let id = glib::timeout_add_local_once(
-                std::time::Duration::from_millis(150),
-                move || {
+            let id =
+                glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
                     debounce_id_clone.set(None);
                     on_select_clone(palette);
-                },
-            );
+                });
             debounce_id.set(Some(id));
         });
 
@@ -158,10 +172,11 @@ impl ThemeSelectorComponent {
                     return true;
                 }
                 if let Some(obj) = item.downcast_ref::<PaletteObject>()
-                    && let Some(palette) = obj.get_palette() {
-                        return palette.name.to_lowercase().contains(&query) ||
-                               palette.id.to_lowercase().contains(&query);
-                    }
+                    && let Some(palette) = obj.get_palette()
+                {
+                    return palette.name.to_lowercase().contains(&query)
+                        || palette.id.to_lowercase().contains(&query);
+                }
                 false
             });
         });
@@ -169,7 +184,7 @@ impl ThemeSelectorComponent {
         let widget = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .build();
-            
+
         widget.append(&search_entry);
         widget.append(&scrolled_window);
 
@@ -182,17 +197,18 @@ impl ThemeSelectorComponent {
     pub fn widget(&self) -> &gtk::Box {
         &self.widget
     }
-    
+
     pub fn select_theme(&self, id: &str) {
         let model = self.selection_model.clone();
         for i in 0..model.n_items() {
             if let Some(item) = model.item(i)
                 && let Ok(obj) = item.downcast::<PaletteObject>()
-                    && let Some(palette) = obj.get_palette()
-                        && palette.id == id {
-                            self.selection_model.set_selected(i);
-                            break;
-                        }
+                && let Some(palette) = obj.get_palette()
+                && palette.id == id
+            {
+                self.selection_model.set_selected(i);
+                break;
+            }
         }
     }
 }
