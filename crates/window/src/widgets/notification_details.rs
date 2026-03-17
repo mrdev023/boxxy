@@ -92,6 +92,12 @@ impl BoxxyNotificationDetails {
                 .find(|(k, _)| k == "Url")
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default();
+            let date = notification
+                .details
+                .iter()
+                .find(|(k, _)| k == "Date")
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default();
             let id = notification.id.clone();
 
             btn.connect_clicked(glib::clone!(
@@ -101,6 +107,7 @@ impl BoxxyNotificationDetails {
                     if action_name == "win.start-download" {
                         let _ = tx.send_blocking(crate::state::AppInput::StartUpdateDownload(
                             url.clone(),
+                            date.clone(),
                         ));
                     } else if action_name == "win.apply-update" {
                         let _ = tx.send_blocking(crate::state::AppInput::ApplyUpdateAndRestart);

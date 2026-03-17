@@ -3,7 +3,9 @@ use flate2::read::GzDecoder;
 use reqwest::header::{HeaderValue, USER_AGENT};
 use self_update::Download;
 use self_update::backends::github::ReleaseList;
+use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tar::Archive;
@@ -16,8 +18,8 @@ pub struct Updater;
 
 impl Updater {
     /// Checks for a new nightly build on GitHub.
-    /// Returns the release ID and download URL if an update is available.
-    pub async fn check_for_update() -> Result<Option<(String, String)>> {
+    /// Returns `(version, date, download_url)` if an update is available.
+    pub async fn check_for_update() -> Result<Option<(String, String, String)>> {
         if boxxy_ai_core::utils::is_flatpak() {
             return Ok(None);
         }
@@ -43,7 +45,6 @@ impl Updater {
             .context("Could not find nightly release on GitHub")?;
 
         // Check if we've already installed this specific release.
-        // We use the "date" as a heuristic for nightly releases.
         let last_update_path = Self::get_app_dir()?.join(".last_update");
         if last_update_path.exists() {
             let last_id = fs::read_to_string(&last_update_path)?;
@@ -52,7 +53,7 @@ impl Updater {
             }
         }
 
-        // Find the correct asset for this architecture
+        // Find the correct asset for this architecture.
         let target_arch = if cfg!(target_arch = "x86_64") {
             "x86_64"
         } else {
@@ -64,13 +65,17 @@ impl Updater {
             .find(|a| a.name.contains(target_arch) && a.name.ends_with(".tar.gz"));
 
         if let Some(asset) = asset {
-            return Ok(Some((nightly.version.clone(), asset.download_url.clone())));
+            return Ok(Some((
+                nightly.version.clone(),
+                nightly.date.clone(),
+                asset.download_url.clone(),
+            )));
         }
 
         Ok(None)
     }
 
-    pub async fn download_update(url: String) -> Result<PathBuf> {
+    pub async fn download_update(url: String, date: String) -> Result<PathBuf> {
         log::info!("Starting update download from: {}", url);
         let pending_dir = Self::get_app_dir()?.join("updates").join("pending");
         if pending_dir.exists() {
@@ -95,9 +100,31 @@ impl Updater {
         .await
         .context("Failed to download update")??;
 
-        log::info!("Download complete, extracting tarball...");
+        log::info!("Download complete, verifying checksum...");
 
-        // Extract the tarball
+        // Attempt to fetch and verify the SHA-256 checksum published alongside
+        // the release asset.  Gracefully skip if the asset is unavailable so
+        // that existing releases without a checksum file still work.
+        let checksum_url = format!("{}.sha256", url);
+        match Self::fetch_checksum(&checksum_url).await {
+            Ok(expected) if !expected.is_empty() => {
+                let path_for_hash = tmp_tarball.clone();
+                let actual = tokio::task::spawn_blocking(move || Self::sha256_file(&path_for_hash))
+                    .await
+                    .context("Checksum computation task failed")??;
+                if actual != expected {
+                    return Err(anyhow::anyhow!(
+                        "Checksum mismatch: expected {expected}, got {actual}"
+                    ));
+                }
+                log::info!("Checksum verified OK.");
+            }
+            Ok(_) => log::warn!("Checksum asset returned an empty hash; skipping verification."),
+            Err(e) => log::warn!("Checksum asset unavailable ({e}); skipping verification."),
+        }
+
+        log::info!("Extracting tarball...");
+
         let extract_path = pending_dir.clone();
         let tmp_tarball_extract = tmp_tarball.clone();
         tokio::task::spawn_blocking(move || {
@@ -108,6 +135,10 @@ impl Updater {
         })
         .await
         .context("Failed to extract update")??;
+
+        // Persist the release date so apply_update_and_restart can write
+        // .last_update without a second network round-trip.
+        fs::write(pending_dir.join(".update_date"), &date)?;
 
         log::info!("Extraction complete to: {:?}", pending_dir);
 
@@ -122,26 +153,16 @@ impl Updater {
         let bin_dir = app_dir.join("bin");
         let pending_dir = app_dir.join("updates").join("pending");
 
-        // Ensure bin directory exists (in case of fresh install via updater)
+        // Ensure bin directory exists (in case of fresh install via updater).
         if !bin_dir.exists() {
             fs::create_dir_all(&bin_dir)?;
         }
 
-        // Find the release info to get the date for the .last_update file
-        // This is a bit redundant but ensures we don't prompt again immediately
-        let releases = ReleaseList::configure()
-            .repo_owner(REPO_OWNER)
-            .repo_name(REPO_NAME)
-            .build()?
-            .fetch()?;
+        // Read the release date stored during download — no network call needed.
+        // Falls back to an empty string for installs predating this mechanism.
+        let nightly_date = fs::read_to_string(pending_dir.join(".update_date")).unwrap_or_default();
 
-        let nightly_date = releases
-            .iter()
-            .find(|r| r.version == "nightly")
-            .map(|r| r.date.clone())
-            .unwrap_or_default();
-
-        // The archive structure has a top-level folder like "boxxy-terminal-nightly-linux-x86_64"
+        // The archive has a top-level folder like "boxxy-terminal-nightly-linux-x86_64".
         let entries = fs::read_dir(&pending_dir)?;
         let mut inner_folder = None;
         for entry in entries {
@@ -163,19 +184,17 @@ impl Updater {
 
         log::info!("Swapping binaries from {:?} to {:?}", pending_bin, bin_dir);
 
-        // Swap boxxy-terminal
         Self::swap_binary(
             &bin_dir.join("boxxy-terminal"),
             &pending_bin.join("boxxy-terminal"),
         )?;
 
-        // Swap boxxy-agent
         Self::swap_binary(
             &bin_dir.join("boxxy-agent"),
             &pending_bin.join("boxxy-agent"),
         )?;
 
-        // Update .last_update file with the build date
+        // Update .last_update file with the build date.
         fs::write(app_dir.join(".last_update"), nightly_date)?;
 
         log::info!("Restarting app...");
@@ -196,9 +215,12 @@ impl Updater {
             let _ = fs::remove_file(&old_backup);
             fs::rename(current, &old_backup)?;
         }
-        fs::copy(new, current)?;
 
-        // Ensure it's executable
+        // Atomically move the new binary into place. Both paths live under
+        // ~/.local/boxxy-terminal/ so they are always on the same filesystem,
+        // making rename(2) atomic and avoiding the "text file busy" error.
+        fs::rename(new, current)?;
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -208,6 +230,34 @@ impl Updater {
         }
 
         Ok(())
+    }
+
+    async fn fetch_checksum(url: &str) -> Result<String> {
+        let client = reqwest::Client::new();
+        let text = client
+            .get(url)
+            .header(USER_AGENT, HeaderValue::from_static("boxxy-terminal"))
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        // .sha256 file format: "hexhash  filename\n" — we only need the hash.
+        Ok(text.split_whitespace().next().unwrap_or("").to_string())
+    }
+
+    fn sha256_file(path: &Path) -> Result<String> {
+        let mut file = fs::File::open(path)?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 65536];
+        loop {
+            let n = file.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     fn get_app_dir() -> Result<PathBuf> {

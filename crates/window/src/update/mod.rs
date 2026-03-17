@@ -310,10 +310,10 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
                 }
             }
         }
-        AppInput::StartUpdateDownload(url) => {
+        AppInput::StartUpdateDownload(url, date) => {
             let tx_download = inner.tx.clone();
             gtk4::glib::spawn_future_local(async move {
-                match crate::updater::Updater::download_update(url).await {
+                match crate::updater::Updater::download_update(url, date).await {
                     Ok(path) => {
                         let _ = tx_download.send_blocking(AppInput::UpdateDownloaded(
                             path.to_string_lossy().to_string(),

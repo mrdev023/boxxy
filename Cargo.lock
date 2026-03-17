@@ -782,6 +782,7 @@ dependencies = [
  "reqwest 0.13.2",
  "self_update",
  "serde",
+ "sha2",
  "sourceview5",
  "tar",
  "tempfile",

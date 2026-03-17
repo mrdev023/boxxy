@@ -28,7 +28,7 @@ pub struct Notification {
 }
 
 impl Notification {
-    pub fn new_update(version: &str, url: &str) -> Self {
+    pub fn new_update(version: &str, date: &str, url: &str) -> Self {
         Self {
             id: "update-available".to_string(),
             level: NotificationLevel::Update,
@@ -50,7 +50,8 @@ impl Notification {
             details: vec![
                 ("Version".to_string(), version.to_string()),
                 ("Source".to_string(), "github/nightly".to_string()),
-                ("Url".to_string(), url.to_string()), // Keep url for logic but hide in loop if needed
+                ("Date".to_string(), date.to_string()),
+                ("Url".to_string(), url.to_string()),
             ],
         }
     }

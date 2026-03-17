@@ -64,12 +64,15 @@ jobs:
             cp resources/icons/play.mii.Boxxy.png "${PKG_NAME}/share/icons/hicolor/scalable/apps/"
 
             tar -czvf "${PKG_NAME}.tar.gz" "${PKG_NAME}"
+            sha256sum "${PKG_NAME}.tar.gz" | awk '{print $1}' > "${PKG_NAME}.tar.gz.sha256"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.arch }}
-          path: boxxy-terminal-nightly-linux-${{ matrix.arch }}.tar.gz
+          path: |
+            boxxy-terminal-nightly-linux-${{ matrix.arch }}.tar.gz
+            boxxy-terminal-nightly-linux-${{ matrix.arch }}.tar.gz.sha256
 
   publish:
     name: Publish Nightly
@@ -98,8 +101,8 @@ jobs:
           git tag nightly
           git push origin nightly
           
-          # Use wildcards to include all downloaded tarballs
-          gh release create nightly *.tar.gz \
+          # Use wildcards to include all downloaded tarballs and checksums
+          gh release create nightly *.tar.gz *.tar.gz.sha256 \
             --title "Nightly Build ($(date -u '+%Y-%m-%d'))" \
             --notes "This release contains the latest automated builds from the main branch." \
             --prerelease
