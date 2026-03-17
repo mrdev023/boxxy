@@ -15,7 +15,7 @@ pub struct BookmarksSidebarComponent {
 
 struct BookmarksSidebarInner {
     list_box: gtk::ListBox,
-    on_execute: Rc<dyn Fn(String, String)>,
+    on_execute: Rc<dyn Fn(String, String, String)>,
 }
 
 impl std::fmt::Debug for BookmarksSidebarComponent {
@@ -25,7 +25,7 @@ impl std::fmt::Debug for BookmarksSidebarComponent {
 }
 
 impl BookmarksSidebarComponent {
-    pub fn new<F: Fn(String, String) + 'static>(on_execute: F) -> Self {
+    pub fn new<F: Fn(String, String, String) + 'static>(on_execute: F) -> Self {
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
         let scroll = gtk::ScrolledWindow::new();
@@ -129,7 +129,7 @@ impl BookmarksSidebarComponent {
         let on_exec = self.inner.borrow().on_execute.clone();
         gesture.connect_released(move |_, _, _, _| {
             if let Some(script) = BookmarksManager::get_script(&filename) {
-                on_exec(name.clone(), script);
+                on_exec(name.clone(), filename.clone(), script);
             }
         });
         row.add_controller(gesture);

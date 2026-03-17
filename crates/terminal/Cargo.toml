@@ -30,3 +30,4 @@ gstreamer.workspace = true
 log.workspace = true
 uuid.workspace = true
 getrandom.workspace = true
+directories.workspace = true

@@ -94,8 +94,8 @@ impl AppWindow {
         claw.update_diagnosis_mode(&current_settings.claw_auto_diagnosis_mode);
 
         let tx_bookmarks = tx.clone();
-        let bookmarks_sidebar = BookmarksSidebarComponent::new(move |name, script| {
-            let _ = tx_bookmarks.send_blocking(AppInput::ExecuteBookmark(name, script));
+        let bookmarks_sidebar = BookmarksSidebarComponent::new(move |name, filename, script| {
+            let _ = tx_bookmarks.send_blocking(AppInput::ExecuteBookmark(name, filename, script));
         });
 
         let tx_theme = tx.clone();
@@ -117,7 +117,7 @@ impl AppWindow {
                     boxxy_command_palette::CommandItem {
                         title: format!("Bookmark: {}", bm.name),
                         action: "win.execute-bookmark".to_string(),
-                        parameter: Some((bm.name, script).to_variant()),
+                        parameter: Some((bm.name, bm.filename, script).to_variant()),
                         shortcut: None,
                     }
                 })
@@ -139,7 +139,7 @@ impl AppWindow {
                         boxxy_command_palette::CommandItem {
                             title: format!("Bookmark: {}", bm.name),
                             action: "win.execute-bookmark".to_string(),
-                            parameter: Some((bm.name, script).to_variant()),
+                            parameter: Some((bm.name, bm.filename, script).to_variant()),
                             shortcut: None,
                         }
                     })

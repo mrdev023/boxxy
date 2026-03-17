@@ -30,7 +30,7 @@ pub struct BookmarksTabComponent {
 
 struct BookmarksTabInner {
     list_store: gtk::gio::ListStore,
-    on_run: Rc<dyn Fn(String, String)>,
+    on_run: Rc<dyn Fn(String, String, String)>,
 }
 
 impl std::fmt::Debug for BookmarksTabComponent {
@@ -40,7 +40,7 @@ impl std::fmt::Debug for BookmarksTabComponent {
 }
 
 impl BookmarksTabComponent {
-    pub fn new<F: Fn(String, String) + 'static>(on_run: F) -> Self {
+    pub fn new<F: Fn(String, String, String) + 'static>(on_run: F) -> Self {
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
         let content_scroll = gtk::ScrolledWindow::new();
@@ -115,7 +115,7 @@ impl BookmarksTabComponent {
                     let bm = obj.borrow::<Bookmark>();
                     if let Some(script) = BookmarksManager::get_script(&bm.filename) {
                         if let Some(inner) = inner_weak_run.upgrade() {
-                            (inner.borrow().on_run)(bm.name.clone(), script);
+                            (inner.borrow().on_run)(bm.name.clone(), bm.filename.clone(), script);
                         }
                     }
                 }

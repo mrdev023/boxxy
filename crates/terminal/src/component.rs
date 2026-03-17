@@ -159,14 +159,20 @@ impl TerminalComponent {
             .any(|p| p.controller.has_selection())
     }
 
-    pub fn show_bookmark_proposal(&self, name: &str, script: &str, placeholders: Vec<String>) {
+    pub fn show_bookmark_proposal(
+        &self,
+        name: &str,
+        filename: &str,
+        script: &str,
+        placeholders: Vec<String>,
+    ) {
         let active_id = self.inner.borrow().active_pane_id.clone();
         if let Some(pane) = self.inner.borrow().panes.get(&active_id) {
-            let proposal = if placeholders.is_empty() {
-                crate::TerminalProposal::Command(script.to_string())
-            } else {
-                crate::TerminalProposal::BookmarkTemplate(script.to_string(), placeholders)
-            };
+            let proposal = crate::TerminalProposal::Bookmark(
+                filename.to_string(),
+                script.to_string(),
+                placeholders,
+            );
             pane.controller.show_bookmark_proposal(
                 &format!("Bookmark: {}", name),
                 "Execute the following script?",

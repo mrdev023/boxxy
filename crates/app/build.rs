@@ -31,6 +31,7 @@ fn main() {
     <file compressed="true" alias="icons/python.svg">icons/python.svg</file>
     <file compressed="true" alias="prompts/ai_chat.md">prompts/ai_chat.md</file>
     <file compressed="true" alias="prompts/claw.md">prompts/claw.md</file>
+    <file compressed="true" alias="prompts/bookmark_generator.md">prompts/bookmark_generator.md</file>
     <file compressed="true" alias="prompts/boxxy_app_generator.md">prompts/boxxy_app_generator.md</file>
     <file compressed="true" alias="prompts/memory_expansion.md">prompts/memory_expansion.md</file>
     <file compressed="true" alias="prompts/memory_flush.md">prompts/memory_flush.md</file>
@@ -75,6 +76,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../resources/icons/python.svg");
     println!("cargo:rerun-if-changed=../../resources/prompts/ai_chat.md");
     println!("cargo:rerun-if-changed=../../resources/prompts/claw.md");
+    println!("cargo:rerun-if-changed=../../resources/prompts/bookmark_generator.md");
     println!("cargo:rerun-if-changed=../../resources/prompts/boxxy_app_generator.md");
     println!("cargo:rerun-if-changed=../../resources/prompts/memory_expansion.md");
     println!("cargo:rerun-if-changed=../../resources/prompts/memory_flush.md");

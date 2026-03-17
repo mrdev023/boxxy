@@ -40,8 +40,8 @@ pub enum AppInput {
     ShowAiChat,
     ShowClawSidebar,
     ShowBookmarksSidebar,
-    ExecuteBookmark(String, String), // Name, Script
-    ExecuteInNewTab(String, String), // Name, Script
+    ExecuteBookmark(String, String, String), // Name, Filename, Script
+    ExecuteInNewTab(String, String, String), // Name, Filename, Script
     SetClawActive(bool),
     ModelSelection,
     ThemeSelected(Box<boxxy_themes::ParsedPaletteStatic>),

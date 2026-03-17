@@ -509,6 +509,7 @@ version = "0.0.25"
 dependencies = [
  "anyhow",
  "boxxy-ai-core",
+ "boxxy-bookmarks",
  "boxxy-db",
  "boxxy-preferences",
  "boxxy-terminal",
@@ -690,6 +691,7 @@ dependencies = [
  "boxxy-preferences",
  "boxxy-themes",
  "boxxy-vte",
+ "directories",
  "futures-channel",
  "futures-util",
  "getrandom 0.4.2",

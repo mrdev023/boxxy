@@ -38,14 +38,16 @@ pub fn setup_actions(window: &libadwaita::ApplicationWindow, sender: Sender<AppI
     add_action!("copy", AppInput::Copy);
     add_action!("paste", AppInput::Paste);
 
-    let execute_bm = gio::SimpleAction::new(
+    let execute_bm = gtk4::gio::SimpleAction::new(
         "execute-bookmark",
-        Some(gtk4::glib::VariantTy::new("(ss)").unwrap()),
+        Some(gtk4::glib::VariantTy::new("(sss)").unwrap()),
     );
     let s = sender.clone();
     execute_bm.connect_activate(move |_, param| {
-        if let Some((name, script)) = param.and_then(|p| p.get::<(String, String)>()) {
-            let _ = s.send_blocking(AppInput::ExecuteBookmark(name, script));
+        if let Some((name, filename, script)) =
+            param.and_then(|p| p.get::<(String, String, String)>())
+        {
+            let _ = s.send_blocking(AppInput::ExecuteBookmark(name, filename, script));
         }
     });
     action_group.add_action(&execute_bm);

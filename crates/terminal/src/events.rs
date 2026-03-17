@@ -14,7 +14,7 @@ pub struct TerminalEvent {
 pub enum TerminalProposal {
     None,
     Command(String),
-    BookmarkTemplate(String, Vec<String>), // script, placeholders
+    Bookmark(String, String, Vec<String>), // filename, script, placeholders
     FileWrite(String, String),             // The path and content of the file
 }
 

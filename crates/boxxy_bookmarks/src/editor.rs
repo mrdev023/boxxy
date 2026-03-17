@@ -312,8 +312,12 @@ impl BookmarkEditor {
 
         ai_generate_btn.connect_clicked(move |_| {
             let buffer = ai_text_view_gen.buffer();
-            let prompt = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string();
-            if prompt.is_empty() { return; }
+            let prompt = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .to_string();
+            if prompt.is_empty() {
+                return;
+            }
 
             ai_spinner_gen.set_visible(true);
             ai_spinner_gen.start();
@@ -327,7 +331,13 @@ impl BookmarkEditor {
                 settings.ollama_base_url.clone(),
             );
 
-            let system_prompt = "You are a shell script generator. Return ONLY the code, no markdown blocks, no explanation. Just the script content.";
+            let data = gtk::gio::resources_lookup_data(
+                "/play/mii/Boxxy/prompts/bookmark_generator.md",
+                gtk::gio::ResourceLookupFlags::NONE,
+            )
+            .expect("Failed to load bookmark generator prompt resource");
+            let system_prompt =
+                String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
 
             let buffer_inner = buffer_ai.clone();
             let ai_pop_inner = ai_pop_gen.clone();
@@ -338,7 +348,7 @@ impl BookmarkEditor {
             gtk::glib::spawn_future_local(async move {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 tokio::spawn(async move {
-                    let agent = boxxy_ai_core::create_agent(&model, &creds, system_prompt);
+                    let agent = boxxy_ai_core::create_agent(&model, &creds, &system_prompt);
                     let res = agent.prompt(&prompt).await;
                     let _ = tx.send(res);
                 });

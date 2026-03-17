@@ -21,6 +21,7 @@ env_logger.workspace = true
 log.workspace = true
 boxxy-preferences = { path = "../preferences" }
 boxxy-db = { path = "../db" }
+boxxy-bookmarks.workspace = true
 
 [build-dependencies]
 glib-build-tools.workspace = true

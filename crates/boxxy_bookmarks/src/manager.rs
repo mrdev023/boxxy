@@ -50,7 +50,32 @@ impl BookmarksManager {
         Self::get_base_dir().map(|d| d.join(filename))
     }
 
+    pub fn get_runs_dir() -> Option<PathBuf> {
+        if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
+            let runs_dir = dirs
+                .config_dir()
+                .join("cache")
+                .join("bookmarks")
+                .join("runs");
+            if !runs_dir.exists() {
+                let _ = fs::create_dir_all(&runs_dir);
+            }
+            return Some(runs_dir);
+        }
+        None
+    }
+
+    pub fn clean_runs_dir() {
+        if let Some(runs_dir) = Self::get_runs_dir() {
+            let _ = fs::remove_dir_all(&runs_dir);
+            let _ = fs::create_dir_all(&runs_dir);
+        }
+    }
+
     pub fn init() {
+        // Clean up runs dir on startup
+        Self::clean_runs_dir();
+
         let _ = BOOKMARKS_CACHE.get_or_init(|| {
             let mut data = BookmarksData::default();
             if let Some(path) = Self::get_index_path()
@@ -72,7 +97,7 @@ impl BookmarksManager {
                 // If script is still in JSON, migrate to file
                 if !bm.script.is_empty() {
                     if bm.filename.is_empty() {
-                        bm.filename = Self::generate_unique_filename(&bm.name, None);
+                        bm.filename = Self::generate_unique_filename(&bm.name, &bm.script, None);
                     }
                     if let Some(path) = Self::get_script_path(&bm.filename) {
                         let _ = fs::write(path, &bm.script);
@@ -137,7 +162,7 @@ impl BookmarksManager {
 
     pub fn add(name: String, script: String) -> Bookmark {
         let mut data = Self::get_data();
-        let filename = Self::generate_unique_filename(&name, None);
+        let filename = Self::generate_unique_filename(&name, &script, None);
 
         // Save script to file
         if let Some(path) = Self::get_script_path(&filename) {
@@ -163,7 +188,8 @@ impl BookmarksManager {
             let old_filename = bm.filename.clone();
 
             if name_changed {
-                let new_filename = Self::generate_unique_filename(&name, Some(id));
+                let script_to_use = Self::get_script(&old_filename).unwrap_or_default();
+                let new_filename = Self::generate_unique_filename(&name, &script_to_use, Some(id));
                 if new_filename != old_filename {
                     if let (Some(old_path), Some(new_path)) = (
                         Self::get_script_path(&old_filename),
@@ -229,17 +255,33 @@ impl BookmarksManager {
         None
     }
 
-    fn generate_unique_filename(name: &str, current_id: Option<Uuid>) -> String {
+    fn generate_unique_filename(name: &str, script: &str, current_id: Option<Uuid>) -> String {
         let name = name.trim();
         let (base, ext) = if let Some(pos) = name.rfind('.') {
             let (b, e) = name.split_at(pos);
             if e.len() > 1 && (e == ".sh" || e == ".py" || e == ".js" || e == ".rb") {
                 (b, e)
             } else {
-                (name, ".sh")
+                let default_ext = if script.starts_with("```python")
+                    || script.contains("#!/usr/bin/env python")
+                    || script.contains("#!/usr/bin/python")
+                {
+                    ".py"
+                } else {
+                    ".sh"
+                };
+                (name, default_ext)
             }
         } else {
-            (name, ".sh")
+            let default_ext = if script.starts_with("```python")
+                || script.contains("#!/usr/bin/env python")
+                || script.contains("#!/usr/bin/python")
+            {
+                ".py"
+            } else {
+                ".sh"
+            };
+            (name, default_ext)
         };
 
         let sanitized = base

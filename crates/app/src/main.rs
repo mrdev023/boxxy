@@ -79,6 +79,10 @@ fn main() {
         app.add_action(&inspector_action);
     });
 
+    app.connect_shutdown(|_| {
+        boxxy_bookmarks::manager::BookmarksManager::clean_runs_dir();
+    });
+
     let exit_code = app.run();
     std::process::exit(exit_code.into());
 }

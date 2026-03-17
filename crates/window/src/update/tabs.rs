@@ -262,9 +262,12 @@ pub fn open_bookmarks(inner: &mut AppWindowInner) {
         inner.tab_view.set_selected_page(page);
     } else {
         let tx_run = inner.tx.clone();
-        let controller = boxxy_bookmarks::tab::BookmarksTabComponent::new(move |name, script| {
-            let _ = tx_run.send_blocking(crate::state::AppInput::ExecuteInNewTab(name, script));
-        });
+        let controller =
+            boxxy_bookmarks::tab::BookmarksTabComponent::new(move |name, filename, script| {
+                let _ = tx_run.send_blocking(crate::state::AppInput::ExecuteInNewTab(
+                    name, filename, script,
+                ));
+            });
 
         let widget = controller.widget().clone();
 

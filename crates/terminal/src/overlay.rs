@@ -245,7 +245,7 @@ impl TerminalOverlay {
             let end = buffer.end_iter();
             let mut cmd = buffer.text(&start, &end, false).to_string();
 
-            if let crate::TerminalProposal::BookmarkTemplate(_, placeholders) =
+            if let crate::TerminalProposal::Bookmark(filename, _cmd, placeholders) =
                 current_proposal_for_accept.borrow().clone()
             {
                 let input_str = template_entry_clone.text().to_string();
@@ -256,6 +256,49 @@ impl TerminalOverlay {
                     if let Some(val) = values.get(i) {
                         let pattern = format!("{{{{{{{}}}}}}}", name);
                         cmd = cmd.replace(&pattern, val);
+                    }
+                }
+
+                // Ephemeral Execution Files
+                if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal")
+                {
+                    let runs_dir = dirs
+                        .config_dir()
+                        .join("cache")
+                        .join("bookmarks")
+                        .join("runs");
+                    if !runs_dir.exists() {
+                        let _ = std::fs::create_dir_all(&runs_dir);
+                    }
+
+                    let uuid = uuid::Uuid::new_v4().to_string();
+                    let short_uuid = &uuid[0..6];
+
+                    // Split the extension from the filename
+                    let (stem, ext) = if let Some(idx) = filename.rfind('.') {
+                        (&filename[..idx], &filename[idx..])
+                    } else {
+                        (filename.as_str(), "")
+                    };
+
+                    let temp_filename = format!("{}-{}{}", stem, short_uuid, ext);
+                    let temp_path = runs_dir.join(&temp_filename);
+
+                    if let Ok(_) = std::fs::write(&temp_path, &cmd) {
+                        // Make executable
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            if let Ok(mut perms) =
+                                std::fs::metadata(&temp_path).map(|m| m.permissions())
+                            {
+                                perms.set_mode(0o755);
+                                let _ = std::fs::set_permissions(&temp_path, perms);
+                            }
+                        }
+
+                        // We prefix with a space to avoid history pollution
+                        cmd = format!(" {}", temp_path.display());
                     }
                 }
             }
@@ -366,8 +409,12 @@ impl TerminalOverlay {
                 self.accept_btn.set_visible(true);
                 self.reject_btn.set_visible(true);
             }
-            crate::TerminalProposal::BookmarkTemplate(cmd, placeholders) => {
-                self.command_view.buffer().set_text(&cmd);
+            crate::TerminalProposal::Bookmark(_filename, cmd, placeholders) => {
+                let mut display_cmd = cmd.lines().take(15).collect::<Vec<_>>().join("\n");
+                if cmd.lines().count() > 15 {
+                    display_cmd.push_str("\n\n... (truncated for preview)");
+                }
+                self.command_view.buffer().set_text(&display_cmd);
                 self.command_view.set_editable(false);
                 self.command_frame.set_visible(true);
                 self.action_box.set_visible(true);

@@ -200,7 +200,7 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         AppInput::ShowBookmarksSidebar => {
             window_state::show_bookmarks_sidebar(&mut inner);
         }
-        AppInput::ExecuteBookmark(name, script) => {
+        AppInput::ExecuteBookmark(name, filename, script) => {
             let template = boxxy_bookmarks::parser::BookmarkTemplate::parse(&script);
             let placeholders = template.placeholders;
             if let Some(page) = inner.tab_view.selected_page() {
@@ -210,13 +210,16 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
                     .iter()
                     .position(|c| c.controller.widget() == &child)
                 {
-                    inner.tabs[pos]
-                        .controller
-                        .show_bookmark_proposal(&name, &script, placeholders);
+                    inner.tabs[pos].controller.show_bookmark_proposal(
+                        &name,
+                        &filename,
+                        &script,
+                        placeholders,
+                    );
                 }
             }
         }
-        AppInput::ExecuteInNewTab(name, script) => {
+        AppInput::ExecuteInNewTab(name, filename, script) => {
             let template = boxxy_bookmarks::parser::BookmarkTemplate::parse(&script);
             let placeholders = template.placeholders;
             tabs::new_tab(&mut inner);
@@ -233,7 +236,7 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
                     gtk4::glib::timeout_add_local_once(
                         std::time::Duration::from_millis(150),
                         move || {
-                            tc.show_bookmark_proposal(&name, &script, placeholders);
+                            tc.show_bookmark_proposal(&name, &filename, &script, placeholders);
                         },
                     );
                 }
