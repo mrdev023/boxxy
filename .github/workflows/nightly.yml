@@ -105,6 +105,6 @@ jobs:
             --prerelease
 
           # Force GitHub to update the 'published_at' timestamp to now so it stays at the top of the releases page
-          RELEASE_ID=$(gh release view nightly --json id -q .id)
+          RELEASE_ID=$(gh release view nightly --json databaseId -q .databaseId)
           gh api --method PATCH /repos/${{ github.repository }}/releases/$RELEASE_ID -F draft=true
           gh api --method PATCH /repos/${{ github.repository }}/releases/$RELEASE_ID -F draft=false
