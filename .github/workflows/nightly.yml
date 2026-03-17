@@ -89,6 +89,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Ensure nightly tag exists (create it if not)
+          if ! git rev-parse nightly >/dev/null 2>&1; then
+            git tag nightly
+            git push origin nightly
+          fi
+
           # Atomic update: Delete old release and recreate with ALL assets at once
           gh release delete nightly --yes || true
           git tag -d nightly || true

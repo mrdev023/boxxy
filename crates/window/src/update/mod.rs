@@ -298,9 +298,39 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
             inner.notifications.push(ready.clone());
             inner.notification_pill.set_notification(ready);
         }
-        AppInput::DismissNotification(_id) => {}
-        AppInput::StartUpdateDownload(_url) => {}
-        AppInput::UpdateDownloaded(_path) => {}
+        AppInput::DismissNotification(id) => {
+            inner.notifications.retain(|n| n.id != id);
+            if let Some(current) = inner.notification_pill.get_notification() {
+                if current.id == id {
+                    inner.notification_pill.clear();
+                    // Show next notification if any
+                    if let Some(next) = inner.notifications.first() {
+                        inner.notification_pill.set_notification(next.clone());
+                    }
+                }
+            }
+        }
+        AppInput::StartUpdateDownload(url) => {
+            let tx_download = inner.tx.clone();
+            gtk4::glib::spawn_future_local(async move {
+                match crate::updater::Updater::download_update(url).await {
+                    Ok(path) => {
+                        let _ = tx_download.send_blocking(AppInput::UpdateDownloaded(
+                            path.to_string_lossy().to_string(),
+                        ));
+                    }
+                    Err(e) => {
+                        log::error!("Failed to download update: {}", e);
+                    }
+                }
+            });
+        }
+        AppInput::UpdateDownloaded(_path) => {
+            // Show the "Update Ready" notification
+            let ready = crate::widgets::notification::Notification::new_update_ready("nightly");
+            inner.notifications.push(ready.clone());
+            inner.notification_pill.set_notification(ready);
+        }
         AppInput::ApplyUpdateAndRestart => {
             let _ = crate::updater::Updater::apply_update_and_restart();
         }
