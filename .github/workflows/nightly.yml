@@ -104,8 +104,7 @@ jobs:
           # Use wildcards to include all downloaded tarballs and checksums
           gh release create nightly *.tar.gz *.tar.gz.sha256 \
             --title "Nightly Build ($(date -u '+%Y-%m-%d'))" \
-            --notes "This release contains the latest automated builds from the main branch." \
-            --prerelease
+            --notes "This release contains the latest automated builds from the main branch."
 
           # Force GitHub to update the 'published_at' timestamp to now so it stays at the top of the releases page
           RELEASE_ID=$(gh release view nightly --json databaseId -q .databaseId)
