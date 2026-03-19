@@ -30,7 +30,7 @@ impl GlobalModelSelectorDialog {
         let dialog = libadwaita::Dialog::builder()
             .title("Models Selection")
             .content_width(450)
-            .content_height(350)
+            .content_height(400)
             .build();
 
         let stack = gtk::Stack::new();
@@ -47,9 +47,42 @@ impl GlobalModelSelectorDialog {
             on_memory_change(Some(new_prov));
         });
 
-        stack.add_titled(ai_chat_selector.widget(), Some("ai"), "AI Assistant");
-        stack.add_titled(claw_selector.widget(), Some("claw"), "Boxxy Claw");
-        stack.add_titled(memory_selector.widget(), Some("memory"), "Memories");
+        let build_tab = |selector: &SingleModelSelector, help_text: &str| -> gtk::Box {
+            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+
+            let help_label = gtk::Label::new(Some(help_text));
+            help_label.set_halign(gtk::Align::Start);
+            help_label.set_wrap(true);
+            help_label.add_css_class("dim-label");
+            help_label.set_margin_start(10);
+            help_label.set_margin_end(10);
+            help_label.set_margin_top(10);
+            help_label.set_margin_bottom(0);
+
+            vbox.append(&help_label);
+            vbox.append(selector.widget());
+            vbox
+        };
+
+        let ai_tab = build_tab(
+            &ai_chat_selector,
+            "This model is only used in AI Chat in the Sidebar.",
+        );
+        let claw_tab = build_tab(
+            &claw_selector,
+            "This model is used to run Boxxy Agents. A highly capable reasoning model is recommended.",
+        );
+        let mem_tab = build_tab(
+            &memory_selector,
+            "This model is used to extract background facts and match database memories. Use a fast, lightweight model here.",
+        );
+
+        stack.add_titled(&ai_tab, Some("ai"), "AI Assistant");
+        stack.add_titled(&claw_tab, Some("claw"), "Boxxy Claw");
+        stack.add_titled(&mem_tab, Some("memory"), "Memories");
+
+        // Make Boxxy Claw the default view
+        stack.set_visible_child_name("claw");
 
         let switcher = gtk::StackSwitcher::new();
         switcher.set_stack(Some(&stack));

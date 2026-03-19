@@ -14,6 +14,8 @@ pub fn setup_apis_page(
     let dynamic_apis_group: adw::PreferencesGroup = builder.object("dynamic_apis_group").unwrap();
     let ollama_base_url_entry: adw::EntryRow = builder.object("ollama_base_url_entry").unwrap();
     let group_ollama_api: adw::PreferencesGroup = builder.object("group_ollama_api").unwrap();
+    let group_models_link: adw::PreferencesGroup = builder.object("group_models_link").unwrap();
+    let open_models_btn: gtk::Button = builder.object("open_models_btn").unwrap();
 
     let providers = boxxy_model_selection::get_providers();
     let mut dynamic_rows = Vec::new();
@@ -63,6 +65,7 @@ pub fn setup_apis_page(
     });
 
     let ollama_base_url_entry_clone = ollama_base_url_entry.clone();
+    let open_models_btn_clone = open_models_btn.clone();
 
     Box::new(move |query: &str| {
         let match_row = |r: &gtk::Widget, text: &str| {
@@ -72,6 +75,13 @@ pub fn setup_apis_page(
         };
 
         let mut any_visible = false;
+
+        let models_visible = match_row(
+            open_models_btn_clone.upcast_ref(),
+            "open models selection ai claw memories",
+        );
+        group_models_link.set_visible(models_visible);
+
         for (name, row) in &dynamic_rows {
             if match_row(row.upcast_ref(), &format!("{} api key", name)) {
                 any_visible = true;
@@ -82,6 +92,6 @@ pub fn setup_apis_page(
         group_ollama_api.set_visible(ollama_visible);
         dynamic_apis_group.set_visible(any_visible);
 
-        any_visible || ollama_visible
+        any_visible || ollama_visible || models_visible
     })
 }

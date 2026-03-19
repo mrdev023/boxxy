@@ -389,6 +389,35 @@
                                 </child>
                               </object>
                             </child>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="group_models_link">
+                                <property name="margin-top">12</property>
+                                <child>
+                                  <object class="GtkButton" id="open_models_btn">
+                                    <property name="label" translatable="yes">Open Models Selection</property>
+                                    <property name="halign">center</property>
+                                    <property name="css-classes">pill suggested-action</property>
+                                    <property name="action-name">win.model-selection</property>
+                                    <child>
+                                      <object class="GtkBox">
+                                        <property name="orientation">horizontal</property>
+                                        <property name="spacing">6</property>
+                                        <child>
+                                          <object class="GtkLabel">
+                                            <property name="label" translatable="yes">Open Models Selection</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkImage">
+                                            <property name="icon-name">external-link-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
                           </object>
                         </property>
                       </object>

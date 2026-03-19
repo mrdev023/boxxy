@@ -481,7 +481,6 @@ fn spawn_turn(
         let history = state_lock.history.clone();
         drop(state_lock);
 
-        info!("Pane {pane_id}: Sending turn to Boxxy-Claw agent...");
         let _ = tx_ui
             .send(ClawEngineEvent::AgentThinking { is_thinking: true })
             .await;
@@ -491,7 +490,6 @@ fn spawn_turn(
                 let _ = tx_ui
                     .send(ClawEngineEvent::AgentThinking { is_thinking: false })
                     .await;
-                info!("Pane {pane_id}: Boxxy-Claw turn complete.");
 
                 let mut state_lock = state.lock().await;
                 state_lock
