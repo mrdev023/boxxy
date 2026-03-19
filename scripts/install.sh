@@ -61,6 +61,14 @@ main() {
     # The archive contains a directory named boxxy-terminal-nightly-linux-$arch
     EXTRACTED_DIR=$(find "$temp" -maxdepth 1 -type d -name "boxxy-terminal-nightly*" | head -n 1)
 
+    # Bypass "Text file busy" error if updating from within Boxxy itself
+    if [ -f "$INSTALL_DIR/bin/boxxy-terminal" ]; then
+        mv "$INSTALL_DIR/bin/boxxy-terminal" "$INSTALL_DIR/bin/boxxy-terminal.old" 2>/dev/null || true
+    fi
+    if [ -f "$INSTALL_DIR/bin/boxxy-agent" ]; then
+        mv "$INSTALL_DIR/bin/boxxy-agent" "$INSTALL_DIR/bin/boxxy-agent.old" 2>/dev/null || true
+    fi
+
     # Sync files to INSTALL_DIR
     cp -r "$EXTRACTED_DIR/"* "$INSTALL_DIR/"
 
@@ -86,7 +94,7 @@ main() {
     echo ""
     echo "Boxxy Terminal has been installed successfully!"
     echo "You can run it with: boxxy-terminal"
-    
+
     # Check if BIN_DIR is in PATH
     case ":$PATH:" in
         *":$BIN_DIR:"*) ;;

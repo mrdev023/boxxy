@@ -29,7 +29,7 @@ Boxxy is currently in early preview, but it does have most of the things you exp
 
 ### Native
 
-Nightly builds. It supports automatic updates from within the app.
+Nightly builds. It supports automatic updates from within the app. If self-updates fail, you can update by rerunning the installation script
 ```bash
 curl -sSf https://raw.githubusercontent.com/miifrommera/boxxy/main/scripts/install.sh | sh
 ```
