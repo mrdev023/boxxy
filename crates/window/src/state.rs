@@ -76,7 +76,7 @@ pub enum AppInput {
     },
     PushNotification(Notification),
     DismissNotification(String),
-    StartUpdateDownload(String, String), // (url, date)
+    StartUpdateDownload(String, String, Option<String>), // (url, date, checksum_url)
     UpdateDownloaded(String),
     ApplyUpdateAndRestart,
 }

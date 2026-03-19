@@ -18,8 +18,8 @@ pub struct Updater;
 
 impl Updater {
     /// Checks for a new nightly build on GitHub.
-    /// Returns `(version, date, download_url)` if an update is available.
-    pub async fn check_for_update() -> Result<Option<(String, String, String)>> {
+    /// Returns `(version, date, download_url, checksum_url)` if an update is available.
+    pub async fn check_for_update() -> Result<Option<(String, String, String, Option<String>)>> {
         if boxxy_ai_core::utils::is_flatpak() {
             return Ok(None);
         }
@@ -65,17 +65,26 @@ impl Updater {
             .find(|a| a.name.contains(target_arch) && a.name.ends_with(".tar.gz"));
 
         if let Some(asset) = asset {
+            // Try to find a corresponding .sha256 asset
+            let checksum_name = format!("{}.sha256", asset.name);
+            let checksum_asset = nightly.assets.iter().find(|a| a.name == checksum_name);
+
             return Ok(Some((
                 nightly.version.clone(),
                 nightly.date.clone(),
                 asset.download_url.clone(),
+                checksum_asset.map(|a| a.download_url.clone()),
             )));
         }
 
         Ok(None)
     }
 
-    pub async fn download_update(url: String, date: String) -> Result<PathBuf> {
+    pub async fn download_update(
+        url: String,
+        date: String,
+        checksum_url: Option<String>,
+    ) -> Result<PathBuf> {
         log::info!("Starting update download from: {}", url);
         let pending_dir = Self::get_app_dir()?.join("updates").join("pending");
         if pending_dir.exists() {
@@ -103,24 +112,29 @@ impl Updater {
         log::info!("Download complete, verifying checksum...");
 
         // Attempt to fetch and verify the SHA-256 checksum published alongside
-        // the release asset.  Gracefully skip if the asset is unavailable so
-        // that existing releases without a checksum file still work.
-        let checksum_url = format!("{}.sha256", url);
-        match Self::fetch_checksum(&checksum_url).await {
-            Ok(expected) if !expected.is_empty() => {
-                let path_for_hash = tmp_tarball.clone();
-                let actual = tokio::task::spawn_blocking(move || Self::sha256_file(&path_for_hash))
-                    .await
-                    .context("Checksum computation task failed")??;
-                if actual != expected {
-                    return Err(anyhow::anyhow!(
-                        "Checksum mismatch: expected {expected}, got {actual}"
-                    ));
+        // the release asset.
+        if let Some(checksum_url) = checksum_url {
+            match Self::fetch_checksum(&checksum_url).await {
+                Ok(expected) if !expected.is_empty() => {
+                    let path_for_hash = tmp_tarball.clone();
+                    let actual =
+                        tokio::task::spawn_blocking(move || Self::sha256_file(&path_for_hash))
+                            .await
+                            .context("Checksum computation task failed")??;
+                    if actual != expected {
+                        return Err(anyhow::anyhow!(
+                            "Checksum mismatch: expected {expected}, got {actual}"
+                        ));
+                    }
+                    log::info!("Checksum verified OK.");
                 }
-                log::info!("Checksum verified OK.");
+                Ok(_) => {
+                    log::warn!("Checksum asset returned an empty hash; skipping verification.")
+                }
+                Err(e) => log::warn!("Checksum asset unavailable ({e}); skipping verification."),
             }
-            Ok(_) => log::warn!("Checksum asset returned an empty hash; skipping verification."),
-            Err(e) => log::warn!("Checksum asset unavailable ({e}); skipping verification."),
+        } else {
+            log::warn!("No checksum URL provided; skipping verification.");
         }
 
         log::info!("Extracting tarball...");
@@ -237,6 +251,10 @@ impl Updater {
         let text = client
             .get(url)
             .header(USER_AGENT, HeaderValue::from_static("boxxy-terminal"))
+            .header(
+                reqwest::header::ACCEPT,
+                HeaderValue::from_static("application/octet-stream"),
+            )
             .send()
             .await?
             .error_for_status()?

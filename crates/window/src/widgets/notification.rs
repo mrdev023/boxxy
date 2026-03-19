@@ -28,7 +28,18 @@ pub struct Notification {
 }
 
 impl Notification {
-    pub fn new_update(version: &str, date: &str, url: &str) -> Self {
+    pub fn new_update(version: &str, date: &str, url: &str, checksum_url: Option<String>) -> Self {
+        let mut details = vec![
+            ("Version".to_string(), version.to_string()),
+            ("Source".to_string(), "github/nightly".to_string()),
+            ("Date".to_string(), date.to_string()),
+            ("Url".to_string(), url.to_string()),
+        ];
+
+        if let Some(checksum_url) = checksum_url {
+            details.push(("ChecksumUrl".to_string(), checksum_url));
+        }
+
         Self {
             id: "update-available".to_string(),
             level: NotificationLevel::Update,
@@ -47,12 +58,7 @@ impl Notification {
                     is_primary: false,
                 },
             ],
-            details: vec![
-                ("Version".to_string(), version.to_string()),
-                ("Source".to_string(), "github/nightly".to_string()),
-                ("Date".to_string(), date.to_string()),
-                ("Url".to_string(), url.to_string()),
-            ],
+            details,
         }
     }
 

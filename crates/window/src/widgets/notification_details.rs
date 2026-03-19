@@ -58,7 +58,7 @@ impl BoxxyNotificationDetails {
 
         // Dynamically add details
         for (i, (key, value)) in notification.details.iter().enumerate() {
-            if key == "Url" {
+            if key == "Url" || key == "ChecksumUrl" {
                 continue;
             }
 
@@ -98,6 +98,12 @@ impl BoxxyNotificationDetails {
                 .find(|(k, _)| k == "Date")
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default();
+            let checksum_url = notification
+                .details
+                .iter()
+                .find(|(k, _)| k == "ChecksumUrl")
+                .map(|(_, v)| v.clone());
+
             let id = notification.id.clone();
 
             btn.connect_clicked(glib::clone!(
@@ -108,7 +114,10 @@ impl BoxxyNotificationDetails {
                         let _ = tx.send_blocking(crate::state::AppInput::StartUpdateDownload(
                             url.clone(),
                             date.clone(),
+                            checksum_url.clone(),
                         ));
+                        let _ = tx
+                            .send_blocking(crate::state::AppInput::DismissNotification(id.clone()));
                     } else if action_name == "win.apply-update" {
                         let _ = tx.send_blocking(crate::state::AppInput::ApplyUpdateAndRestart);
                     } else if action_name == "win.dismiss-notification" {

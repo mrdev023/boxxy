@@ -406,11 +406,15 @@ impl AppWindow {
         tokio::spawn(async move {
             // Wait 10 seconds after startup to not interfere with boot
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            if let Ok(Some((version, date, url))) =
+            if let Ok(Some((version, date, url, checksum_url))) =
                 crate::updater::Updater::check_for_update().await
             {
-                let notification =
-                    crate::widgets::notification::Notification::new_update(&version, &date, &url);
+                let notification = crate::widgets::notification::Notification::new_update(
+                    &version,
+                    &date,
+                    &url,
+                    checksum_url,
+                );
                 let _ = tx_update
                     .send(AppInput::PushNotification(notification))
                     .await;
