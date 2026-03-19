@@ -139,15 +139,19 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
     inner.tab_bar.set_autohide(!settings.always_show_tabs);
     inner.tab_bar.set_expand_tabs(!settings.fixed_width_tabs);
 
-    inner
-        .claw
-        .update_diagnosis_mode(&settings.claw_auto_diagnosis_mode);
-    inner
-        .claw
-        .update_terminal_suggestions(settings.claw_terminal_suggestions);
-    inner
-        .claw_popover
-        .update_ui(inner.claw.is_active(), &settings);
+    // Note: We intentionally DO NOT update `inner.claw_proactive` or `inner.claw_terminal_suggestions`
+    // from global settings here. Those are window-local states that can be toggled independently per window.
+
+    inner.claw.update_ui(
+        inner.claw_active,
+        inner.claw_proactive,
+        inner.claw_terminal_suggestions,
+    );
+    inner.claw_popover.update_ui(
+        inner.claw_active,
+        inner.claw_proactive,
+        inner.claw_terminal_suggestions,
+    );
 
     super::tabs::sync_header_title(inner);
 }
@@ -180,9 +184,12 @@ pub fn sidebar_visible_changed(inner: &mut AppWindowInner, visible: bool) {
 
 pub fn sidebar_page_changed(inner: &mut AppWindowInner, name: String) {
     if name == "claw" {
-        inner
-            .claw
-            .update_diagnosis_mode(&inner.current_settings.claw_auto_diagnosis_mode);
+        let mode = if inner.claw_proactive {
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+        } else {
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+        };
+        inner.claw.update_diagnosis_mode(&mode);
     }
     inner.app_state.active_sidebar_page = name;
     inner.app_state.save();
@@ -228,9 +235,12 @@ pub fn show_ai_chat(inner: &mut AppWindowInner) {
 }
 
 pub fn show_claw_sidebar(inner: &mut AppWindowInner) {
-    inner
-        .claw
-        .update_diagnosis_mode(&inner.current_settings.claw_auto_diagnosis_mode);
+    let mode = if inner.claw_proactive {
+        boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+    } else {
+        boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+    };
+    inner.claw.update_diagnosis_mode(&mode);
     if !inner.sidebar_visible
         && let Some(split) = inner
             .window

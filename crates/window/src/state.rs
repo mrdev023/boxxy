@@ -43,6 +43,8 @@ pub enum AppInput {
     ExecuteBookmark(String, String, String), // Name, Filename, Script
     ExecuteInNewTab(String, String, String), // Name, Filename, Script
     SetClawActive(bool),
+    SetClawProactive(bool),
+    SetClawTerminalSuggestions(bool),
     ModelSelection,
     ThemeSelected(Box<boxxy_themes::ParsedPaletteStatic>),
     CommandPalette,
@@ -111,6 +113,9 @@ pub struct AppWindowInner {
     pub bell_indicator: gtk::Image,
     pub claw_indicator: gtk::Button,
     pub claw_popover: crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover,
+    pub claw_active: bool,
+    pub claw_proactive: bool,
+    pub claw_terminal_suggestions: bool,
     pub notification_pill: crate::widgets::notification_pill::BoxxyNotificationPill,
     pub notifications: Vec<Notification>,
     pub initial_working_dir: Option<String>,

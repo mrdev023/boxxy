@@ -35,6 +35,10 @@ pub enum ClawMessage {
     CancelPending,
     /// The engine should reload its state (database, skills)
     Reload,
+    /// Update diagnosis mode dynamically.
+    UpdateDiagnosisMode(boxxy_preferences::config::ClawAutoDiagnosisMode),
+    /// Update terminal suggestions dynamically.
+    UpdateTerminalSuggestions(bool),
 }
 
 /// Events sent from the Claw Engine back up to the GTK UI

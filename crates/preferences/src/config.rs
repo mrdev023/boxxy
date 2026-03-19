@@ -55,7 +55,7 @@ impl fmt::Display for ImagePreviewTrigger {
 }
 
 // --- Claw Auto-Diagnosis Mode ---
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ClawAutoDiagnosisMode {
     #[default]

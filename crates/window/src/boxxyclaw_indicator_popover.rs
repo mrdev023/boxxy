@@ -1,6 +1,4 @@
 use adw::prelude::*;
-use boxxy_preferences::Settings;
-use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 use std::rc::Rc;
@@ -98,13 +96,9 @@ impl BoxxyclawIndicatorPopover {
         self.popover.popup();
     }
 
-    pub fn update_ui(&self, active: bool, settings: &Settings) {
+    pub fn update_ui(&self, active: bool, proactive: bool, terminal_suggestions: bool) {
         self.enable_btn.set_active(active);
-        self.proactive_btn.set_active(
-            settings.claw_auto_diagnosis_mode
-                == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive,
-        );
-        self.terminal_btn
-            .set_active(settings.claw_terminal_suggestions);
+        self.proactive_btn.set_active(proactive);
+        self.terminal_btn.set_active(terminal_suggestions);
     }
 }

@@ -9,6 +9,8 @@ pub struct ClawSidebarComponent {
     status_page: adw::StatusPage,
     scroll: gtk::ScrolledWindow,
     is_active: Rc<Cell<bool>>,
+    is_proactive: Rc<Cell<bool>>,
+    is_terminal: Rc<Cell<bool>>,
     mode_toggle_btn: gtk::Button,
     chat_mode_btn: gtk::Button,
     toggle_btn: gtk::Button,
@@ -17,7 +19,11 @@ pub struct ClawSidebarComponent {
 
 impl ClawSidebarComponent {
     #[must_use]
-    pub fn new<F: Fn(bool) + 'static>(on_active_toggled: F) -> Self {
+    pub fn new<F1: Fn(bool) + 'static, F2: Fn(bool) + 'static, F3: Fn(bool) + 'static>(
+        on_active_toggled: F1,
+        on_proactive_toggled: F2,
+        on_terminal_toggled: F3,
+    ) -> Self {
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 6);
         widget.set_margin_top(6);
         widget.set_margin_bottom(6);
@@ -42,6 +48,9 @@ impl ClawSidebarComponent {
         widget.append(&scroll);
 
         let is_active = Rc::new(Cell::new(false));
+        let is_proactive = Rc::new(Cell::new(false));
+        let is_terminal = Rc::new(Cell::new(false));
+
         let current_list: Rc<std::cell::RefCell<Option<gtk::ListBox>>> =
             Rc::new(std::cell::RefCell::new(None));
 
@@ -70,46 +79,16 @@ impl ClawSidebarComponent {
         });
 
         // 2. Chat Mode Button
-        let s = boxxy_preferences::Settings::load();
-        let initial_icon = if s.claw_terminal_suggestions {
-            "chat-symbolic"
-        } else {
-            "chat-none-symbolic"
-        };
+        let chat_mode_btn = gtk::Button::builder()
+            .icon_name("chat-symbolic")
+            .css_classes(["flat"])
+            .build();
 
-        let mut chat_mode_builder = gtk::Button::builder()
-            .icon_name(initial_icon)
-            .css_classes(["flat"]);
-
-        if s.claw_terminal_suggestions {
-            chat_mode_builder = chat_mode_builder
-                .css_classes(["flat", "suggested-action"])
-                .tooltip_text("Disable Terminal Suggestions");
-        } else {
-            chat_mode_builder = chat_mode_builder
-                .css_classes(["flat", "destructive-action"])
-                .tooltip_text("Enable Terminal Suggestions");
-        }
-
-        let chat_mode_btn = chat_mode_builder.build();
-
-        let chat_btn_clone = chat_mode_btn.clone();
+        let is_terminal_clone = is_terminal.clone();
+        let on_terminal_rc = std::rc::Rc::new(on_terminal_toggled);
         chat_mode_btn.connect_clicked(move |_| {
-            let mut s = boxxy_preferences::Settings::load();
-            s.claw_terminal_suggestions = !s.claw_terminal_suggestions;
-
-            if s.claw_terminal_suggestions {
-                chat_btn_clone.set_icon_name("chat-symbolic");
-                chat_btn_clone.set_tooltip_text(Some("Disable Terminal Suggestions"));
-                chat_btn_clone.remove_css_class("destructive-action");
-                chat_btn_clone.add_css_class("suggested-action");
-            } else {
-                chat_btn_clone.set_icon_name("chat-none-symbolic");
-                chat_btn_clone.set_tooltip_text(Some("Enable Terminal Suggestions"));
-                chat_btn_clone.remove_css_class("suggested-action");
-                chat_btn_clone.add_css_class("destructive-action");
-            }
-            s.save();
+            let next_state = !is_terminal_clone.get();
+            on_terminal_rc(next_state);
         });
 
         // 3. Play/Stop Button
@@ -119,50 +98,25 @@ impl ClawSidebarComponent {
             .tooltip_text("Activate Claw")
             .build();
 
-        let active_clone = is_active.clone();
-        let btn_clone = toggle_btn.clone();
+        let is_active_clone = is_active.clone();
         let on_toggled_rc = std::rc::Rc::new(on_active_toggled);
-        let on_toggled_clone = on_toggled_rc.clone();
         toggle_btn.connect_clicked(move |_| {
-            let active = !active_clone.get();
-            active_clone.set(active);
-            if active {
-                btn_clone.set_icon_name("media-playback-stop-symbolic");
-                btn_clone.set_tooltip_text(Some("Deactivate Claw"));
-                btn_clone.remove_css_class("suggested-action");
-                btn_clone.add_css_class("destructive-action");
-            } else {
-                btn_clone.set_icon_name("media-playback-start-symbolic");
-                btn_clone.set_tooltip_text(Some("Activate Claw"));
-                btn_clone.remove_css_class("destructive-action");
-                btn_clone.add_css_class("suggested-action");
-            }
-            on_toggled_clone(active);
+            let next_state = !is_active_clone.get();
+            on_toggled_rc(next_state);
         });
 
+        // 4. Proactive Mode Button
         let mode_toggle_btn = gtk::Button::builder()
-            .icon_name("running-symbolic")
-            .css_classes(["flat", "accent"])
-            .tooltip_text("Proactive Diagnosis Mode")
+            .icon_name("walking2-symbolic")
+            .css_classes(["flat"])
+            .tooltip_text("Lazy Diagnosis Mode")
             .build();
 
-        let mode_toggle_btn_clone = mode_toggle_btn.clone();
+        let is_proactive_clone = is_proactive.clone();
+        let on_proactive_rc = std::rc::Rc::new(on_proactive_toggled);
         mode_toggle_btn.connect_clicked(move |_| {
-            let mut s = boxxy_preferences::Settings::load();
-            if s.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
-            {
-                s.claw_auto_diagnosis_mode =
-                    boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive;
-                mode_toggle_btn_clone.set_icon_name("running-symbolic");
-                mode_toggle_btn_clone.set_tooltip_text(Some("Proactive Diagnosis Mode"));
-                mode_toggle_btn_clone.add_css_class("accent");
-            } else {
-                s.claw_auto_diagnosis_mode = boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy;
-                mode_toggle_btn_clone.set_icon_name("walking2-symbolic");
-                mode_toggle_btn_clone.set_tooltip_text(Some("Lazy Diagnosis Mode"));
-                mode_toggle_btn_clone.remove_css_class("accent");
-            }
-            s.save();
+            let next_state = !is_proactive_clone.get();
+            on_proactive_rc(next_state);
         });
 
         command_panel.append(&clear_btn);
@@ -176,9 +130,11 @@ impl ClawSidebarComponent {
             status_page,
             scroll,
             is_active,
-            mode_toggle_btn: mode_toggle_btn.clone(),
-            chat_mode_btn: chat_mode_btn.clone(),
-            toggle_btn: toggle_btn.clone(),
+            is_proactive,
+            is_terminal,
+            mode_toggle_btn,
+            chat_mode_btn,
+            toggle_btn,
             current_list,
         }
     }
@@ -270,6 +226,20 @@ impl ClawSidebarComponent {
         }
     }
 
+    pub fn update_ui(&self, active: bool, proactive: bool, terminal_suggestions: bool) {
+        self.is_active.set(active);
+        self.is_proactive.set(proactive);
+        self.is_terminal.set(terminal_suggestions);
+        self.update_active(active);
+        let mode = if proactive {
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+        } else {
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+        };
+        self.update_diagnosis_mode(&mode);
+        self.update_terminal_suggestions(terminal_suggestions);
+    }
+
     #[must_use]
     pub const fn widget(&self) -> &gtk::Box {
         &self.widget
@@ -278,7 +248,7 @@ impl ClawSidebarComponent {
 
 impl Default for ClawSidebarComponent {
     fn default() -> Self {
-        Self::new(|_| {})
+        Self::new(|_| {}, |_| {}, |_| {})
     }
 }
 

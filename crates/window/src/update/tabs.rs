@@ -55,6 +55,15 @@ pub fn new_tab(inner: &mut AppWindowInner) {
 
     controller.update_settings(inner.current_settings.clone(), palette);
     controller.set_claw_active(inner.claw.is_active());
+
+    let mode = if inner.claw_proactive {
+        boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+    } else {
+        boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+    };
+    controller.update_diagnosis_mode(&mode);
+    controller.update_terminal_suggestions(inner.claw_terminal_suggestions);
+
     let widget = controller.widget().clone();
 
     let page = inner.tab_view.append(&widget);
@@ -165,6 +174,24 @@ pub fn adopt_orphan_tabs(inner: &mut AppWindowInner) {
                 .map(|p| if is_dark { p.dark } else { p.light });
             tc.controller
                 .update_settings(inner.current_settings.clone(), palette);
+
+            if tc.controller.is_claw_active() && !inner.claw_active {
+                let _ = inner
+                    .tx
+                    .send_blocking(crate::state::AppInput::SetClawActive(true));
+            } else {
+                tc.controller.set_claw_active(inner.claw_active);
+            }
+
+            let mode = if inner.claw_proactive {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+            } else {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+            };
+            tc.controller.update_diagnosis_mode(&mode);
+            tc.controller
+                .update_terminal_suggestions(inner.claw_terminal_suggestions);
+
             tc.controller.grab_focus();
             inner.tabs.push(tc);
         }
@@ -201,6 +228,24 @@ pub fn tab_page_attached(inner: &mut AppWindowInner, key: usize) {
             .map(|p| if is_dark { p.dark } else { p.light });
         tc.controller
             .update_settings(inner.current_settings.clone(), palette);
+
+        if tc.controller.is_claw_active() && !inner.claw_active {
+            let _ = inner
+                .tx
+                .send_blocking(crate::state::AppInput::SetClawActive(true));
+        } else {
+            tc.controller.set_claw_active(inner.claw_active);
+        }
+
+        let mode = if inner.claw_proactive {
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+        } else {
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+        };
+        tc.controller.update_diagnosis_mode(&mode);
+        tc.controller
+            .update_terminal_suggestions(inner.claw_terminal_suggestions);
+
         tc.controller.grab_focus();
         inner.tabs.push(tc);
     }

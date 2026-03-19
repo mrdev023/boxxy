@@ -96,10 +96,20 @@ impl AppWindow {
         let ai_chat = AiSidebarComponent::new();
 
         let tx_claw_active = tx.clone();
-        let claw = ClawSidebarComponent::new(move |active| {
-            let _ = tx_claw_active.send_blocking(AppInput::SetClawActive(active));
-        });
-        claw.update_diagnosis_mode(&current_settings.claw_auto_diagnosis_mode);
+        let tx_claw_proactive = tx.clone();
+        let tx_claw_terminal = tx.clone();
+        let claw = ClawSidebarComponent::new(
+            move |active| {
+                let _ = tx_claw_active.send_blocking(AppInput::SetClawActive(active));
+            },
+            move |proactive| {
+                let _ = tx_claw_proactive.send_blocking(AppInput::SetClawProactive(proactive));
+            },
+            move |terminal| {
+                let _ =
+                    tx_claw_terminal.send_blocking(AppInput::SetClawTerminalSuggestions(terminal));
+            },
+        );
 
         let tx_bookmarks = tx.clone();
         let bookmarks_sidebar = BookmarksSidebarComponent::new(move |name, filename, script| {
@@ -320,6 +330,22 @@ impl AppWindow {
             }
         });
 
+        let initial_claw_active = false;
+        let initial_claw_proactive = current_settings.claw_auto_diagnosis_mode
+            == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive;
+        let initial_claw_terminal_suggestions = current_settings.claw_terminal_suggestions;
+
+        claw_popover.update_ui(
+            initial_claw_active,
+            initial_claw_proactive,
+            initial_claw_terminal_suggestions,
+        );
+        claw.update_ui(
+            initial_claw_active,
+            initial_claw_proactive,
+            initial_claw_terminal_suggestions,
+        );
+
         let inner = AppWindowInner {
             window: window.clone(),
             tabs: Vec::new(),
@@ -350,6 +376,9 @@ impl AppWindow {
             bell_indicator,
             claw_indicator,
             claw_popover,
+            claw_active: initial_claw_active,
+            claw_proactive: initial_claw_proactive,
+            claw_terminal_suggestions: initial_claw_terminal_suggestions,
             notification_pill,
             notifications: Vec::new(),
             initial_working_dir: init.working_dir.clone(),
@@ -638,25 +667,18 @@ impl AppWindow {
             .build();
 
         let tx_enable = tx.clone();
+        let tx_proactive = tx.clone();
+        let tx_terminal = tx.clone();
 
         let claw_popover = crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover::new(
             move |enabled| {
                 let _ = tx_enable.send_blocking(AppInput::SetClawActive(enabled));
             },
             move |proactive| {
-                let mut s = boxxy_preferences::Settings::load();
-                s.claw_auto_diagnosis_mode = if proactive {
-                    boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
-                } else {
-                    boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
-                };
-                s.save();
-                // Saving triggers the settings event bus to update everything else
+                let _ = tx_proactive.send_blocking(AppInput::SetClawProactive(proactive));
             },
             move |terminal| {
-                let mut s = boxxy_preferences::Settings::load();
-                s.claw_terminal_suggestions = terminal;
-                s.save();
+                let _ = tx_terminal.send_blocking(AppInput::SetClawTerminalSuggestions(terminal));
             },
         );
 

@@ -525,6 +525,24 @@ impl TerminalComponent {
         }
     }
 
+    pub fn is_claw_active(&self) -> bool {
+        self.inner.borrow().is_claw_active
+    }
+
+    pub fn update_diagnosis_mode(&self, mode: &boxxy_preferences::config::ClawAutoDiagnosisMode) {
+        let inner = self.inner.borrow();
+        for pane_data in inner.panes.values() {
+            pane_data.controller.update_diagnosis_mode(mode);
+        }
+    }
+
+    pub fn update_terminal_suggestions(&self, enabled: bool) {
+        let inner = self.inner.borrow();
+        for pane_data in inner.panes.values() {
+            pane_data.controller.update_terminal_suggestions(enabled);
+        }
+    }
+
     pub fn claw_history_widget(&self) -> gtk::ListBox {
         let inner = self.inner.borrow();
         inner

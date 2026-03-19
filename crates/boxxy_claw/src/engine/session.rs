@@ -23,6 +23,8 @@ pub struct ClawSession {
     pub session_context: String,
     pub db: Arc<Mutex<Option<Db>>>,
     pub state: Arc<Mutex<SessionState>>,
+    pub diagnosis_mode: boxxy_preferences::config::ClawAutoDiagnosisMode,
+    pub terminal_suggestions: bool,
 }
 
 impl ClawSession {
@@ -35,6 +37,8 @@ impl ClawSession {
     ) {
         let (tx, rx) = async_channel::unbounded();
         let (tx_ui, rx_ui) = async_channel::unbounded();
+
+        let settings = boxxy_preferences::Settings::load();
 
         // We defer loading session context and skills until the first use
         let session = Self {
@@ -49,6 +53,8 @@ impl ClawSession {
                 history: Vec::new(),
                 pending_lazy_diagnosis: None,
             })),
+            diagnosis_mode: settings.claw_auto_diagnosis_mode,
+            terminal_suggestions: settings.claw_terminal_suggestions,
         };
 
         (session, tx, rx_ui)
@@ -81,9 +87,7 @@ impl ClawSession {
                 ClawMessage::CommandFinished { exit_code, .. }
                     if *exit_code != 0 && *exit_code != 130 && *exit_code != 131 =>
                 {
-                    let settings = boxxy_preferences::Settings::load();
-                    settings.claw_auto_diagnosis_mode
-                        != boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+                    self.diagnosis_mode != boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
                 }
                 _ => false,
             };
@@ -158,12 +162,11 @@ impl ClawSession {
                             continue;
                         }
 
-                        let settings = boxxy_preferences::Settings::load();
                         let prompt = format!(
                             "The user's command failed with exit code {exit_code}. Please analyze the terminal snapshot and suggest a fix."
                         );
 
-                        if settings.claw_auto_diagnosis_mode
+                        if self.diagnosis_mode
                             == boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
                         {
                             state_lock.pending_lazy_diagnosis = Some((prompt, snapshot, cwd));
@@ -314,6 +317,12 @@ impl ClawSession {
                     }
                     debug!("Pane {}: User cancelled pending proposals.", self.pane_id);
                     let _ = self.tx_ui.send(ClawEngineEvent::ProposalResolved).await;
+                }
+                ClawMessage::UpdateDiagnosisMode(mode) => {
+                    self.diagnosis_mode = mode;
+                }
+                ClawMessage::UpdateTerminalSuggestions(enabled) => {
+                    self.terminal_suggestions = enabled;
                 }
             }
         }

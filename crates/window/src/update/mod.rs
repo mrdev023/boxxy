@@ -243,6 +243,7 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
             }
         }
         AppInput::SetClawActive(active) => {
+            inner.claw_active = active;
             if active {
                 inner
                     .claw_indicator
@@ -258,9 +259,68 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
                     .claw_indicator
                     .set_tooltip_text(Some("Claw Agent Options (Disabled)"));
             }
+            inner.claw_popover.update_ui(
+                inner.claw_active,
+                inner.claw_proactive,
+                inner.claw_terminal_suggestions,
+            );
+            inner.claw.update_ui(
+                inner.claw_active,
+                inner.claw_proactive,
+                inner.claw_terminal_suggestions,
+            );
             for tab in &inner.tabs {
                 tab.controller.set_claw_active(active);
             }
+        }
+        AppInput::SetClawProactive(proactive) => {
+            inner.claw_proactive = proactive;
+            inner.claw_popover.update_ui(
+                inner.claw_active,
+                inner.claw_proactive,
+                inner.claw_terminal_suggestions,
+            );
+            inner.claw.update_ui(
+                inner.claw_active,
+                inner.claw_proactive,
+                inner.claw_terminal_suggestions,
+            );
+            let mode = if proactive {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+            } else {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+            };
+            for tab in &inner.tabs {
+                tab.controller.update_diagnosis_mode(&mode);
+            }
+
+            // Save settings for persistence (default for new windows)
+            // Note: cross-window sync is disabled in `settings_changed` to allow per-window modes.
+            let mut settings = boxxy_preferences::Settings::load();
+            settings.claw_auto_diagnosis_mode = mode;
+            settings.save();
+        }
+        AppInput::SetClawTerminalSuggestions(terminal) => {
+            inner.claw_terminal_suggestions = terminal;
+            inner.claw_popover.update_ui(
+                inner.claw_active,
+                inner.claw_proactive,
+                inner.claw_terminal_suggestions,
+            );
+            inner.claw.update_ui(
+                inner.claw_active,
+                inner.claw_proactive,
+                inner.claw_terminal_suggestions,
+            );
+            for tab in &inner.tabs {
+                tab.controller.update_terminal_suggestions(terminal);
+            }
+
+            // Save settings for persistence (default for new windows)
+            // Note: cross-window sync is disabled in `settings_changed` to allow per-window modes.
+            let mut settings = boxxy_preferences::Settings::load();
+            settings.claw_terminal_suggestions = terminal;
+            settings.save();
         }
         AppInput::ThemeSelected(palette) => {
             window_state::theme_selected(&mut inner, *palette);
