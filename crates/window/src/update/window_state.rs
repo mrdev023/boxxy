@@ -113,6 +113,7 @@ pub fn new_window(inner: &AppWindowInner) {
 
 pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
     inner.current_settings = settings.clone();
+    inner.preferences.sync_settings(&settings);
 
     let style_manager = libadwaita::StyleManager::default();
     let scheme = match settings.color_scheme {
@@ -138,6 +139,12 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
 
     inner.tab_bar.set_autohide(!settings.always_show_tabs);
     inner.tab_bar.set_expand_tabs(!settings.fixed_width_tabs);
+
+    if inner.sidebar_toolbar.width_request() != settings.ai_chat_width {
+        inner
+            .sidebar_toolbar
+            .set_width_request(settings.ai_chat_width);
+    }
 
     // Note: We intentionally DO NOT update `inner.claw_proactive` or `inner.claw_terminal_suggestions`
     // from global settings here. Those are window-local states that can be toggled independently per window.
@@ -195,8 +202,14 @@ pub fn sidebar_page_changed(inner: &mut AppWindowInner, name: String) {
     inner.app_state.save();
 }
 
-pub fn sidebar_width_changed(_inner: &mut AppWindowInner, _width: i32) {
-    // sidebar_width is no longer in AppState
+pub fn sidebar_width_changed(inner: &mut AppWindowInner, width: i32) {
+    if inner.current_settings.ai_chat_width != width {
+        let mut settings = boxxy_preferences::Settings::load();
+        settings.ai_chat_width = width;
+        settings.save();
+
+        inner.current_settings.ai_chat_width = width;
+    }
 }
 
 pub fn toggle_sidebar(inner: &mut AppWindowInner) {

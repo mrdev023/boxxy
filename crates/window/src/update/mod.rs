@@ -346,7 +346,9 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         AppInput::CloseRequested => {
             window_state::handle_close_request(inner_ref, &mut inner);
         }
-        AppInput::SidebarWidthChanged(_) => {}
+        AppInput::SidebarWidthChanged(width) => {
+            window_state::sidebar_width_changed(&mut inner, width);
+        }
         AppInput::SaveWindowState {
             width,
             height,

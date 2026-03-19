@@ -252,7 +252,7 @@ pub fn setup_appearance_page(
 
     let chat_width_adj = gtk::Adjustment::new(
         settings_rc.borrow().ai_chat_width as f64,
-        360.0,
+        200.0,
         800.0,
         10.0,
         50.0,
