@@ -44,8 +44,16 @@ impl AppWindow {
         let current_settings = Settings::load();
         let app_state = AppState::load();
 
+        let style_manager = adw::StyleManager::default();
+        let scheme = match current_settings.color_scheme {
+            boxxy_preferences::config::ColorScheme::Default => adw::ColorScheme::Default,
+            boxxy_preferences::config::ColorScheme::Light => adw::ColorScheme::ForceLight,
+            boxxy_preferences::config::ColorScheme::Dark => adw::ColorScheme::ForceDark,
+        };
+        style_manager.set_color_scheme(scheme);
+
         let palette = boxxy_themes::load_palette(current_settings.theme.as_str());
-        let is_dark = adw::StyleManager::default().is_dark();
+        let is_dark = style_manager.is_dark();
         boxxy_themes::apply_palette(palette.as_ref(), is_dark);
 
         let is_drag_window = init.incoming_tab_view.is_some();

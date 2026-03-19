@@ -113,8 +113,21 @@ pub fn new_window(inner: &AppWindowInner) {
 
 pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
     inner.current_settings = settings.clone();
+
+    let style_manager = libadwaita::StyleManager::default();
+    let scheme = match settings.color_scheme {
+        boxxy_preferences::config::ColorScheme::Default => libadwaita::ColorScheme::Default,
+        boxxy_preferences::config::ColorScheme::Light => libadwaita::ColorScheme::ForceLight,
+        boxxy_preferences::config::ColorScheme::Dark => libadwaita::ColorScheme::ForceDark,
+    };
+    if style_manager.color_scheme() != scheme {
+        style_manager.set_color_scheme(scheme);
+    }
+
     let parsed = boxxy_themes::load_palette(settings.theme.as_str());
     let is_dark = libadwaita::StyleManager::default().is_dark();
+    boxxy_themes::apply_palette(parsed.as_ref(), is_dark);
+
     let variant = parsed
         .as_ref()
         .map(|p| if is_dark { p.dark } else { p.light });

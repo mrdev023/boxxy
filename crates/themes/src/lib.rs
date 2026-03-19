@@ -97,22 +97,11 @@ thread_local! {
 /// `dark_mode` selects the [Dark] or [Light] variant and forces the Adwaita
 /// colour scheme accordingly.
 pub fn apply_palette(palette: Option<&ParsedPaletteStatic>, dark_mode: bool) {
-    let style_manager = libadwaita::StyleManager::default();
     clear_css_provider();
 
-    match palette {
-        None => {
-            style_manager.set_color_scheme(libadwaita::ColorScheme::Default);
-        }
-        Some(p) => {
-            let variant = if dark_mode { &p.dark } else { &p.light };
-            if dark_mode {
-                style_manager.set_color_scheme(libadwaita::ColorScheme::ForceDark);
-            } else {
-                style_manager.set_color_scheme(libadwaita::ColorScheme::ForceLight);
-            }
-            load_css(variant.gtk_css);
-        }
+    if let Some(p) = palette {
+        let variant = if dark_mode { &p.dark } else { &p.light };
+        load_css(variant.gtk_css);
     }
 }
 

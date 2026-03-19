@@ -165,6 +165,15 @@
                               </object>
                             </child>
                             <child>
+                              <object class="AdwPreferencesGroup" id="group_appearance">
+                                <child>
+                                  <object class="AdwComboRow" id="color_scheme_combo">
+                                    <property name="title" translatable="yes">Appearance</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
                               <object class="AdwPreferencesGroup" id="group_terminal">
                                 <property name="title" translatable="yes">Terminal</property>
                                 <child>

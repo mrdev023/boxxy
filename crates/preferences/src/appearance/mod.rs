@@ -17,6 +17,7 @@ pub fn setup_appearance_page(
     on_change: Rc<dyn Fn(Settings) + 'static>,
     on_open_themes: Rc<dyn Fn() + 'static>,
 ) -> (AppearanceWidgets, Box<dyn Fn(&str) -> bool>) {
+    let color_scheme_combo: adw::ComboRow = builder.object("color_scheme_combo").unwrap();
     let font_row: adw::ActionRow = builder.object("font_row").unwrap();
     let theme_row: adw::ActionRow = builder.object("theme_row").unwrap();
     let padding_spin: adw::SpinRow = builder.object("padding_spin").unwrap();
@@ -36,10 +37,38 @@ pub fn setup_appearance_page(
         builder.object("fixed_width_tabs_switch").unwrap();
     let chat_width_spin: adw::SpinRow = builder.object("chat_width_spin").unwrap();
 
+    let group_appearance: adw::PreferencesGroup = builder.object("group_appearance").unwrap();
     let group_font: adw::PreferencesGroup = builder.object("group_font").unwrap();
     let group_terminal: adw::PreferencesGroup = builder.object("group_terminal").unwrap();
     let group_cursor: adw::PreferencesGroup = builder.object("group_cursor").unwrap();
     let group_layout: adw::PreferencesGroup = builder.object("group_layout").unwrap();
+
+    // 0. Color Scheme
+
+    let color_schemes_list = gtk::StringList::new(&["Follow System", "Light", "Dark"]);
+    color_scheme_combo.set_model(Some(&color_schemes_list));
+    let scheme_idx = match settings_rc.borrow().color_scheme {
+        crate::config::ColorScheme::Default => 0,
+        crate::config::ColorScheme::Light => 1,
+        crate::config::ColorScheme::Dark => 2,
+    };
+    color_scheme_combo.set_selected(scheme_idx);
+    let s_rc = settings_rc.clone();
+    let cb = on_change.clone();
+    color_scheme_combo.connect_selected_notify(move |row| {
+        let scheme = match row.selected() {
+            0 => crate::config::ColorScheme::Default,
+            1 => crate::config::ColorScheme::Light,
+            2 => crate::config::ColorScheme::Dark,
+            _ => return,
+        };
+        let mut s = s_rc.borrow_mut();
+        if s.color_scheme != scheme {
+            s.color_scheme = scheme;
+            s.save();
+            cb(s.clone());
+        }
+    });
 
     // 1. Font
     let font_dialog = gtk::FontDialog::new();
@@ -329,6 +358,7 @@ pub fn setup_appearance_page(
     let always_show_tabs_switch_clone = always_show_tabs_switch.clone();
     let fixed_width_tabs_switch_clone = fixed_width_tabs_switch.clone();
     let chat_width_spin_clone = chat_width_spin.clone();
+    let color_scheme_combo_clone = color_scheme_combo.clone();
 
     let widgets = AppearanceWidgets {
         theme_row,
@@ -342,6 +372,10 @@ pub fn setup_appearance_page(
             m
         };
 
+        let s1 = match_row(
+            color_scheme_combo_clone.upcast_ref(),
+            "appearance dark light follow system color scheme",
+        );
         let f1 = match_row(font_row_clone.upcast_ref(), "font family size");
         let t1 = match_row(theme_row_clone.upcast_ref(), "theme");
         let t2 = match_row(padding_spin_clone.upcast_ref(), "padding px");
@@ -382,12 +416,14 @@ pub fn setup_appearance_page(
             "sidebar width px hacky mouse resize overlay split view",
         );
 
+        group_appearance.set_visible(s1);
         group_font.set_visible(f1);
         group_terminal.set_visible(t1 || t2 || t3 || t4 || t5);
         group_cursor.set_visible(c1 || c3 || c4);
         group_layout.set_visible(l1 || l2 || l3 || l4 || l5 || l6);
 
-        group_font.is_visible()
+        group_appearance.is_visible()
+            || group_font.is_visible()
             || group_terminal.is_visible()
             || group_cursor.is_visible()
             || group_layout.is_visible()

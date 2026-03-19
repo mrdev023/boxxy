@@ -72,6 +72,26 @@ impl fmt::Display for ClawAutoDiagnosisMode {
     }
 }
 
+// --- Color Scheme ---
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ColorScheme {
+    #[default]
+    Default,
+    Light,
+    Dark,
+}
+
+impl fmt::Display for ColorScheme {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ColorScheme::Default => write!(f, "Follow System"),
+            ColorScheme::Light => write!(f, "Light"),
+            ColorScheme::Dark => write!(f, "Dark"),
+        }
+    }
+}
+
 pub const DEFAULT_FILE_REGEX: &str =
     r#"(?:https?://[^\s"'<>]+|/[\w.@:/-]+|~[\w.@:/-]+|\.{1,2}/[\w.@:/-]+)"#;
 
@@ -82,6 +102,7 @@ pub struct Settings {
     pub font_name: String,
     pub font_size: u16,
     pub theme: String,
+    pub color_scheme: ColorScheme,
     pub padding: i32,
     pub ai_chat_width: i32,
     pub preserve_working_dir: bool,
@@ -117,6 +138,7 @@ impl Default for Settings {
             font_name: "Monospace".to_string(),
             font_size: 12,
             theme: "Adwaita Dark".to_string(),
+            color_scheme: ColorScheme::Default,
             padding: 10,
             ai_chat_width: 400,
             preserve_working_dir: false,
