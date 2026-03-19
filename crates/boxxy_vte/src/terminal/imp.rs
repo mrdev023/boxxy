@@ -78,6 +78,7 @@ pub struct TerminalWidget {
     pub claw_query_callback: RefCell<Option<ClawQueryCallback>>,
     pub last_cwd: RefCell<Option<String>>,
     pub kitty_textures: RefCell<HashMap<u32, gtk4::gdk::Texture>>,
+    pub is_dimmed: Cell<bool>,
 }
 
 impl Default for TerminalWidget {
@@ -122,6 +123,7 @@ impl Default for TerminalWidget {
             claw_query_callback: RefCell::new(None),
             last_cwd: RefCell::new(None),
             kitty_textures: RefCell::new(HashMap::new()),
+            is_dimmed: Cell::new(false),
         }
     }
 }
@@ -799,6 +801,13 @@ impl TerminalWidget {
         });
     }
 
+    pub fn set_dimmed(&self, dimmed: bool) {
+        if self.is_dimmed.get() != dimmed {
+            self.is_dimmed.set(dimmed);
+            self.obj().queue_draw();
+        }
+    }
+
     pub(crate) fn attach_pty(&self, master_fd: zbus::zvariant::OwnedFd) {
         let (sender, receiver) = async_channel::unbounded::<Event>();
         let backend = TerminalBackend::from_fd(sender, master_fd.into());
@@ -901,10 +910,30 @@ impl WidgetImpl for TerminalWidget {
             .unwrap_or_else(|| gtk4::gdk::RGBA::new(0.05, 0.05, 0.05, 1.0));
         let fg_color_default =
             (*self.fg_color.borrow()).unwrap_or_else(|| gtk4::gdk::RGBA::new(0.8, 0.8, 0.8, 1.0));
-        snapshot.append_color(
-            &bg_color,
-            &gtk4::graphene::Rect::new(0.0, 0.0, width, height),
-        );
+
+        let mut bg_to_paint = bg_color;
+        let dim_factor = if self.is_dimmed.get() { 0.85 } else { 1.0 };
+
+        if self.is_dimmed.get() {
+            let base_alpha = bg_to_paint.alpha();
+            bg_to_paint.set_red(bg_to_paint.red() * dim_factor);
+            bg_to_paint.set_green(bg_to_paint.green() * dim_factor);
+            bg_to_paint.set_blue(bg_to_paint.blue() * dim_factor);
+
+            let dimmed_alpha = if base_alpha < 0.2 {
+                base_alpha + 0.1
+            } else {
+                base_alpha
+            };
+            bg_to_paint.set_alpha(dimmed_alpha.min(1.0));
+        }
+
+        if bg_to_paint.alpha() > 0.0 {
+            snapshot.append_color(
+                &bg_to_paint,
+                &gtk4::graphene::Rect::new(0.0, 0.0, width, height),
+            );
+        }
 
         if let Some(backend) = self.backend.borrow().as_ref() {
             let state = backend.render_state.load();
@@ -1084,6 +1113,12 @@ impl WidgetImpl for TerminalWidget {
                         }
                         _ => None,
                     };
+
+                    if let Some(ref mut bg_col) = bg {
+                        bg_col.set_red(bg_col.red() * dim_factor);
+                        bg_col.set_green(bg_col.green() * dim_factor);
+                        bg_col.set_blue(bg_col.blue() * dim_factor);
+                    }
                     if cell
                         .flags
                         .contains(crate::engine::term::cell::Flags::INVERSE)
@@ -1195,6 +1230,13 @@ impl WidgetImpl for TerminalWidget {
                                 .unwrap_or(fg_color_default)
                         }
                     };
+
+                    if dim_factor < 1.0 {
+                        fg.set_red(fg.red() * dim_factor);
+                        fg.set_green(fg.green() * dim_factor);
+                        fg.set_blue(fg.blue() * dim_factor);
+                    }
+
                     if cell.flags.contains(crate::engine::term::cell::Flags::DIM) {
                         fg.set_red(fg.red() * 0.6);
                         fg.set_green(fg.green() * 0.6);

@@ -18,6 +18,9 @@ pub fn setup_appearance_page(
     on_open_themes: Rc<dyn Fn() + 'static>,
 ) -> (AppearanceWidgets, Box<dyn Fn(&str) -> bool>) {
     let color_scheme_combo: adw::ComboRow = builder.object("color_scheme_combo").unwrap();
+    let select_bg_image_btn: gtk::Button = builder.object("select_bg_image_btn").unwrap();
+    let clear_bg_image_btn: gtk::Button = builder.object("clear_bg_image_btn").unwrap();
+    let background_image_row: adw::ActionRow = builder.object("background_image_row").unwrap();
     let font_row: adw::ActionRow = builder.object("font_row").unwrap();
     let theme_row: adw::ActionRow = builder.object("theme_row").unwrap();
     let opacity_row: adw::ActionRow = builder.object("opacity_row").unwrap();
@@ -68,6 +71,76 @@ pub fn setup_appearance_page(
             s.save();
             cb(s.clone());
         }
+    });
+
+    // 0.1 Background Image
+    let update_bg_subtitle = {
+        let row = background_image_row.clone();
+        let settings = settings_rc.clone();
+        move || {
+            if let Some(path) = &settings.borrow().background_image_path {
+                let filename = std::path::Path::new(path)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown");
+                row.set_subtitle(filename);
+            } else {
+                row.set_subtitle("No background image selected");
+            }
+        }
+    };
+    update_bg_subtitle();
+
+    let dialog: adw::Dialog = builder.object("dialog").unwrap();
+    let file_dialog = gtk::FileDialog::new();
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some("Images"));
+    filter.add_mime_type("image/png");
+    filter.add_mime_type("image/jpeg");
+    filter.add_mime_type("image/webp");
+    let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
+    filters.append(&filter);
+    file_dialog.set_filters(Some(&filters));
+
+    let s_rc = settings_rc.clone();
+    let cb = on_change.clone();
+    let update_subtitle = update_bg_subtitle.clone();
+    select_bg_image_btn.connect_clicked(move |_| {
+        let s_rc = s_rc.clone();
+        let cb = cb.clone();
+        let update_subtitle = update_subtitle.clone();
+        file_dialog.open(
+            None::<&gtk::Window>,
+            gtk::gio::Cancellable::NONE,
+            move |res| {
+                if let Ok(file) = res {
+                    if let Some(path) = file.path() {
+                        if let Some(new_path) = boxxy_themes::copy_background_image(&path) {
+                            let mut s = s_rc.borrow_mut();
+                            s.background_image_path = Some(new_path);
+                            s.save();
+                            let s_clone = s.clone();
+                            drop(s);
+                            cb(s_clone);
+                            update_subtitle();
+                        }
+                    }
+                }
+            },
+        );
+    });
+
+    let s_rc = settings_rc.clone();
+    let cb = on_change.clone();
+    let update_subtitle = update_bg_subtitle.clone();
+    clear_bg_image_btn.connect_clicked(move |_| {
+        let mut s = s_rc.borrow_mut();
+        s.background_image_path = None;
+        s.save();
+        let s_clone = s.clone();
+        drop(s);
+        cb(s_clone);
+        update_subtitle();
     });
 
     // 1. Font
@@ -202,7 +275,6 @@ pub fn setup_appearance_page(
     // 3. Theme ActionRow
     theme_row.set_subtitle(&settings_rc.borrow().theme);
 
-    let dialog: adw::Dialog = builder.object("dialog").unwrap();
     let dialog_clone = dialog.clone();
     theme_row.connect_activated(move |_| {
         dialog_clone.close();
@@ -375,6 +447,7 @@ pub fn setup_appearance_page(
     let chat_width_spin_clone = chat_width_spin.clone();
     let color_scheme_combo_clone = color_scheme_combo.clone();
     let opacity_row_clone = opacity_row.clone();
+    let background_image_row_clone = background_image_row.clone();
 
     let widgets = AppearanceWidgets {
         theme_row,
@@ -390,10 +463,14 @@ pub fn setup_appearance_page(
 
         let s1 = match_row(
             color_scheme_combo_clone.upcast_ref(),
-            "gtk theme dark light follow system color scheme",
+            "gtk theme appearance dark light follow system color scheme",
         );
         let f1 = match_row(font_row_clone.upcast_ref(), "font family size");
-        let t1 = match_row(theme_row_clone.upcast_ref(), "theme");
+        let t_bg = match_row(
+            background_image_row_clone.upcast_ref(),
+            "background image wallpaper picture",
+        );
+        let t1 = match_row(theme_row_clone.upcast_ref(), "terminal theme");
         let t_op = match_row(
             opacity_row_clone.upcast_ref(),
             "opacity transparent background",
@@ -436,7 +513,7 @@ pub fn setup_appearance_page(
             "sidebar width px hacky mouse resize overlay split view",
         );
 
-        group_appearance.set_visible(s1 || f1 || t1 || t_op);
+        group_appearance.set_visible(s1 || f1 || t_bg || t1 || t_op);
         group_terminal.set_visible(t2 || t3 || t4 || t5);
         group_cursor.set_visible(c1 || c3 || c4);
         group_layout.set_visible(l1 || l2 || l3 || l4 || l5 || l6);

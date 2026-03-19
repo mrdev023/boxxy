@@ -13,6 +13,7 @@ pub(super) fn build_ui() -> (
     Rc<SearchBarComponent>,
 ) {
     let widget = gtk::Overlay::new();
+    widget.add_css_class("terminal-pane");
     widget.set_hexpand(true);
     widget.set_vexpand(true);
 

@@ -1,6 +1,7 @@
 use boxxy_preferences::Settings;
 use boxxy_themes::Palette;
 use gtk4 as gtk;
+use gtk4::gdk;
 use gtk4::prelude::*;
 use std::collections::HashMap;
 
@@ -25,7 +26,7 @@ pub enum Direction {
 
 #[derive(Clone)]
 pub struct TerminalComponent {
-    widget: gtk::Stack,
+    widget: gtk::Overlay,
     inner: std::rc::Rc<std::cell::RefCell<TerminalInner>>,
 }
 
@@ -34,6 +35,8 @@ pub struct TerminalInner {
     pub panes: HashMap<String, PaneData>,
     pub active_pane_id: String,
     pub is_maximized: bool,
+    pub stack: gtk::Stack,
+    pub background_picture: gtk::Picture,
     pub maximized_container: gtk::Box,
     pub split_container: gtk::Box,
     pub current_settings: Option<Settings>,
@@ -50,10 +53,24 @@ impl std::fmt::Debug for TerminalComponent {
 
 impl TerminalComponent {
     pub fn new(init: TerminalInit) -> Self {
-        let widget = gtk::Stack::new();
-        widget.set_hexpand(true);
-        widget.set_vexpand(true);
-        widget.set_transition_type(gtk::StackTransitionType::Crossfade);
+        let overlay = gtk::Overlay::new();
+        overlay.set_hexpand(true);
+        overlay.set_vexpand(true);
+
+        let background_picture = gtk::Picture::new();
+        background_picture.add_css_class("terminal-background-image");
+        background_picture.set_content_fit(gtk::ContentFit::Cover);
+        background_picture.set_can_shrink(true);
+        background_picture.set_hexpand(true);
+        background_picture.set_vexpand(true);
+        overlay.set_child(Some(&background_picture));
+
+        let stack = gtk::Stack::new();
+        stack.add_css_class("terminal-stack");
+        stack.set_hexpand(true);
+        stack.set_vexpand(true);
+        stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+        overlay.add_overlay(&stack);
 
         let maximized_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         maximized_container.set_widget_name("maximized-container");
@@ -61,6 +78,7 @@ impl TerminalComponent {
         maximized_container.set_vexpand(true);
 
         let split_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        split_container.add_css_class("terminal-split-container");
         split_container.set_hexpand(true);
         split_container.set_vexpand(true);
 
@@ -96,15 +114,17 @@ impl TerminalComponent {
             },
         );
 
-        widget.add_named(&split_container, Some("split"));
-        widget.add_named(&maximized_container, Some("max"));
-        widget.set_visible_child_name("split");
+        stack.add_named(&split_container, Some("split"));
+        stack.add_named(&maximized_container, Some("max"));
+        stack.set_visible_child_name("split");
 
         let inner = std::rc::Rc::new(std::cell::RefCell::new(TerminalInner {
             id: init.id,
             panes,
             active_pane_id: initial_pane_id,
             is_maximized: false,
+            stack,
+            background_picture,
             maximized_container,
             split_container,
             current_settings: None,
@@ -113,7 +133,10 @@ impl TerminalComponent {
             is_claw_active: false,
         }));
 
-        let comp = Self { widget, inner };
+        let comp = Self {
+            widget: overlay,
+            inner,
+        };
 
         let c = comp.clone();
         gtk::glib::spawn_future_local(async move {
@@ -127,7 +150,7 @@ impl TerminalComponent {
         comp
     }
 
-    pub fn widget(&self) -> &gtk::Stack {
+    pub fn widget(&self) -> &gtk::Overlay {
         &self.widget
     }
 
@@ -528,18 +551,44 @@ impl TerminalComponent {
         }
     }
 
-    pub fn update_settings(&self, settings: Settings, palette_opt: Option<Palette>) {
+    pub fn update_settings(&self, settings: Settings, palette: Option<Palette>) {
         let mut inner = self.inner.borrow_mut();
-        inner.current_settings = Some(settings.clone());
-        inner.current_palette = palette_opt;
 
-        for pane_data in inner.panes.values() {
-            pane_data
-                .controller
-                .update_settings(settings.clone(), palette_opt);
+        // 1. Background Image
+        let needs_bg_update = match &inner.current_settings {
+            Some(curr) => curr.background_image_path != settings.background_image_path,
+            None => true,
+        };
+
+        if needs_bg_update {
+            if let Some(path) = &settings.background_image_path {
+                log::info!("Updating background image to: {}", path);
+                if let Some(texture) = boxxy_themes::get_texture_from_path(path) {
+                    log::info!("Texture loaded successfully");
+                    inner.background_picture.set_paintable(Some(&texture));
+                    inner.background_picture.set_visible(true);
+                } else {
+                    log::warn!("Failed to load texture from path: {}", path);
+                    inner
+                        .background_picture
+                        .set_paintable(None::<&gdk::Texture>);
+                    inner.background_picture.set_visible(false);
+                }
+            } else {
+                log::info!("Clearing background image");
+                inner
+                    .background_picture
+                    .set_paintable(None::<&gdk::Texture>);
+                inner.background_picture.set_visible(false);
+            }
         }
-        drop(inner);
-        self.update_dimming();
+
+        inner.current_settings = Some(settings.clone());
+        inner.current_palette = palette;
+
+        for pane in inner.panes.values() {
+            pane.controller.update_settings(settings.clone(), palette);
+        }
     }
 
     pub fn split_vertical(&self) {
@@ -731,9 +780,9 @@ impl TerminalComponent {
 
         inner.is_maximized = !is_max;
         if is_max {
-            self.widget.set_visible_child_name("split");
+            inner.stack.set_visible_child_name("split");
         } else {
-            self.widget.set_visible_child_name("max");
+            inner.stack.set_visible_child_name("max");
         }
 
         if let Some(pane_data) = inner.panes.get(&active_id) {

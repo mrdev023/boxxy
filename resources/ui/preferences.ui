@@ -168,6 +168,30 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="AdwActionRow" id="background_image_row">
+                                    <property name="title" translatable="yes">Background Image</property>
+                                    <property name="subtitle" translatable="yes">Select an image to show behind the terminal</property>
+                                    <child type="suffix">
+                                      <object class="GtkBox">
+                                        <property name="valign">center</property>
+                                        <property name="spacing">6</property>
+                                        <child>
+                                          <object class="GtkButton" id="clear_bg_image_btn">
+                                            <property name="icon-name">edit-clear-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Clear Background Image</property>
+                                            <property name="css-classes">flat</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton" id="select_bg_image_btn">
+                                            <property name="label" translatable="yes">Browse...</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="AdwActionRow" id="theme_row">
                                     <property name="title" translatable="yes">Terminal Theme</property>
                                     <property name="activatable">True</property>
@@ -180,7 +204,8 @@
                                 </child>
                                 <child>
                                   <object class="AdwActionRow" id="opacity_row">
-                                    <property name="title" translatable="yes">Background Opacity</property>
+                                    <property name="title" translatable="yes">Background Tint</property>
+                                    <property name="subtitle" translatable="yes">Mix theme color over the background</property>
                                     <child type="suffix">
                                       <object class="GtkScale" id="opacity_scale">
                                         <property name="valign">center</property>

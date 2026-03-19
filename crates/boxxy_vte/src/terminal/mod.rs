@@ -200,6 +200,10 @@ impl TerminalWidget {
         self.imp().invert_scroll.set(invert);
     }
 
+    pub fn set_dimmed(&self, dimmed: bool) {
+        self.imp().set_dimmed(dimmed);
+    }
+
     pub fn set_colors(
         &self,
         fg: Option<&gtk4::gdk::RGBA>,

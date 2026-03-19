@@ -8,6 +8,44 @@ use std::path::PathBuf;
 pub mod preview;
 pub mod selector;
 
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+lazy_static::lazy_static! {
+    static ref TEXTURE_CACHE: Arc<Mutex<HashMap<String, gdk::Texture>>> = Arc::new(Mutex::new(HashMap::new()));
+}
+
+pub fn get_texture_from_path(path: &str) -> Option<gdk::Texture> {
+    let mut cache = TEXTURE_CACHE.lock().unwrap();
+    if let Some(texture) = cache.get(path) {
+        return Some(texture.clone());
+    }
+
+    let file = gtk::gio::File::for_path(path);
+    if let Ok(texture) = gdk::Texture::from_file(&file) {
+        cache.insert(path.to_string(), texture.clone());
+        return Some(texture);
+    }
+    None
+}
+
+pub fn clear_texture_cache() {
+    TEXTURE_CACHE.lock().unwrap().clear();
+}
+
+pub fn copy_background_image(src_path: &Path) -> Option<String> {
+    let config_dir = get_schemes_dir()?.parent()?.join("backgrounds");
+    fs::create_dir_all(&config_dir).ok()?;
+
+    let extension = src_path.extension()?.to_str()?;
+    let filename = format!("bg_{}.{}", uuid::Uuid::new_v4(), extension);
+    let dest_path = config_dir.join(filename);
+
+    fs::copy(src_path, &dest_path).ok()?;
+    dest_path.to_str().map(|s| s.to_string())
+}
+
 pub use selector::ThemeSelectorComponent;
 
 // ---------------------------------------------------------------------------

@@ -715,11 +715,13 @@ dependencies = [
  "gio",
  "glib",
  "gtk4",
+ "lazy_static",
  "libadwaita",
  "pango",
  "serde",
  "sourceview5",
  "toml 1.0.6+spec-1.1.0",
+ "uuid",
 ]
 
 [[package]]

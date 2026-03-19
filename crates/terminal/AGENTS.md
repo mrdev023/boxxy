@@ -8,18 +8,21 @@ The crate uses a deeply modular structure to manage the complexity of terminal p
 
 ### `TerminalPaneComponent` (`pane/` module)
 The leaf component representing a single terminal instance. Modularized into:
-- **`pane/mod.rs`**: Main component entry and public API.
-- **`pane/ui.rs`**: Core widget initialization (Overlays, ScrolledWindow, SearchBar).
+- **`pane/mod.rs`**: Main component entry and public API. Handles configuration updates and state synchronization (e.g. inactive pane dimming).
+- **`pane/ui.rs`**: Core widget initialization using `gtk::Overlay`, `gtk::ScrolledWindow`, and the `SearchBarComponent`.
 - **`pane/gestures.rs`**: Input handling, including middle-click paste, context menus, and focus tracking.
 - **`pane/events.rs`**: VTE signal wiring and PTY event routing.
 - **`pane/claw.rs`**: Integration with the `boxxy-claw` actor model (popovers, indicators, event loops).
 - **`pane/preview.rs`**: OSC 8 hyperlink media previews (hover/click detection).
 
 ### `TerminalComponent` (`component.rs`)
-The container component that manages the recursive split-pane tree (`gtk::Paned`). Handles focus navigation, pane spawning, and maximization logic.
+The container component representing a single Tab. 
+- It uses a `gtk::Overlay` as its root widget to layer a `gtk::Picture` (for tab-wide background images) underneath a `gtk::Stack` (containing the split-pane tree).
+- Manages the recursive split-pane tree (`gtk::Paned`). Handles focus navigation, pane spawning, and maximization logic.
 
 ## Key Features
 - **Dynamic Splits**: Supports infinite vertical and horizontal terminal splits.
+- **Seamless Background Images**: A single background image spans the entire tab seamlessly across all transparent terminal splits. 
 - **Agent Integration**: Seamlessly routes terminal context (CWD, snapshots) to the Claw agent.
 - **Modern Hyperlinks**: Native OSC 8 support with robust media previews.
 - **OSD Indicators**: Interactive overlays for terminal size and agent status.

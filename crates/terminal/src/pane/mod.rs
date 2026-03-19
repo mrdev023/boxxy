@@ -441,7 +441,6 @@ impl TerminalPaneComponent {
         let mut needs_cell = true;
         let mut needs_cursor_shape = true;
         let mut needs_palette = true;
-        let mut needs_opacity = true;
         let mut needs_cursor_color = true;
         let mut needs_show_grid = true;
         let mut needs_invert_scroll = true;
@@ -452,8 +451,8 @@ impl TerminalPaneComponent {
             needs_cell = (p.cell_height_scale - settings.cell_height_scale).abs() > 1e-6
                 || (p.cell_width_scale - settings.cell_width_scale).abs() > 1e-6;
             needs_cursor_shape = p.cursor_shape != settings.cursor_shape;
-            needs_palette = p.theme != settings.theme;
-            needs_opacity = (p.opacity - settings.opacity).abs() > 1e-4;
+            needs_palette =
+                p.theme != settings.theme || (p.opacity - settings.opacity).abs() > 1e-4;
             needs_cursor_color = p.cursor_color_override != settings.cursor_color_override
                 || p.cursor_color != settings.cursor_color;
             needs_show_grid = p.show_vte_grid != settings.show_vte_grid;
@@ -515,9 +514,7 @@ impl TerminalPaneComponent {
                 .set_cursor_blink_mode(settings.cursor_blinking);
         }
 
-        if (needs_palette || needs_opacity)
-            && let Some(palette) = palette_opt
-        {
+        if needs_palette && let Some(palette) = palette_opt {
             let (fg, mut bg, colors) = palette.to_vte_colors();
             bg.set_alpha(settings.opacity as f32);
             let palette_refs: Vec<&gtk::gdk::RGBA> = colors.iter().collect();
@@ -544,6 +541,9 @@ impl TerminalPaneComponent {
     pub fn set_dimmed(&self, dimmed: bool) {
         let mut inner = self.inner.borrow_mut();
         inner.is_dimmed = dimmed;
-        self.widget.set_opacity(if dimmed { 0.6 } else { 1.0 });
+
+        // Instead of making the GTK widget transparent (which drops the alpha of the background color too),
+        // we tell the VTE renderer to dim its text.
+        inner.terminal.set_dimmed(dimmed);
     }
 }
