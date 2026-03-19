@@ -225,7 +225,6 @@ where
                             },
                             Ok(Msg::CopySelection(clipboard_type)) => {
                                 if let Some(text) = self.terminal.selection_to_string() {
-                                    log::info!("EventLoop: Storing selection to {:?}, len={}", clipboard_type, text.len());
                                     self.event_proxy.send_event(Event::ClipboardStore(clipboard_type, text));
                                 } else {
                                     log::debug!("EventLoop: Copy requested but selection is empty");

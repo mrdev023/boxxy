@@ -67,6 +67,7 @@ pub struct TerminalWidget {
     pub match_rules: RefCell<Vec<MatchRule>>,
     pub next_match_tag: Cell<i32>,
     pub mouse_pos: Cell<Option<(f64, f64)>>,
+    pub hovered_regex_match: Cell<Option<(usize, usize, usize)>>, // (row, start_col, end_col)
     pub title_callback: RefCell<Option<TitleCallback>>,
     pub cwd_callback: RefCell<Option<CwdCallback>>,
     pub bell_callback: RefCell<Option<BellCallback>>,
@@ -111,6 +112,7 @@ impl Default for TerminalWidget {
             vscroll_policy: Cell::new(gtk4::ScrollablePolicy::Minimum),
             match_rules: RefCell::new(Vec::new()),
             mouse_pos: Cell::new(None),
+            hovered_regex_match: Cell::new(None),
             next_match_tag: Cell::new(1),
             title_callback: RefCell::new(None),
             cwd_callback: RefCell::new(None),
@@ -549,10 +551,30 @@ impl ObjectImpl for TerminalWidget {
                         obj.queue_draw();
                     }
                 } else {
-                    let is_link = obj.check_hyperlink_at(x, y).is_some()
-                        || obj.check_match_at(x, y).0.is_some();
-                    obj.imp().mouse_pos.set(Some((x, y)));
-                    obj.queue_draw();
+                    let state = ctrl.current_event_state();
+                    let is_ctrl = state.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+
+                    let is_osclink = obj.check_hyperlink_at(x, y).is_some();
+                    let (regex_text, _, regex_bounds) = obj.check_match_at(x, y);
+
+                    // We only highlight regex matches when Control is held (performance & UX)
+                    if is_ctrl && regex_text.is_some() {
+                        if obj.imp().hovered_regex_match.get() != regex_bounds {
+                            obj.imp().hovered_regex_match.set(regex_bounds);
+                            obj.queue_draw();
+                        }
+                    } else if obj.imp().hovered_regex_match.get().is_some() {
+                        obj.imp().hovered_regex_match.set(None);
+                        obj.queue_draw();
+                    }
+
+                    let is_link = is_osclink || (is_ctrl && regex_text.is_some());
+
+                    if obj.imp().mouse_pos.get() != Some((x, y)) {
+                        obj.imp().mouse_pos.set(Some((x, y)));
+                        obj.queue_draw();
+                    }
+
                     obj.set_cursor_from_name(Some(if is_link { "pointer" } else { "text" }));
                 }
             }
@@ -563,6 +585,7 @@ impl ObjectImpl for TerminalWidget {
             move |_| {
                 obj.set_cursor(None);
                 obj.imp().mouse_pos.set(None);
+                obj.imp().hovered_regex_match.set(None);
                 obj.queue_draw();
             }
         ));
@@ -1371,17 +1394,32 @@ impl WidgetImpl for TerminalWidget {
                     }
                     if let Some(cell_uri) =
                         state.cell(point).hyperlink().map(|h| h.uri().to_string())
-                        && hovered_uri.as_deref() == Some(cell_uri.as_str())
                     {
-                        snapshot.append_color(
-                            &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
-                            &gtk4::graphene::Rect::new(
-                                col as f32 * char_width,
-                                row as f32 * char_height + char_height - 1.5,
-                                char_width,
-                                1.5,
-                            ),
-                        );
+                        if hovered_uri.as_deref() == Some(cell_uri.as_str()) {
+                            snapshot.append_color(
+                                &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
+                                &gtk4::graphene::Rect::new(
+                                    col as f32 * char_width,
+                                    row as f32 * char_height + char_height - 1.5,
+                                    char_width,
+                                    1.5,
+                                ),
+                            );
+                        }
+                    }
+
+                    if let Some((r, start_c, end_c)) = self.hovered_regex_match.get() {
+                        if r == row as usize && col >= start_c && col < end_c {
+                            snapshot.append_color(
+                                &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
+                                &gtk4::graphene::Rect::new(
+                                    col as f32 * char_width,
+                                    row as f32 * char_height + char_height - 1.5,
+                                    char_width,
+                                    1.5,
+                                ),
+                            );
+                        }
                     }
                 }
             }

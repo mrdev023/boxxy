@@ -119,7 +119,7 @@ pub(super) fn setup_gestures(
                 path_to_copy = Some(hyper_str);
             }
         } else {
-            let (match_opt, _tag) = term_for_click.check_match_at(x, y);
+            let (match_opt, _tag, _) = term_for_click.check_match_at(x, y);
             if let Some(matched) = match_opt {
                 let matched_str = matched.to_string();
 

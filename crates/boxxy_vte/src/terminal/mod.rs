@@ -285,11 +285,15 @@ impl TerminalWidget {
     /// Matching is performed against the full text of the visible grid row.
     /// For ASCII-dominant content (URLs, file paths) the column-to-byte
     /// mapping is 1-to-1.
-    pub fn check_match_at(&self, x: f64, y: f64) -> (Option<String>, i32) {
+    pub fn check_match_at(
+        &self,
+        x: f64,
+        y: f64,
+    ) -> (Option<String>, i32, Option<(usize, usize, usize)>) {
         let imp = self.imp();
         let backend_ref = imp.backend.borrow();
         let Some(backend) = backend_ref.as_ref() else {
-            return (None, 0);
+            return (None, 0, None);
         };
         let state = backend.render_state.load();
 
@@ -299,7 +303,7 @@ impl TerminalWidget {
         let row = ((y - padding) / char_size.1).floor() as usize;
 
         if row >= state.screen_lines || col >= state.columns {
-            return (None, 0);
+            return (None, 0, None);
         }
 
         let display_offset = state.display_offset;
@@ -328,13 +332,29 @@ impl TerminalWidget {
         for rule in rules.iter() {
             for m in rule.regex.find_iter(&line_text) {
                 if cursor_byte >= m.start() && cursor_byte < m.end() {
-                    // Trim trailing whitespace that crept in from spacer cells.
-                    return (Some(m.as_str().trim_end().to_string()), rule.id);
+                    let start_col = col_byte_offsets
+                        .iter()
+                        .position(|&b| b >= m.start())
+                        .unwrap_or(0);
+                    // trim trailing whitespace from the end byte index too
+                    let trimmed_str = m.as_str().trim_end();
+                    let trimmed_end = m.start() + trimmed_str.len();
+
+                    let end_col = col_byte_offsets
+                        .iter()
+                        .position(|&b| b >= trimmed_end)
+                        .unwrap_or(state.columns);
+
+                    return (
+                        Some(trimmed_str.to_string()),
+                        rule.id,
+                        Some((row, start_col, end_col)),
+                    );
                 }
             }
         }
 
-        (None, 0)
+        (None, 0, None)
     }
 
     // ── Regex rule registration ───────────────────────────────────────────────

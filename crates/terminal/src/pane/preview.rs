@@ -33,7 +33,7 @@ pub(super) fn setup_preview(terminal: &TerminalWidget, inner: &Rc<RefCell<PaneIn
                     None::<&gio::AppLaunchContext>,
                 );
             } else {
-                let (match_opt, _tag) = term_for_primary_click.check_match_at(x, y);
+                let (match_opt, _tag, _) = term_for_primary_click.check_match_at(x, y);
                 if let Some(matched) = match_opt {
                     let matched_str = matched.to_string();
                     if matched_str.starts_with("http://") || matched_str.starts_with("https://") {
