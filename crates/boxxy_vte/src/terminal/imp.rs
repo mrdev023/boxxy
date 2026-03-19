@@ -80,6 +80,8 @@ pub struct TerminalWidget {
     pub last_cwd: RefCell<Option<String>>,
     pub kitty_textures: RefCell<HashMap<u32, gtk4::gdk::Texture>>,
     pub is_dimmed: Cell<bool>,
+    pub cached_search_regex: RefCell<Option<(String, bool, regex::Regex)>>,
+    pub visible_search_matches: RefCell<Vec<crate::engine::selection::SelectionRange>>,
 }
 
 impl Default for TerminalWidget {
@@ -126,6 +128,8 @@ impl Default for TerminalWidget {
             last_cwd: RefCell::new(None),
             kitty_textures: RefCell::new(HashMap::new()),
             is_dimmed: Cell::new(false),
+            cached_search_regex: RefCell::new(None),
+            visible_search_matches: RefCell::new(Vec::new()),
         }
     }
 }
@@ -963,6 +967,90 @@ impl WidgetImpl for TerminalWidget {
             snapshot.save();
             snapshot.translate(&gtk4::graphene::Point::new(padding, padding));
             let display_offset = state.display_offset;
+
+            // ── Viewport Search Scan ───────────────────────────────────────────
+            // We scan the visible viewport for ALL matches of the search query
+            // so we can highlight them all (Ghostty style).
+            if let Some(query) = self.search_query.borrow().as_ref() {
+                let case_insensitive = !self.search_case_sensitive.get();
+
+                // Get or compile regex
+                let mut cached = self.cached_search_regex.borrow_mut();
+                let re = if let Some((q, ci, re)) = cached.as_ref()
+                    && q == query
+                    && *ci == case_insensitive
+                {
+                    Some(re.clone())
+                } else {
+                    match regex::RegexBuilder::new(query)
+                        .case_insensitive(case_insensitive)
+                        .build()
+                    {
+                        Ok(re) => {
+                            *cached = Some((query.clone(), case_insensitive, re.clone()));
+                            Some(re)
+                        }
+                        Err(_) => None,
+                    }
+                };
+
+                if let Some(re) = re {
+                    let mut visible_matches = self.visible_search_matches.borrow_mut();
+                    visible_matches.clear();
+
+                    // 1. Extract visible text and map byte offsets to Points
+                    let mut visible_text =
+                        String::with_capacity(state.screen_lines * state.columns);
+                    let mut byte_to_point = Vec::with_capacity(state.screen_lines * state.columns);
+
+                    for row in 0..state.screen_lines {
+                        for col in 0..state.columns {
+                            let point = Point::new(Line(row as i32 - display_offset), Column(col));
+                            let cell = state.cell(point);
+                            let c = if cell.c == '\0' { ' ' } else { cell.c };
+
+                            let start_byte = visible_text.len();
+                            visible_text.push(c);
+                            let end_byte = visible_text.len();
+
+                            for _ in start_byte..end_byte {
+                                byte_to_point.push(point);
+                            }
+                        }
+                        let last_cell = state.cell(Point::new(
+                            Line(row as i32 - display_offset),
+                            Column(state.columns - 1),
+                        ));
+                        if !last_cell
+                            .flags
+                            .contains(crate::engine::term::cell::Flags::WRAPLINE)
+                        {
+                            visible_text.push('\n');
+                            byte_to_point.push(Point::new(
+                                Line(row as i32 - display_offset),
+                                Column(state.columns - 1),
+                            ));
+                        }
+                    }
+
+                    // 2. Find all matches in the visible viewport
+                    for m in re.find_iter(&visible_text) {
+                        if let (Some(&start_point), Some(&end_point)) = (
+                            byte_to_point.get(m.start()),
+                            byte_to_point.get(m.end().saturating_sub(1)),
+                        ) {
+                            visible_matches.push(crate::engine::selection::SelectionRange {
+                                start: start_point,
+                                end: end_point,
+                                is_block: false,
+                            });
+                        }
+                    }
+                }
+            } else {
+                self.visible_search_matches.borrow_mut().clear();
+            }
+
             let pango_ctx = self.obj().pango_context();
             let layout = gtk4::pango::Layout::new(&pango_ctx);
             if let Some(ref fd) = *self.font_desc.borrow() {
@@ -1203,6 +1291,46 @@ impl WidgetImpl for TerminalWidget {
                     );
                 }
 
+                // 1.5 Search Highlight background pass
+                {
+                    let visible_matches = self.visible_search_matches.borrow();
+                    if !visible_matches.is_empty() {
+                        let yellow = gtk4::gdk::RGBA::new(0.961, 0.761, 0.067, 1.0); // #F5C211
+                        let orange = gtk4::gdk::RGBA::new(1.0, 0.471, 0.0, 1.0); // #FF7800
+
+                        for m in visible_matches.iter() {
+                            let grid_row = Line(row - display_offset);
+                            if grid_row >= m.start.line && grid_row <= m.end.line {
+                                let start_col = if grid_row == m.start.line {
+                                    m.start.column.0
+                                } else {
+                                    0
+                                };
+                                let end_col = if grid_row == m.end.line {
+                                    m.end.column.0
+                                } else {
+                                    state.columns - 1
+                                };
+
+                                let is_active = selection_range
+                                    .map(|r| r.start == m.start && r.end == m.end)
+                                    .unwrap_or(false);
+                                let color = if is_active { &orange } else { &yellow };
+
+                                snapshot.append_color(
+                                    color,
+                                    &gtk4::graphene::Rect::new(
+                                        start_col as f32 * char_width,
+                                        row as f32 * char_height,
+                                        (end_col as i32 - start_col as i32 + 1) as f32 * char_width,
+                                        char_height,
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+
                 // 2. Text pass
                 let mut current_fg = fg_color_default;
                 let mut line_str = String::new();
@@ -1253,6 +1381,14 @@ impl WidgetImpl for TerminalWidget {
                                 .unwrap_or(fg_color_default)
                         }
                     };
+
+                    // Search Highlight text color override
+                    if !self.visible_search_matches.borrow().is_empty() {
+                        let visible_matches = self.visible_search_matches.borrow();
+                        if visible_matches.iter().any(|m| m.contains(point)) {
+                            fg = gtk4::gdk::RGBA::new(0.118, 0.118, 0.180, 1.0);
+                        }
+                    }
 
                     if dim_factor < 1.0 {
                         fg.set_red(fg.red() * dim_factor);
@@ -1382,15 +1518,26 @@ impl WidgetImpl for TerminalWidget {
                     if let Some(ref range) = selection_range
                         && range.contains(point)
                     {
-                        snapshot.append_color(
-                            &gtk4::gdk::RGBA::new(0.2, 0.4, 0.6, 0.5),
-                            &gtk4::graphene::Rect::new(
-                                col as f32 * char_width,
-                                row as f32 * char_height,
-                                char_width,
-                                char_height,
-                            ),
-                        );
+                        // If we have search matches, we skip drawing the standard blue selection
+                        // because we already drew solid orange/yellow backgrounds in Pass 1.5.
+                        let is_search_match = !self.visible_search_matches.borrow().is_empty()
+                            && self
+                                .visible_search_matches
+                                .borrow()
+                                .iter()
+                                .any(|m| m.contains(point));
+
+                        if !is_search_match {
+                            snapshot.append_color(
+                                &gtk4::gdk::RGBA::new(0.2, 0.4, 0.6, 0.5),
+                                &gtk4::graphene::Rect::new(
+                                    col as f32 * char_width,
+                                    row as f32 * char_height,
+                                    char_width,
+                                    char_height,
+                                ),
+                            );
+                        }
                     }
                     if let Some(cell_uri) =
                         state.cell(point).hyperlink().map(|h| h.uri().to_string())
