@@ -436,8 +436,15 @@
                                     <property name="subtitle" translatable="yes">Hide the agent identity badge in the top right corner.</property>
                                   </object>
                                 </child>
-                                </object>
-                                </child>                            <child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="claw_on_by_default_switch">
+                                    <property name="title" translatable="yes">BoxxyClaw On by Default</property>
+                                    <property name="subtitle" translatable="yes">Start BoxxyClaw automatically for every new terminal.</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
                               <object class="AdwPreferencesGroup" id="group_terminal_interaction">
                                 <property name="title" translatable="yes">Terminal Interaction</property>
                                 <property name="description" translatable="yes">Used for Ctrl+Click and context menus. Warning: Complex regexes can cause UI freezes.</property>

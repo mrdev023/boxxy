@@ -459,16 +459,65 @@ impl Tool for SendCommandToPaneTool {
 }
 
 #[derive(Deserialize)]
+pub struct ListAgentsArgs {}
+
+#[derive(Serialize)]
+pub struct ListAgentsOutput {
+    pub agents: Vec<AgentInfo>,
+}
+
+#[derive(Serialize)]
+pub struct AgentInfo {
+    pub name: String,
+    pub id: String,
+    pub cwd: String,
+    pub last_command: String,
+    pub status: String,
+}
+
+pub struct ListActiveAgentsTool;
+
+impl Tool for ListActiveAgentsTool {
+    const NAME: &'static str = "list_active_agents";
+
+    type Error = std::io::Error;
+    type Args = ListAgentsArgs;
+    type Output = ListAgentsOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Proactively list all active agents in the current workspace across the entire application. \
+            Use this to discover other agents, their current directories, and their names for coordination."
+                .to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let workspace = global_workspace().await;
+        // We get all panes directly from the registry
+        // To do this we might need a public method in WorkspaceRegistry or just read the field if it was public
+        // Since it's not, we'll use a new method we should add to WorkspaceRegistry or just rely on what we have.
+        // Actually, let's add `get_all_agents` to WorkspaceRegistry.
+        let agents = workspace.get_all_agents().await;
+
+        Ok(ListAgentsOutput { agents })
+    }
+}
+
+#[derive(Deserialize)]
 pub struct SetIntentArgs {
     pub intent: String,
 }
 
-pub struct SetWorkspaceIntentTool {
-    pub project_path: String,
-}
+pub struct SetGlobalIntentTool;
 
-impl Tool for SetWorkspaceIntentTool {
-    const NAME: &'static str = "set_workspace_intent";
+impl Tool for SetGlobalIntentTool {
+    const NAME: &'static str = "set_global_intent";
 
     type Error = std::io::Error;
     type Args = SetIntentArgs;
@@ -477,16 +526,16 @@ impl Tool for SetWorkspaceIntentTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Leave a note in the shared workspace scratchpad. \
-            Other agents in the same project will see this in their 'Radar'. \
-            Use this to signal what you are currently working on to avoid conflicts."
+            description: "Leave a note in the global workspace scratchpad (Blackboard). \
+            ALL other agents across the application will see this in their 'Radar' and 'Global Intent' sections. \
+            Use this to broadcast your current high-level goal or signal that you are performing system-wide operations."
                 .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "intent": {
                         "type": "string",
-                        "description": "A concise description of your current task and goals (e.g. 'Refactoring auth middleware in src/auth.rs')."
+                        "description": "A concise description of your current global objective (e.g. 'Performing system-wide kernel update')."
                     }
                 },
                 "required": ["intent"]
@@ -496,9 +545,7 @@ impl Tool for SetWorkspaceIntentTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let workspace = global_workspace().await;
-        workspace
-            .set_project_intent(&self.project_path, args.intent.clone())
-            .await;
-        Ok(format!("Workspace intent updated: {}", args.intent))
+        workspace.set_global_intent(args.intent.clone()).await;
+        Ok(format!("Global workspace intent updated: {}", args.intent))
     }
 }

@@ -455,11 +455,9 @@ fn spawn_turn(
 
         let registry = crate::registry::skills::global_registry().await;
 
-        // Fetch Workspace Radar
+        // Fetch Global Workspace Radar
         let workspace = crate::registry::workspace::global_workspace().await;
-        let radar = workspace
-            .get_radar_for_project(&cwd_clone, pane_id.clone())
-            .await;
+        let radar = workspace.get_global_radar(pane_id.clone()).await;
 
         // 1. Semantic Search: Get the top 3 most relevant skills via SQLite FTS5 to be "Active"
         let mut active_skills = registry.search_relevant_skills(&prompt_clone, 3).await;

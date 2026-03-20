@@ -133,6 +133,7 @@ pub struct Settings {
     pub claw_auto_diagnosis_mode: ClawAutoDiagnosisMode,
     pub claw_terminal_suggestions: bool,
     pub hide_agent_badge: bool,
+    pub claw_on_by_default: bool,
 }
 
 impl Default for Settings {
@@ -172,6 +173,7 @@ impl Default for Settings {
             claw_auto_diagnosis_mode: ClawAutoDiagnosisMode::Proactive,
             claw_terminal_suggestions: true,
             hide_agent_badge: false,
+            claw_on_by_default: false,
         }
     }
 }

@@ -330,7 +330,7 @@ impl AppWindow {
             }
         });
 
-        let initial_claw_active = false;
+        let initial_claw_active = current_settings.claw_on_by_default;
         let initial_claw_proactive = current_settings.claw_auto_diagnosis_mode
             == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive;
         let initial_claw_terminal_suggestions = current_settings.claw_terminal_suggestions;
@@ -660,11 +660,19 @@ impl AppWindow {
             .pixel_size(20)
             .build();
 
-        let claw_indicator = gtk::Button::builder()
-            .child(&claw_img)
-            .tooltip_text("Claw Agent Options")
-            .css_classes(["flat", "claw-indicator-inactive", "image-button"])
-            .build();
+        let claw_indicator = if current_settings.claw_on_by_default {
+            gtk::Button::builder()
+                .child(&claw_img)
+                .tooltip_text("Claw Agent Options (Enabled)")
+                .css_classes(["flat", "image-button"])
+                .build()
+        } else {
+            gtk::Button::builder()
+                .child(&claw_img)
+                .tooltip_text("Claw Agent Options (Disabled)")
+                .css_classes(["flat", "claw-indicator-inactive", "image-button"])
+                .build()
+        };
 
         let tx_enable = tx.clone();
         let tx_proactive = tx.clone();

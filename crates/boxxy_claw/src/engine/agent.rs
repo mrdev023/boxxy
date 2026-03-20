@@ -5,8 +5,8 @@ use crate::engine::tools::file_ops::{FileReadTool, FileWriteTool};
 use crate::engine::tools::skills::ActivateSkillTool;
 use crate::engine::tools::terminal::TerminalCommandTool;
 use crate::engine::tools::workspace::{
-    CloseAgentTool, DelegateTaskTool, ReadPaneTool, SendKeystrokesTool, SetWorkspaceIntentTool,
-    SpawnAgentTool,
+    CloseAgentTool, DelegateTaskTool, ListActiveAgentsTool, ReadPaneTool, SendKeystrokesTool,
+    SetGlobalIntentTool, SpawnAgentTool,
 };
 use boxxy_agent::ipc::AgentClawProxy;
 use boxxy_model_selection::ModelProvider;
@@ -101,6 +101,7 @@ pub fn create_claw_agent(
                     state: state.clone(),
                 })
                 .tool(ActivateSkillTool)
+                .tool(ListActiveAgentsTool)
                 .tool(ReadPaneTool)
                 .tool(DelegateTaskTool {
                     state: state.clone(),
@@ -115,9 +116,7 @@ pub fn create_claw_agent(
                 .tool(SendKeystrokesTool {
                     tx_ui: tx_ui.clone(),
                 })
-                .tool(SetWorkspaceIntentTool {
-                    project_path: current_dir.to_string(),
-                })
+                .tool(SetGlobalIntentTool)
                 .build();
 
             ClawAgent::Gemini(agent)
@@ -160,6 +159,7 @@ pub fn create_claw_agent(
                     state: state.clone(),
                 })
                 .tool(ActivateSkillTool)
+                .tool(ListActiveAgentsTool)
                 .tool(ReadPaneTool)
                 .tool(DelegateTaskTool {
                     state: state.clone(),
@@ -174,9 +174,7 @@ pub fn create_claw_agent(
                 .tool(SendKeystrokesTool {
                     tx_ui: tx_ui.clone(),
                 })
-                .tool(SetWorkspaceIntentTool {
-                    project_path: current_dir.to_string(),
-                })
+                .tool(SetGlobalIntentTool)
                 .build();
 
             ClawAgent::Ollama(agent)
@@ -216,6 +214,7 @@ pub fn create_claw_agent(
                     state: state.clone(),
                 })
                 .tool(ActivateSkillTool)
+                .tool(ListActiveAgentsTool)
                 .tool(ReadPaneTool)
                 .tool(DelegateTaskTool {
                     state: state.clone(),
@@ -230,9 +229,7 @@ pub fn create_claw_agent(
                 .tool(SendKeystrokesTool {
                     tx_ui: tx_ui.clone(),
                 })
-                .tool(SetWorkspaceIntentTool {
-                    project_path: current_dir.to_string(),
-                })
+                .tool(SetGlobalIntentTool)
                 .build();
 
             ClawAgent::Anthropic(agent)

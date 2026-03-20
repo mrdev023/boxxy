@@ -17,8 +17,8 @@ pub struct PaneState {
 pub struct WorkspaceRegistry {
     // Map of pane_id -> PaneState
     panes: Arc<RwLock<HashMap<String, PaneState>>>,
-    // Map of project_path -> workspace_intent
-    intents: Arc<RwLock<HashMap<PathBuf, String>>>,
+    // Global shared intent/scratchpad for system-wide orchestration
+    global_intent: Arc<RwLock<Option<String>>>,
 }
 
 static WORKSPACE: OnceCell<Arc<WorkspaceRegistry>> = OnceCell::const_new();
@@ -34,7 +34,7 @@ impl WorkspaceRegistry {
     pub fn new() -> Self {
         Self {
             panes: Arc::new(RwLock::new(HashMap::new())),
-            intents: Arc::new(RwLock::new(HashMap::new())),
+            global_intent: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -119,23 +119,16 @@ impl WorkspaceRegistry {
             .map(|p| p.id.clone())
     }
 
-    pub async fn get_radar_for_project(
-        &self,
-        project_path: &str,
-        current_pane_id: String,
-    ) -> String {
+    pub async fn get_global_radar(&self, current_pane_id: String) -> String {
         let panes = self.panes.read().await;
         let mut radar = String::new();
 
-        let peers: Vec<_> = panes
-            .values()
-            .filter(|p| p.id != current_pane_id && p.cwd == project_path)
-            .collect();
+        let peers: Vec<_> = panes.values().filter(|p| p.id != current_pane_id).collect();
 
         if !peers.is_empty() {
-            radar.push_str("\n--- WORKSPACE RADAR (Peer Panes in this project) ---\n");
+            radar.push_str("\n--- GLOBAL RADAR (Other Active Agents) ---\n");
             radar.push_str(
-                "You can read these panes using `read_pane_buffer(agent_name)` if needed.\n",
+                "You can read these panes using `read_pane_buffer(agent_name)` or delegate tasks using `delegate_task(agent_name, prompt)`.\n",
             );
             for peer in peers {
                 let cmd = peer.last_command.as_deref().unwrap_or("idle");
@@ -145,17 +138,16 @@ impl WorkspaceRegistry {
                     .map(|s| format!(" | Status: {}", s))
                     .unwrap_or_default();
                 radar.push_str(&format!(
-                    "- Agent '{}' (ID: {}): Last command `{}`{}\n",
-                    peer.name, peer.id, cmd, status
+                    "- Agent '{}' (ID: {}): in {} | Last command `{}`{}\n",
+                    peer.name, peer.id, peer.cwd, cmd, status
                 ));
             }
         }
 
-        // Add shared intents/scratchpad
-        let intents = self.intents.read().await;
-        let path = PathBuf::from(project_path);
-        if let Some(intent) = intents.get(&path) {
-            radar.push_str("\n--- SHARED WORKSPACE INTENT ---\n");
+        // Add global shared intent/scratchpad
+        let global_intent = self.global_intent.read().await;
+        if let Some(intent) = &*global_intent {
+            radar.push_str("\n--- GLOBAL WORKSPACE INTENT ---\n");
             radar.push_str(intent);
             radar.push('\n');
         }
@@ -163,8 +155,22 @@ impl WorkspaceRegistry {
         radar
     }
 
-    pub async fn set_project_intent(&self, project_path: &str, intent: String) {
-        let mut intents = self.intents.write().await;
-        intents.insert(PathBuf::from(project_path), intent);
+    pub async fn get_all_agents(&self) -> Vec<crate::engine::tools::workspace::AgentInfo> {
+        let panes = self.panes.read().await;
+        panes
+            .values()
+            .map(|p| crate::engine::tools::workspace::AgentInfo {
+                name: p.name.clone(),
+                id: p.id.clone(),
+                cwd: p.cwd.clone(),
+                last_command: p.last_command.clone().unwrap_or_else(|| "idle".to_string()),
+                status: p.status.clone().unwrap_or_else(|| "active".to_string()),
+            })
+            .collect()
+    }
+
+    pub async fn set_global_intent(&self, intent: String) {
+        let mut global_intent = self.global_intent.write().await;
+        *global_intent = Some(intent);
     }
 }
