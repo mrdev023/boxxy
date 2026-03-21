@@ -91,15 +91,6 @@ pub fn close_tab_request(inner: &mut AppWindowInner, key: usize) {
         return;
     };
 
-    if let Some(boxxy_apps_page) = &inner.boxxy_apps_page
-        && *boxxy_apps_page == page
-    {
-        inner.boxxy_apps_controller = None;
-        inner.boxxy_apps_page = None;
-        inner.tab_view.close_page_finish(&page, true);
-        return;
-    }
-
     if let Some(bookmarks_page) = &inner.bookmarks_page
         && *bookmarks_page == page
     {
@@ -208,11 +199,6 @@ pub fn tab_page_detached(inner: &mut AppWindowInner, key: usize) {
     {
         let tc = inner.tabs.remove(pos);
         ORPHAN_TABS.with(|pool| pool.borrow_mut().insert(key.to_string(), tc));
-    } else if let Some(boxxy_apps_page) = &inner.boxxy_apps_page
-        && boxxy_apps_page.child().as_ptr() as usize == key
-    {
-        inner.boxxy_apps_controller = None;
-        inner.boxxy_apps_page = None;
     } else if let Some(bookmarks_page) = &inner.bookmarks_page
         && bookmarks_page.child().as_ptr() as usize == key
     {
@@ -257,10 +243,9 @@ pub fn focus_active_terminal(inner: &mut AppWindowInner) {
         page.set_indicator_icon(None::<&gio::Icon>);
         page.set_indicator_activatable(false);
         let child = page.child();
-        let is_boxxy_apps = inner.boxxy_apps_page.as_ref() == Some(&page);
         let is_bookmarks = inner.bookmarks_page.as_ref() == Some(&page);
 
-        if is_boxxy_apps || is_bookmarks {
+        if is_bookmarks {
             inner.content_header.remove_css_class("terminal-header");
         } else {
             inner.content_header.add_css_class("terminal-header");
@@ -277,27 +262,6 @@ pub fn focus_active_terminal(inner: &mut AppWindowInner) {
                 .claw
                 .set_history_widget(&tc.controller.claw_history_widget());
         }
-    }
-    sync_header_title(inner);
-}
-
-pub fn open_boxxy_apps(inner: &mut AppWindowInner) {
-    if let Some(page) = &inner.boxxy_apps_page {
-        inner.tab_view.set_selected_page(page);
-    } else {
-        let controller = boxxy_apps::BoxxyAppsComponent::new();
-
-        let widget = controller.widget().clone();
-
-        let page = inner.tab_view.append(&widget);
-        page.set_title("Boxxy Apps");
-        page.set_icon(Some(&gio::ThemedIcon::new(
-            "application-x-sharedlib-symbolic",
-        )));
-
-        inner.boxxy_apps_controller = Some(controller);
-        inner.boxxy_apps_page = Some(page.clone());
-        inner.tab_view.set_selected_page(&page);
     }
     sync_header_title(inner);
 }

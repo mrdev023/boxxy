@@ -97,7 +97,7 @@ pub fn setup_advanced_page(
     reset_config_btn.connect_clicked(move |_| {
         let confirm = adw::AlertDialog::builder()
             .heading("Reset Everything?")
-            .body("This will delete all settings and permanently remove all installed Boxxy apps. This action cannot be undone.")
+            .body("This will delete all settings and configuration. This action cannot be undone.")
             .build();
         confirm.add_response("cancel", "Cancel");
         confirm.add_response("reset", "Reset");
@@ -108,7 +108,8 @@ pub fn setup_advanced_page(
         let reload_cb2 = reload_cb.clone();
         confirm.connect_response(None, move |_, response| {
             if response == "reset" {
-                if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
+                if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal")
+                {
                     let _ = fs::remove_dir_all(dirs.config_dir());
                     crate::config::Settings::ensure_claw_skills();
                 }
@@ -158,7 +159,7 @@ pub fn setup_advanced_page(
         );
         let ad6 = match_row(
             row_reset_config_clone.upcast_ref(),
-            "reset everything delete all apps destructive",
+            "reset everything delete all configuration destructive",
         );
 
         group_shell.set_visible(ad1 || ad2);

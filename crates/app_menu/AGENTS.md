@@ -15,7 +15,6 @@ A GTK4 component that wraps a `gtk::PopoverMenu`.
 **Menu Items:**
 - Copy (`win.copy`)
 - Paste (`win.paste`)
-- Mini Apps (`win.mini-apps`)
 - Open in Files (`win.open-in-files`)
 - Keyboard Shortcuts (`win.shortcuts`)
 - Preferences (`win.preferences`)

@@ -15,12 +15,12 @@ pub struct GlobalModelSelectorDialog {
 impl GlobalModelSelectorDialog {
     pub fn new<F1, F2, F3>(
         init_ai: Option<ModelProvider>,
-        init_apps: Option<ModelProvider>,
+        init_claw: Option<ModelProvider>,
         init_memory: Option<ModelProvider>,
         ollama_url: String,
         api_keys: std::collections::HashMap<String, String>,
         on_ai_change: F1,
-        on_apps_change: F2,
+        on_claw_change: F2,
         on_memory_change: F3,
     ) -> Self
     where
@@ -42,13 +42,13 @@ impl GlobalModelSelectorDialog {
         let ai_chat_selector =
             SingleModelSelector::new(init_ai, ollama_url.clone(), api_keys.clone(), on_ai_change);
         let claw_selector = SingleModelSelector::new(
-            init_apps.clone(),
+            init_claw.clone(),
             ollama_url.clone(),
             api_keys.clone(),
-            on_apps_change,
+            on_claw_change,
         );
 
-        let mem_initial = init_memory.or(init_apps);
+        let mem_initial = init_memory.or(init_claw);
         let memory_selector =
             SingleModelSelector::new(mem_initial, ollama_url, api_keys, move |new_prov| {
                 on_memory_change(new_prov);

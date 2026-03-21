@@ -335,8 +335,6 @@ impl AppWindow {
         let inner = AppWindowInner {
             window: window.clone(),
             tabs: Vec::new(),
-            boxxy_apps_controller: None,
-            boxxy_apps_page: None,
             tab_view,
             tab_bar,
             single_tab_title,

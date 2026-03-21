@@ -1,5 +1,4 @@
 use boxxy_app_menu::AppMenuComponent;
-use boxxy_apps::BoxxyAppsComponent;
 use boxxy_bookmarks::{sidebar::BookmarksSidebarComponent, tab::BookmarksTabComponent};
 use boxxy_claw::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;
@@ -28,7 +27,6 @@ pub enum AppInput {
     SidebarVisibleChanged(bool),
     SidebarPageChanged(String),
     OpenPreferences,
-    OpenBoxxyApps,
     OpenBookmarks,
     OpenShortcuts,
     OpenAbout,
@@ -85,8 +83,6 @@ pub enum AppInput {
 pub struct AppWindowInner {
     pub window: adw::ApplicationWindow,
     pub tabs: Vec<TerminalController>,
-    pub boxxy_apps_controller: Option<BoxxyAppsComponent>,
-    pub boxxy_apps_page: Option<adw::TabPage>,
     pub tab_view: adw::TabView,
     pub tab_bar: adw::TabBar,
     pub single_tab_title: adw::WindowTitle,

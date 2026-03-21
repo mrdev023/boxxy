@@ -538,7 +538,7 @@
                                 <child>
                                   <object class="AdwActionRow" id="row_open_config">
                                     <property name="title" translatable="yes">Open Config Folder</property>
-                                    <property name="subtitle" translatable="yes">Manage settings and apps directly</property>
+                                    <property name="subtitle" translatable="yes">Manage settings and configuration directly</property>
                                     <child type="suffix">
                                       <object class="GtkButton" id="open_config_btn">
                                         <property name="icon-name">folder-open-symbolic</property>
@@ -551,7 +551,7 @@
                                 <child>
                                   <object class="AdwActionRow" id="row_reset_config">
                                     <property name="title" translatable="yes">Reset Everything</property>
-                                    <property name="subtitle" translatable="yes">Deletes all settings and apps.</property>
+                                    <property name="subtitle" translatable="yes">Deletes all settings and configuration.</property>
                                     <child type="suffix">
                                       <object class="GtkButton" id="reset_config_btn">
                                         <property name="label" translatable="yes">Reset</property>

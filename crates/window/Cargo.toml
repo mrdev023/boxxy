@@ -18,7 +18,6 @@ boxxy-sidebar = { path = "../sidebar" }
 boxxy-claw = { path = "../boxxy_claw" }
 boxxy-bookmarks = { path = "../boxxy_bookmarks" }
 boxxy-ai-core = { path = "../ai_core" }
-boxxy-apps = { path = "../boxxy_apps" }
 boxxy-model-selection = { path = "../model_selection" }
 boxxy-command-palette = { path = "../command_palette" }
 anyhow.workspace = true

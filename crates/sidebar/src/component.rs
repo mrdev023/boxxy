@@ -92,14 +92,14 @@ impl AiSidebarComponent {
 
         let settings = boxxy_preferences::Settings::load();
         let initial_model = settings.ai_chat_model.clone();
-        let initial_apps_model = settings.claw_model.clone();
+        let initial_claw_model = settings.claw_model.clone();
         let ollama_url = settings.ollama_base_url.clone();
         let initial_memory_model = settings.memory_model.clone();
         let api_keys = settings.api_keys.clone();
 
         let model_selector = GlobalModelSelectorDialog::new(
             initial_model.clone(),
-            initial_apps_model,
+            initial_claw_model,
             initial_memory_model,
             ollama_url,
             api_keys,
@@ -143,7 +143,7 @@ impl AiSidebarComponent {
         glib::spawn_future_local(async move {
             while let Ok(settings) = settings_rx.recv().await {
                 let ai_model = settings.ai_chat_model.clone();
-                let apps_model = settings.claw_model.clone();
+                let claw_model = settings.claw_model.clone();
                 let mut inner = comp_clone.inner.borrow_mut();
                 if inner.model_provider != ai_model {
                     inner.model_provider = ai_model.clone();
@@ -155,7 +155,7 @@ impl AiSidebarComponent {
                 inner
                     .model_selector
                     .claw_selector
-                    .set_model_provider(apps_model);
+                    .set_model_provider(claw_model);
             }
         });
 

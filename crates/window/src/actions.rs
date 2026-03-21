@@ -27,7 +27,6 @@ pub fn setup_actions(window: &libadwaita::ApplicationWindow, sender: Sender<AppI
     add_action!("close-tab", AppInput::CloseActiveTab);
     add_action!("toggle-sidebar", AppInput::ToggleSidebar);
     add_action!("preferences", AppInput::OpenPreferences);
-    add_action!("mini-apps", AppInput::OpenBoxxyApps);
     add_action!("bookmarks", AppInput::OpenBookmarks);
     add_action!("shortcuts", AppInput::OpenShortcuts);
     add_action!("about", AppInput::OpenAbout);

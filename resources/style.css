@@ -56,17 +56,6 @@ tab > separator {
 .sidebar-header {
 }
 
-.boxxy-apps-sidebar {
-	border: none;
-	border-right: none;
-	background-color: mix(@theme_bg_color, black, 0.1);
-	border-radius: 12px;
-	padding: 10px;
-}
-
-.boxxy-apps-sidebar row {
-	padding: 0px;
-	margin: 2px 0px;
 }
 
 .terminal-menu > contents {

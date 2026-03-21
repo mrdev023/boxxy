@@ -62,9 +62,6 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         AppInput::OpenPreferences => {
             inner.preferences.show(&inner.window.clone().upcast());
         }
-        AppInput::OpenBoxxyApps => {
-            tabs::open_boxxy_apps(&mut inner);
-        }
         AppInput::OpenBookmarks => {
             tabs::open_bookmarks(&mut inner);
         }
