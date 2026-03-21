@@ -44,7 +44,6 @@ pub enum AppInput {
     ExecuteInNewTab(String, String, String), // Name, Filename, Script
     SetClawActive(bool),
     SetClawProactive(bool),
-    SetClawTerminalSuggestions(bool),
     ModelSelection,
     ThemeSelected(Box<boxxy_themes::ParsedPaletteStatic>),
     CommandPalette,
@@ -115,7 +114,6 @@ pub struct AppWindowInner {
     pub claw_popover: crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover,
     pub claw_active: bool,
     pub claw_proactive: bool,
-    pub claw_terminal_suggestions: bool,
     pub notification_pill: crate::widgets::notification_pill::BoxxyNotificationPill,
     pub notifications: Vec<Notification>,
     pub initial_working_dir: Option<String>,

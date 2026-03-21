@@ -31,7 +31,6 @@ pub struct ClawSession {
     pub db: Arc<Mutex<Option<Db>>>,
     pub state: Arc<Mutex<SessionState>>,
     pub diagnosis_mode: boxxy_preferences::config::ClawAutoDiagnosisMode,
-    pub terminal_suggestions: bool,
 }
 
 impl ClawSession {
@@ -71,7 +70,6 @@ impl ClawSession {
                 pending_lazy_diagnosis: None,
             })),
             diagnosis_mode: settings.claw_auto_diagnosis_mode,
-            terminal_suggestions: settings.claw_terminal_suggestions,
         };
 
         (session, tx, rx_ui)
@@ -445,9 +443,6 @@ impl ClawSession {
                 }
                 ClawMessage::UpdateDiagnosisMode(mode) => {
                     self.diagnosis_mode = mode;
-                }
-                ClawMessage::UpdateTerminalSuggestions(enabled) => {
-                    self.terminal_suggestions = enabled;
                 }
             }
         }

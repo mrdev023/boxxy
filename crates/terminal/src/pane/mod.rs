@@ -451,12 +451,6 @@ impl TerminalPaneComponent {
             .send_blocking(boxxy_claw::engine::ClawMessage::UpdateDiagnosisMode(*mode));
     }
 
-    pub fn update_terminal_suggestions(&self, enabled: bool) {
-        let _ = self.claw_sender.send_blocking(
-            boxxy_claw::engine::ClawMessage::UpdateTerminalSuggestions(enabled),
-        );
-    }
-
     pub fn reload_claw(&self) {
         let tx = self.claw_sender.clone();
         gtk4::glib::spawn_future_local(async move {

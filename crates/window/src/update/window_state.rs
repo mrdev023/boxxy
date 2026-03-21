@@ -146,19 +146,14 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
             .set_width_request(settings.ai_chat_width);
     }
 
-    // Note: We intentionally DO NOT update `inner.claw_proactive` or `inner.claw_terminal_suggestions`
     // from global settings here. Those are window-local states that can be toggled independently per window.
 
-    inner.claw.update_ui(
-        inner.claw_active,
-        inner.claw_proactive,
-        inner.claw_terminal_suggestions,
-    );
-    inner.claw_popover.update_ui(
-        inner.claw_active,
-        inner.claw_proactive,
-        inner.claw_terminal_suggestions,
-    );
+    inner
+        .claw_popover
+        .update_ui(inner.claw_active, inner.claw_proactive);
+    inner
+        .claw
+        .update_ui(inner.claw_active, inner.claw_proactive);
 
     super::tabs::sync_header_title(inner);
 }
@@ -190,14 +185,7 @@ pub fn sidebar_visible_changed(inner: &mut AppWindowInner, visible: bool) {
 }
 
 pub fn sidebar_page_changed(inner: &mut AppWindowInner, name: String) {
-    if name == "claw" {
-        let mode = if inner.claw_proactive {
-            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
-        } else {
-            boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
-        };
-        inner.claw.update_diagnosis_mode(&mode);
-    }
+    if name == "claw" {}
     inner.app_state.active_sidebar_page = name;
     inner.app_state.save();
 }
@@ -248,12 +236,6 @@ pub fn show_ai_chat(inner: &mut AppWindowInner) {
 }
 
 pub fn show_claw_sidebar(inner: &mut AppWindowInner) {
-    let mode = if inner.claw_proactive {
-        boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
-    } else {
-        boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
-    };
-    inner.claw.update_diagnosis_mode(&mode);
     if !inner.sidebar_visible
         && let Some(split) = inner
             .window

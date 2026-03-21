@@ -67,7 +67,6 @@ pub fn new_tab_with_intent(inner: &mut AppWindowInner, intent: Option<String>) {
         boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
     };
     controller.update_diagnosis_mode(&mode);
-    controller.update_terminal_suggestions(inner.claw_terminal_suggestions);
 
     let widget = controller.widget().clone();
 
@@ -194,8 +193,6 @@ pub fn adopt_orphan_tabs(inner: &mut AppWindowInner) {
                 boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
             };
             tc.controller.update_diagnosis_mode(&mode);
-            tc.controller
-                .update_terminal_suggestions(inner.claw_terminal_suggestions);
 
             tc.controller.grab_focus();
             inner.tabs.push(tc);
@@ -248,8 +245,6 @@ pub fn tab_page_attached(inner: &mut AppWindowInner, key: usize) {
             boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
         };
         tc.controller.update_diagnosis_mode(&mode);
-        tc.controller
-            .update_terminal_suggestions(inner.claw_terminal_suggestions);
 
         tc.controller.grab_focus();
         inner.tabs.push(tc);

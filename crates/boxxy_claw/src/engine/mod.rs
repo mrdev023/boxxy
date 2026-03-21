@@ -46,7 +46,6 @@ pub enum ClawMessage {
     /// Update diagnosis mode dynamically.
     UpdateDiagnosisMode(boxxy_preferences::config::ClawAutoDiagnosisMode),
     /// Update terminal suggestions dynamically.
-    UpdateTerminalSuggestions(bool),
     /// A task delegated from another agent.
     DelegatedTask {
         source_agent_name: String,

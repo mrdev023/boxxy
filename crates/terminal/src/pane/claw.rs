@@ -12,7 +12,7 @@ pub(super) fn setup_claw(
     inner: &Rc<RefCell<PaneInner>>,
     id: String,
     claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
-    mut claw_rx: async_channel::Receiver<boxxy_claw::engine::ClawEngineEvent>,
+    claw_rx: async_channel::Receiver<boxxy_claw::engine::ClawEngineEvent>,
     claw_message_list: gtk::ListBox,
     callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
     spawn_intent: Option<String>,
@@ -40,8 +40,6 @@ pub(super) fn setup_claw(
         });
     }
 
-    let pending_sidebar_buttons = Rc::new(RefCell::new(None::<gtk::Box>));
-
     let inner_clone_for_cmd = Rc::downgrade(inner);
     let inner_clone_for_reply = Rc::downgrade(inner);
     let inner_clone_for_file_reply = Rc::downgrade(inner);
@@ -51,7 +49,6 @@ pub(super) fn setup_claw(
     let tx_lazy_reply = claw_sender.clone();
 
     let claw_popover_self_ref: Rc<RefCell<Option<TerminalOverlay>>> = Rc::new(RefCell::new(None));
-    let pending_sidebar_btns_popover_clone = pending_sidebar_buttons.clone();
     let cb_focus = callback.clone();
 
     let id_for_focus = id.clone();
@@ -85,9 +82,6 @@ pub(super) fn setup_claw(
             }
         },
         move |approved| {
-            if let Some(btns) = pending_sidebar_btns_popover_clone.borrow_mut().take() {
-                btns.set_visible(false);
-            }
             if let Some(inner) = inner_clone_for_file_reply.upgrade() {
                 inner.borrow().terminal.grab_focus();
             }
@@ -149,21 +143,16 @@ pub(super) fn setup_claw(
 
     gtk::glib::spawn_future_local(async move {
         while let Ok(event) = claw_rx.recv().await {
-            let s = boxxy_preferences::Settings::load();
-            let show_on_terminal = s.claw_terminal_suggestions;
-
             match &event {
                 boxxy_claw::engine::ClawEngineEvent::AgentThinking { is_thinking, .. } => {
-                    if *is_thinking && show_on_terminal {
+                    if *is_thinking {
                         indicator_event_clone.show_thinking();
                     } else {
                         indicator_event_clone.hide();
                     }
                 }
                 boxxy_claw::engine::ClawEngineEvent::LazyErrorIndicator { .. } => {
-                    if show_on_terminal {
-                        indicator_event_clone.show_lazy_error();
-                    }
+                    indicator_event_clone.show_lazy_error();
                 }
                 boxxy_claw::engine::ClawEngineEvent::DiagnosisComplete {
                     diagnosis,
@@ -176,14 +165,12 @@ pub(super) fn setup_claw(
                         diagnosis,
                     );
                     indicator_event_clone.hide();
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            diagnosis,
-                            crate::TerminalProposal::None,
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        diagnosis,
+                        crate::TerminalProposal::None,
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::InjectCommand {
                     command,
@@ -199,311 +186,115 @@ pub(super) fn setup_claw(
                         );
                     }
 
-                    let tx_text_reply = claw_sender.clone();
-                    let inner_for_reply = inner_for_events.clone();
-                    let btns = boxxy_claw::ui::add_approval_row(
+                    boxxy_claw::ui::add_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         command,
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
                     indicator_event_clone.hide();
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            diagnosis,
-                            crate::TerminalProposal::Command(command.clone()),
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        diagnosis,
+                        crate::TerminalProposal::Command(command.clone()),
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposeFileWrite {
                     path,
                     content,
                     agent_name,
                 } => {
-                    let tx_file_reply_for_events = claw_sender.clone();
-                    let tx_text_reply = claw_sender.clone();
-                    let popover = popover_event_clone.clone();
-                    let inner_for_reply = inner_for_events.clone();
-
-                    let btns = boxxy_claw::ui::add_file_write_approval_row(
+                    boxxy_claw::ui::add_file_write_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         path,
                         content,
-                        move |approved| {
-                            let tx = tx_file_reply_for_events.clone();
-                            let popover = popover.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                popover.hide();
-                                let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::FileWriteReply {
-                                        approved,
-                                    })
-                                    .await;
-                            });
-                        },
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent {agent_name}: Propose File Edit"),
-                            &format!("Path: `{path}`\n\nI need to write or edit this file to complete the task."),
-                            crate::TerminalProposal::FileWrite(path.clone(), content.clone())
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent {agent_name}: Propose File Edit"),
+                        &format!("Path: `{path}`\n\nI need to write or edit this file to complete the task."),
+                        crate::TerminalProposal::FileWrite(path.clone(), content.clone())
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposeFileDelete { path, agent_name } => {
-                    let tx_file_reply_for_events = claw_sender.clone();
-                    let tx_text_reply = claw_sender.clone();
-                    let popover = popover_event_clone.clone();
-                    let inner_for_reply = inner_for_events.clone();
-
-                    let btns = boxxy_claw::ui::add_file_delete_approval_row(
+                    boxxy_claw::ui::add_file_delete_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         &path,
-                        move |approved| {
-                            let tx = tx_file_reply_for_events.clone();
-                            let popover = popover.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                popover.hide();
-                                let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::FileDeleteReply {
-                                        approved,
-                                    })
-                                    .await;
-                            });
-                        },
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            &format!("I want to DELETE this file:\n\n`{path}`"),
-                            crate::TerminalProposal::Command(format!("rm '{path}'")),
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        &format!("I want to DELETE this file:\n\n`{path}`"),
+                        crate::TerminalProposal::Command(format!("rm '{path}'")),
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposeKillProcess {
                     pid,
                     process_name,
                     agent_name,
                 } => {
-                    let tx_kill_reply_for_events = claw_sender.clone();
-                    let tx_text_reply = claw_sender.clone();
-                    let popover = popover_event_clone.clone();
-                    let inner_for_reply = inner_for_events.clone();
-
-                    let btns = boxxy_claw::ui::add_kill_process_approval_row(
+                    boxxy_claw::ui::add_kill_process_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         *pid,
                         &process_name,
-                        move |approved| {
-                            let tx = tx_kill_reply_for_events.clone();
-                            let popover = popover.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                popover.hide();
-                                let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::KillProcessReply {
-                                        approved,
-                                    })
-                                    .await;
-                            });
-                        },
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            &format!("I want to KILL this process:\n\nPID: {pid} ({process_name})"),
-                            crate::TerminalProposal::Command(format!("kill {pid}")),
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        &format!("I want to KILL this process:\n\nPID: {pid} ({process_name})"),
+                        crate::TerminalProposal::Command(format!("kill {pid}")),
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposeGetClipboard { agent_name } => {
-                    let tx_cb_reply_for_events = claw_sender.clone();
-                    let tx_text_reply = claw_sender.clone();
-                    let popover = popover_event_clone.clone();
-                    let inner_for_reply = inner_for_events.clone();
-
-                    let btns = boxxy_claw::ui::add_clipboard_get_approval_row(
+                    boxxy_claw::ui::add_clipboard_get_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
-                        move |approved| {
-                            let tx = tx_cb_reply_for_events.clone();
-                            let popover = popover.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                popover.hide();
-                                let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::GetClipboardReply {
-                                        approved,
-                                    })
-                                    .await;
-                            });
-                        },
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            "I want to read your clipboard.",
-                            crate::TerminalProposal::None,
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        "I want to read your clipboard.",
+                        crate::TerminalProposal::None,
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposeSetClipboard { agent_name, text } => {
-                    let tx_cb_reply_for_events = claw_sender.clone();
-                    let tx_text_reply = claw_sender.clone();
-                    let popover = popover_event_clone.clone();
-                    let inner_for_reply = inner_for_events.clone();
-
-                    let btns = boxxy_claw::ui::add_clipboard_set_approval_row(
+                    boxxy_claw::ui::add_clipboard_set_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         text,
-                        move |approved| {
-                            let tx = tx_cb_reply_for_events.clone();
-                            let popover = popover.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                popover.hide();
-                                let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::SetClipboardReply {
-                                        approved,
-                                    })
-                                    .await;
-                            });
-                        },
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            &format!("I want to write this to your clipboard:\n\n{text}"),
-                            crate::TerminalProposal::None,
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        &format!("I want to write this to your clipboard:\n\n{text}"),
+                        crate::TerminalProposal::None,
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand {
                     command,
@@ -519,41 +310,20 @@ pub(super) fn setup_claw(
                         );
                     }
 
-                    let tx_text_reply = claw_sender.clone();
-                    let inner_for_reply = inner_for_events.clone();
-                    let btns = boxxy_claw::ui::add_approval_row(
+                    boxxy_claw::ui::add_approval_row(
                         &claw_list_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         command,
-                        move |reply_text| {
-                            let tx = tx_text_reply.clone();
-                            let inner = inner_for_reply.clone();
-                            gtk::glib::spawn_future_local(async move {
-                                let pane = inner.borrow().terminal.clone();
-                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
-                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                    let _ = tx
-                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                            message: reply_text,
-                                            snapshot,
-                                            cwd,
-                                        })
-                                        .await;
-                                }
-                            });
-                        },
+                        |_| {},
                     );
-                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
 
-                    if show_on_terminal {
-                        popover_event_clone.show(
-                            OverlayMode::Claw,
-                            &format!("Agent: {agent_name}"),
-                            explanation,
-                            crate::TerminalProposal::Command(command.clone()),
-                        );
-                    }
+                    popover_event_clone.show(
+                        OverlayMode::Claw,
+                        &format!("Agent: {agent_name}"),
+                        explanation,
+                        crate::TerminalProposal::Command(command.clone()),
+                    );
                 }
                 boxxy_claw::engine::ClawEngineEvent::Identity { agent_name } => {
                     inner_for_events
@@ -570,7 +340,6 @@ pub(super) fn setup_claw(
                     let pane_inner = inner_for_events.borrow();
                     let pane = pane_inner.terminal.clone();
 
-                    // Auto-hide the badge if we are in alt-screen (full screen app)
                     if pane.is_alt_screen() {
                         pane_inner.agent_badge.set_visible(false);
                     } else {
@@ -596,9 +365,6 @@ pub(super) fn setup_claw(
                 }
                 boxxy_claw::engine::ClawEngineEvent::ProposalResolved { .. } => {
                     popover_event_clone.hide();
-                    if let Some(btns) = pending_sidebar_buttons.borrow_mut().take() {
-                        btns.set_visible(false);
-                    }
                 }
                 boxxy_claw::engine::ClawEngineEvent::RequestSpawnAgent { .. }
                 | boxxy_claw::engine::ClawEngineEvent::RequestCloseAgent { .. }
@@ -611,33 +377,12 @@ pub(super) fn setup_claw(
                     result,
                 } => {
                     if tool_name == "list_processes" {
-                        let inner_for_reply = inner_for_events.clone();
-                        let tx_reply = claw_sender.clone();
-                        let pane_id = id.clone();
                         boxxy_claw::ui::add_process_list_row(
                             &claw_list_events,
-                            pane_id,
+                            id.clone(),
                             Some(agent_name.clone()),
                             result,
-                            move |pid, name| {
-                                let tx = tx_reply.clone();
-                                let inner = inner_for_reply.clone();
-                                let query = format!("I want to kill process {} ({})", pid, name);
-                                gtk::glib::spawn_future_local(async move {
-                                    let pane = inner.borrow().terminal.clone();
-                                    let cwd =
-                                        inner.borrow().working_dir.clone().unwrap_or_default();
-                                    if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                        let _ = tx
-                                            .send(boxxy_claw::engine::ClawMessage::UserMessage {
-                                                message: query,
-                                                snapshot,
-                                                cwd,
-                                            })
-                                            .await;
-                                    }
-                                });
-                            },
+                            |_, _| {},
                         );
                     }
                 }

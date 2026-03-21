@@ -7,26 +7,24 @@ pub struct BoxxyclawIndicatorPopover {
     popover: gtk::Popover,
     enable_btn: gtk::Switch,
     proactive_btn: gtk::Switch,
-    terminal_btn: gtk::Switch,
 }
 
 impl BoxxyclawIndicatorPopover {
-    pub fn new<F1: Fn(bool) + 'static, F2: Fn(bool) + 'static, F3: Fn(bool) + 'static>(
+    pub fn new<F1: Fn(bool) + 'static, F2: Fn(bool) + 'static>(
         on_enable_toggled: F1,
         on_proactive_toggled: F2,
-        on_terminal_toggled: F3,
     ) -> Self {
         let popover = gtk::Popover::new();
+        popover.add_css_class("menu");
 
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        vbox.set_margin_top(12);
-        vbox.set_margin_bottom(12);
-        vbox.set_margin_start(12);
-        vbox.set_margin_end(12);
+        vbox.set_margin_top(8);
+        vbox.set_margin_bottom(8);
+        vbox.set_margin_start(8);
+        vbox.set_margin_end(8);
 
         let list_box = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::None)
-            .css_classes(["boxed-list"])
             .build();
 
         // 1. Enable Toggle
@@ -60,22 +58,6 @@ impl BoxxyclawIndicatorPopover {
         });
         list_box.append(&proactive_row);
 
-        // 3. On Terminal Toggle
-        let terminal_btn = gtk::Switch::builder().valign(gtk::Align::Center).build();
-        let terminal_row = adw::ActionRow::builder()
-            .title("On Terminal")
-            .subtitle("Show suggestions in terminal")
-            .activatable_widget(&terminal_btn)
-            .build();
-        terminal_row.add_suffix(&terminal_btn);
-
-        let on_terminal_rc = Rc::new(on_terminal_toggled);
-        terminal_btn.connect_state_set(move |_, state| {
-            on_terminal_rc(state);
-            gtk::glib::Propagation::Proceed
-        });
-        list_box.append(&terminal_row);
-
         vbox.append(&list_box);
         popover.set_child(Some(&vbox));
 
@@ -83,7 +65,6 @@ impl BoxxyclawIndicatorPopover {
             popover,
             enable_btn,
             proactive_btn,
-            terminal_btn,
         }
     }
 
@@ -96,9 +77,8 @@ impl BoxxyclawIndicatorPopover {
         self.popover.popup();
     }
 
-    pub fn update_ui(&self, active: bool, proactive: bool, terminal_suggestions: bool) {
+    pub fn update_ui(&self, active: bool, proactive: bool) {
         self.enable_btn.set_active(active);
         self.proactive_btn.set_active(proactive);
-        self.terminal_btn.set_active(terminal_suggestions);
     }
 }

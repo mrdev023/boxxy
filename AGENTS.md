@@ -51,7 +51,7 @@ Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession`
 
 Agents possess full **System & Environment Authority**:
 - **Clipboard Management**: Securely read and write to the system clipboard with user approval.
-- **Process Inspection & Control**: View real-time process lists and terminate misbehaving tasks via a rich sidebar UI.
+- **Process Inspection & Control**: View real-time process lists and terminate misbehaving tasks via in-terminal agent popovers and read-only sidebar tables.
 - **Pane Lifecycle Management**: Spawn new sibling panes/tabs, inject raw keystrokes (Esc, Ctrl+C), and close active panes dynamically.
 - **Global Workspace Radar**: Discover all active peers and share high-level objectives via the **Global Intent Blackboard**.
 
@@ -89,15 +89,15 @@ For native installations, Boxxy implements an **Atomic Swap** update mechanism l
 
 ## State Machine & UI Sync Protocol (Claw)
 
-To prevent "split-brain" states between the Terminal Popover, the Sidebar, and the LLM itself, Boxxy strictly adheres to the following UI/Agent sync protocol:
+To enforce clarity and predictability, Boxxy strictly adheres to the following UI/Agent sync protocol:
 
 1. **Single Source of Truth:** The `ClawSession` actor in the background is the ultimate source of truth for the state of a proposal.
-2. **Explicit Resolution:** Every proposal *must* be resolved via `ClawMessage` as either:
+2. **In-Terminal Interaction:** All interactive agent approvals and proposals (e.g., executing commands, writing files) occur exclusively through **in-terminal popovers**. The Claw Sidebar acts solely as a **read-only debug log** for tracking history and system events.
+3. **Explicit Resolution:** Every proposal *must* be resolved via `ClawMessage` as either:
    - `Approved / Executed`
    - `CancelPending` (via the Reject button, hitting Escape, or the user manually typing in the terminal to "ghost dismiss").
    - `UserMessage` (providing feedback instead of accepting/rejecting).
-3. **The "Silent Reject" Pattern:** When a user explicitly rejects a proposal (via `CancelPending`), the LLM receives an error. To prevent the LLM from chatty, unnecessary follow-ups (e.g. "I'm sorry you didn't like that!"), the system dictates a `[SILENT_ACK]` flow. If the agent yields a `[SILENT_ACK]` token, the UI silently drops the event and returns the agent to a sleep state without prompting the user further.
-4. **Bi-directional State Events:** When the engine resolves or drops a proposal, it emits a `ProposalResolved` (or similar cleanup) event. Both the Terminal Popover and the Sidebar listen to this event, ensuring that rejecting a proposal in one view instantly updates and hides the UI in the other view.
+4. **The "Silent Reject" Pattern:** When a user explicitly rejects a proposal (via `CancelPending`), the LLM receives an error. To prevent the LLM from chatty, unnecessary follow-ups (e.g. "I'm sorry you didn't like that!"), the system dictates a `[SILENT_ACK]` flow. If the agent yields a `[SILENT_ACK]` token, the UI silently drops the event and returns the agent to a sleep state without prompting the user further.
 
 ## Development Protocol
 - **MCP:** Use Context7 MCP for all library documentation and code generation.
