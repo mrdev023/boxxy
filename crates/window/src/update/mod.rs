@@ -376,5 +376,17 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         AppInput::ApplyUpdateAndRestart => {
             let _ = crate::updater::Updater::apply_update_and_restart();
         }
+        AppInput::GrabFocus => {
+            if let Some(page) = inner.tab_view.selected_page() {
+                let target_ptr = page.child().as_ptr() as usize;
+                if let Some(tab) = inner
+                    .tabs
+                    .iter()
+                    .find(|t| t.controller.widget().as_ptr() as usize == target_ptr)
+                {
+                    tab.controller.grab_focus();
+                }
+            }
+        }
     }
 }

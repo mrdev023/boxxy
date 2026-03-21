@@ -675,6 +675,12 @@ impl AppWindow {
             pop_clone.set_parent(&btn_clone);
             pop_clone.popup();
         });
+
+        let tx_focus = tx.clone();
+        claw_popover.popover().connect_closed(move |_| {
+            let _ = tx_focus.send_blocking(AppInput::GrabFocus);
+        });
+
         content_header.pack_end(&claw_indicator);
 
         let bell_indicator = gtk::Image::builder()

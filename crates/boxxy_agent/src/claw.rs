@@ -194,19 +194,22 @@ impl AgentClaw {
         Ok(info.to_string())
     }
 
-    /// List running processes. Returns (pid, name, cpu_usage, memory_bytes).
-    async fn list_processes(&self) -> fdo::Result<Vec<(u32, String, f64, u64)>> {
+    /// List running processes. Returns (pid, name, cpu_usage, memory_bytes, read_bytes, written_bytes).
+    async fn list_processes(&self) -> fdo::Result<Vec<(u32, String, f64, u64, u64, u64)>> {
         use sysinfo::System;
         let mut sys = System::new_all();
         sys.refresh_all();
 
         let mut processes = Vec::new();
         for (pid, process) in sys.processes() {
+            let disk_usage = process.disk_usage();
             processes.push((
                 pid.as_u32(),
                 process.name().to_string_lossy().to_string(),
                 process.cpu_usage() as f64,
                 process.memory(),
+                disk_usage.total_read_bytes,
+                disk_usage.total_written_bytes,
             ));
         }
 

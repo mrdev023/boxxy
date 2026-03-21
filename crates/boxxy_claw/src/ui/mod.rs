@@ -15,13 +15,14 @@ impl BlockRenderer for ProcessListRenderer {
     fn render(&self, block: &ContentBlock) -> gtk::Widget {
         if let ContentBlock::Custom { raw_payload, .. } = block {
             let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
-            if let Ok(processes) = serde_json::from_str::<Vec<(u32, String, f64, u64)>>(raw_payload)
+            if let Ok(processes) =
+                serde_json::from_str::<Vec<(u32, String, f64, u64, u64, u64)>>(raw_payload)
             {
                 let list_box = gtk::ListBox::new();
                 list_box.add_css_class("boxed-list");
                 list_box.set_selection_mode(gtk::SelectionMode::None);
 
-                for (pid, name, cpu, mem) in processes {
+                for (pid, name, cpu, mem, read, write) in processes {
                     let item_row = gtk::ListBoxRow::new();
                     let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
                     item_box.set_margin_top(4);
@@ -38,6 +39,16 @@ impl BlockRenderer for ProcessListRenderer {
                     name_lbl.set_halign(gtk::Align::Start);
                     name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
                     item_box.append(&name_lbl);
+
+                    // Only show disk I/O if there is any activity to avoid clutter
+                    if read > 0 || write > 0 {
+                        let io_str = format!("R:{}MB W:{}MB", read / 1_048_576, write / 1_048_576);
+                        let io_lbl = gtk::Label::new(Some(&io_str));
+                        io_lbl.add_css_class("caption");
+                        io_lbl.add_css_class("dim-label");
+                        io_lbl.set_margin_end(6);
+                        item_box.append(&io_lbl);
+                    }
 
                     let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
                     cpu_lbl.add_css_class("caption");

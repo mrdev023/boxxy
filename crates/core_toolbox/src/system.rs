@@ -104,6 +104,8 @@ pub struct ProcessInfo {
     pub name: String,
     pub cpu_usage: f64,
     pub memory_bytes: u64,
+    pub read_bytes: u64,
+    pub written_bytes: u64,
 }
 
 #[derive(Serialize)]
@@ -126,7 +128,7 @@ impl Tool for ListProcessesTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "List all running processes on the system, including their PID, name, CPU usage, and memory usage.".to_string(),
+            description: "List all running processes on the system, including their PID, name, CPU usage, memory usage, and disk I/O.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {}
@@ -140,12 +142,18 @@ impl Tool for ListProcessesTool {
                 let output = ListProcessesOutput {
                     processes: processes
                         .into_iter()
-                        .map(|(pid, name, cpu_usage, memory_bytes)| ProcessInfo {
-                            pid,
-                            name,
-                            cpu_usage,
-                            memory_bytes,
-                        })
+                        .map(
+                            |(pid, name, cpu_usage, memory_bytes, read_bytes, written_bytes)| {
+                                ProcessInfo {
+                                    pid,
+                                    name,
+                                    cpu_usage,
+                                    memory_bytes,
+                                    read_bytes,
+                                    written_bytes,
+                                }
+                            },
+                        )
                         .collect(),
                 };
 

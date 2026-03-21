@@ -78,6 +78,7 @@ pub enum AppInput {
     StartUpdateDownload(String, String, Option<String>), // (url, date, checksum_url)
     UpdateDownloaded(String),
     ApplyUpdateAndRestart,
+    GrabFocus,
 }
 
 pub struct AppWindowInner {

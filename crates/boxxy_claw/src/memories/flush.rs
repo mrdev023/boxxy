@@ -25,6 +25,9 @@ pub async fn flush_history(
     let mut text_to_summarize = String::new();
     for msg in evicted_messages {
         match msg {
+            Message::System { content } => {
+                text_to_summarize.push_str(&format!("SYSTEM: {}\n", content));
+            }
             Message::User { content } => {
                 for c in content.iter() {
                     if let rig::message::UserContent::Text(text) = c {

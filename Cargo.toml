@@ -46,7 +46,7 @@ type_complexity = "warn"
 nursery = "warn"
 
 [workspace.dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 async-trait = "0.1"
 boxxy-model-selection = { path = "crates/model_selection" }
 boxxy-keybindings = { path = "crates/keybindings" }
@@ -67,52 +67,52 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sourceview5 = "0.11"
 chrono = "0.4"
-async-channel = "2.3.1"
-tokio = { version = "1.49", features = ["full"] }
+async-channel = "2.5.0"
+tokio = { version = "1.50", features = ["full"] }
 lazy_static = "1.5.0"
 futures-channel = "0.3.32"
 futures-util = "0.3.32"
 log = { version = "0.4.29", features = ["std", "serde", "release_max_level_info"] }
 env_logger = "0.11.9"
-rig-core = "0.32.0"
+rig-core = "0.33.0"
 nix = { version = "0.31.2", features = ["process", "term", "fs", "signal", "ioctl", "user"] }
 zbus = { version = "5.14.0", features = ["tokio", "p2p"] }
 libc = "0.2"
 enumflags2 = "0.7"
-ashpd = { version = "0.13.3", features = ["flatpak"] }
-gstreamer = "0.25.0"
+ashpd = { version = "0.13.9", features = ["flatpak"] }
+gstreamer = "0.25.1"
 image = "0.25"
 gsk4 = "0.11"
 regex = "1.12.3"
 parking_lot = "0.12.5"
-base64 = "0.22.0"
-bitflags = "2.4.1"
-home = "0.5.5"
-regex-automata = "0.4.3"
-unicode-width = "0.2.0"
-arc-swap = "1.8.2"
-cursor-icon = "1.1"
-memchr = "2.7"
-miniz_oxide = "0.9.0"
+base64 = "0.22.1"
+bitflags = "2.11.0"
+home = "0.5.12"
+regex-automata = "0.4.14"
+unicode-width = "0.2.2"
+arc-swap = "1.9.0"
+cursor-icon = "1.2"
+memchr = "2.8"
+miniz_oxide = "0.9.1"
 rustix-openpty = "0.2.0"
-rustix = "1.0.0"
+rustix = "1.1.4"
 signal-hook = "0.4.3"
 self_update = { version = "0.43.1", features = ["archive-tar", "compression-flate2"] }
 tempfile = "3.27.0"
-tar = "0.4.44"
+tar = "0.4.45"
 flate2 = "1.1.9"
 sha2 = "0.10"
-sqlx = { version = "0.8.3", features = ["sqlite", "runtime-tokio-rustls", "macros", "chrono"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls", "macros", "chrono"] }
 serde_yml = "0.0.12"
 thiserror = "2.0"
 notify = "8.2.0"
 uuid = { version = "1.22.0", features = ["v4"] }
 petname = "2.0.2"
 getrandom = "0.4.2"
-toml = "1.0.6+spec-1.1.0"
+toml = "1.0.7"
 boxxy-bookmarks = { path = "crates/boxxy_bookmarks" }
-sysinfo = "0.33.1"
-arboard = "3.4.1"
+sysinfo = "0.38.4"
+arboard = "3.6.1"
 pulldown-cmark = "0.13.2"
-syntect = "5.2.0"
+syntect = "5.3.0"
 boxxy-viewer = { path = "crates/viewer" }
