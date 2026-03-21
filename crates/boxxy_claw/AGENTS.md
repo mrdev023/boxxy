@@ -10,7 +10,7 @@ The crate uses an **Actor Model** mixed with a **Shared-Everything State** strat
 - **`engine/agent.rs`**: Wraps the `rig-core` framework to create model-specific agents with tool support.
 - **`engine/dispatcher.rs`**: Modular parser that cleans LLM output and decides how to route suggestions back to the UI.
 - **`engine/context.rs`**: Assembles the agent's context by merging terminal snapshots, memories, and the Workspace Radar.
-- **`engine/tools/`**: Contains the implementations for `SysShellTool`, `FileWriteTool`, `ActivateSkillTool`, and global orchestration tools (`ReadPaneTool`, `SetGlobalIntentTool`, `ListActiveAgentsTool`).
+- **`engine/tools/`**: Contains Boxxy-specific tools like `SysShellTool`, `TerminalCommandTool`, `ActivateSkillTool`, and global orchestration tools (`ReadPaneTool`, `SetGlobalIntentTool`). Standard host tools (file, system, web, clipboard) are now delegated to the external `boxxy-core-toolbox` crate, which `boxxy-claw` configures and connects to its UI.
 - **`registry/`**: Houses the global singletons that share data across all `ClawSession` actors efficiently without blocking.
   - **`skills.rs`**: Manages the `SkillRegistry`, using an `Arc<RwLock>` and `notify` to hot-reload `SKILL.md` files instantly across all panes. Fails gracefully with a warning if system inotify limits are reached.
   - **`workspace.rs`**: Manages the `WorkspaceRegistry`, acting as the **Global Radar** that tracks all active agents across the entire application for system-wide orchestration.
@@ -18,6 +18,7 @@ The crate uses an **Actor Model** mixed with a **Shared-Everything State** strat
 
 ## Key Features
 - **Structured Semantic Context**: By leveraging the `boxxy-vte` engine's OSC 133 semantic prompt tracking, the Claw session receives a highly structured, markdown-formatted history of the terminal buffer (e.g., `[PROMPT]`, `[COMMAND]`, `[OUTPUT]`). This prevents the AI from hallucinating boundaries and dramatically improves the accuracy of error diagnosis and command suggestions.
+- **Structured Data & Table Views**: The engine supports `ToolResult` events that allow tools to return JSON data. The UI thread intercepts these events to render rich, interactive components (like a searchable/clickable **Process List Table**) directly in the sidebar history, moving beyond raw text blocks.
 - **Dynamic Scrollback Paging**: The AI is not limited to the bottom of the screen. It can autonomously pull older context from the terminal's history using the `ReadScrollbackTool`, enabling it to diagnose errors that occurred hundreds of lines ago without passing the entire scrollback buffer to the LLM on every turn.
 - **Global Orchestration ("Red Pony" Protocol)**: Conversations are isolated per terminal pane (`ClawSession`) but coordinated via a **Global Workspace Radar**. Agents are aware of ALL active peers across the application, regardless of their current working directory. They can explicitly coordinate using a "Manager Pattern" via `read_pane_buffer(agent_name)`, `list_active_agents()`, and `delegate_task(agent_name)`.
 - **Global Intent Blackboard**: Replaces directory-scoped intents with a single, system-wide scratchpad. Agents can broadcast high-level goals via `set_global_intent`, ensuring alignment across the entire PC.

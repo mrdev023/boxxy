@@ -12,6 +12,8 @@ tokio = { workspace = true }
 nix = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sysinfo = { workspace = true }
+arboard = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 async-trait = { workspace = true }

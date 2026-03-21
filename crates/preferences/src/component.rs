@@ -58,6 +58,8 @@ impl PreferencesComponent {
         nav_previews.set_widget_name("nav_previews");
         let nav_apis: gtk::ListBoxRow = builder.object("nav_apis").unwrap();
         nav_apis.set_widget_name("nav_apis");
+        let nav_agents: gtk::ListBoxRow = builder.object("nav_agents").unwrap();
+        nav_agents.set_widget_name("nav_agents");
         let nav_shortcuts: gtk::ListBoxRow = builder.object("nav_shortcuts").unwrap();
         nav_shortcuts.set_widget_name("nav_shortcuts");
         let nav_advanced: gtk::ListBoxRow = builder.object("nav_advanced").unwrap();
@@ -81,6 +83,10 @@ impl PreferencesComponent {
                     "nav_apis" => {
                         title_clone.set_title("APIs");
                         "apis"
+                    }
+                    "nav_agents" => {
+                        title_clone.set_title("Agents");
+                        "agents"
                     }
                     "nav_shortcuts" => {
                         title_clone.set_title("Shortcuts");
@@ -115,6 +121,8 @@ impl PreferencesComponent {
             crate::previews::setup_previews_page(&builder, settings_rc.clone(), cb_rc.clone());
         let apis_filter =
             crate::apis::setup_apis_page(&builder, settings_rc.clone(), cb_rc.clone());
+        let agents_filter =
+            crate::agents::setup_agents_page(&builder, settings_rc.clone(), cb_rc.clone());
         let advanced_filter = crate::advanced::setup_advanced_page(
             &builder,
             settings_rc.clone(),
@@ -133,6 +141,7 @@ impl PreferencesComponent {
         let nav_appearance_clone = nav_appearance.clone();
         let nav_previews_clone = nav_previews.clone();
         let nav_apis_clone = nav_apis.clone();
+        let nav_agents_clone = nav_agents.clone();
         let nav_advanced_clone = nav_advanced.clone();
         let nav_shortcuts_clone = nav_shortcuts.clone();
         let nav_about_clone = nav_about.clone();
@@ -143,6 +152,7 @@ impl PreferencesComponent {
             nav_appearance_clone.set_visible(appearance_filter(&query));
             nav_previews_clone.set_visible(previews_filter(&query));
             nav_apis_clone.set_visible(apis_filter(&query));
+            nav_agents_clone.set_visible(agents_filter(&query));
             nav_advanced_clone.set_visible(advanced_filter(&query));
             nav_shortcuts_clone.set_visible(shortcuts_filter(&query));
             nav_about_clone.set_visible(about_filter(&query));

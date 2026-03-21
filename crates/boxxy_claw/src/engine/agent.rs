@@ -1,14 +1,17 @@
 use crate::engine::ClawEngineEvent;
 use crate::engine::session::SessionState;
-use crate::engine::tools::SysShellTool;
-use crate::engine::tools::file_ops::{FileReadTool, FileWriteTool};
 use crate::engine::tools::skills::ActivateSkillTool;
 use crate::engine::tools::terminal::TerminalCommandTool;
 use crate::engine::tools::workspace::{
     CloseAgentTool, DelegateTaskTool, ListActiveAgentsTool, ReadPaneTool, SendKeystrokesTool,
     SetGlobalIntentTool, SpawnAgentTool,
 };
+use crate::engine::tools::{ClawApprovalHandler, SysShellTool};
 use boxxy_agent::ipc::AgentClawProxy;
+use boxxy_core_toolbox::{
+    FileDeleteTool, FileReadTool, FileWriteTool, GetClipboardTool, GetSystemInfoTool,
+    HttpFetchTool, KillProcessTool, ListDirectoryTool, ListProcessesTool, SetClipboardTool,
+};
 use boxxy_model_selection::ModelProvider;
 use rig::agent::Agent;
 use rig::client::CompletionClient;
@@ -54,6 +57,7 @@ pub fn create_claw_agent(
     tx_ui: async_channel::Sender<ClawEngineEvent>,
     state: std::sync::Arc<tokio::sync::Mutex<SessionState>>,
     db: std::sync::Arc<tokio::sync::Mutex<Option<boxxy_db::Db>>>,
+    settings: &boxxy_preferences::Settings,
 ) -> ClawAgent {
     let provider = match provider {
         Some(p) => p,
@@ -65,28 +69,23 @@ pub fn create_claw_agent(
         }
     };
 
+    let approval_handler = std::sync::Arc::new(ClawApprovalHandler {
+        tx_ui: tx_ui.clone(),
+        state: state.clone(),
+    });
+
     match provider {
         ModelProvider::Gemini(model, _thinking) => {
             let key = creds.api_keys.get("Gemini").cloned().unwrap_or_default();
             let client = gemini::Client::new(key.trim()).unwrap();
             let gemini_model = client.completion_model(model.api_name());
 
-            let agent = rig::agent::AgentBuilder::new(gemini_model)
+            let mut builder = rig::agent::AgentBuilder::new(gemini_model)
                 .preamble(system_prompt)
                 .default_max_turns(5)
                 .tool(SysShellTool {
                     proxy: claw_proxy.clone(),
                     current_dir: current_dir.to_string(),
-                })
-                .tool(FileReadTool {
-                    proxy: claw_proxy.clone(),
-                    current_dir: current_dir.to_string(),
-                })
-                .tool(FileWriteTool {
-                    proxy: claw_proxy.clone(),
-                    current_dir: current_dir.to_string(),
-                    tx_ui: tx_ui.clone(),
-                    state: state.clone(),
                 })
                 .tool(crate::memories::MemoryStoreTool {
                     db: db.clone(),
@@ -116,10 +115,66 @@ pub fn create_claw_agent(
                 .tool(SendKeystrokesTool {
                     tx_ui: tx_ui.clone(),
                 })
-                .tool(SetGlobalIntentTool)
-                .build();
+                .tool(ListProcessesTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                })
+                .tool(SetGlobalIntentTool);
 
-            ClawAgent::Gemini(agent)
+            // Conditional Core Toolbox tools
+            if settings.enable_file_tools {
+                builder = builder
+                    .tool(FileReadTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileWriteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(ListDirectoryTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileDeleteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            if settings.enable_system_tools {
+                builder = builder.tool(GetSystemInfoTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_dangerous_tools {
+                builder = builder.tool(KillProcessTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_web_tools {
+                builder = builder.tool(HttpFetchTool);
+            }
+
+            if settings.enable_clipboard_tools {
+                builder = builder
+                    .tool(GetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(SetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            ClawAgent::Gemini(builder.build())
         }
         ModelProvider::Ollama(model_name) => {
             let client: ollama::Client = ollama::Client::builder()
@@ -129,22 +184,12 @@ pub fn create_claw_agent(
                 .unwrap();
             let ollama_model = client.completion_model(model_name.as_str());
 
-            let agent = rig::agent::AgentBuilder::new(ollama_model)
+            let mut builder = rig::agent::AgentBuilder::new(ollama_model)
                 .preamble(system_prompt)
                 .default_max_turns(5)
                 .tool(SysShellTool {
                     proxy: claw_proxy.clone(),
                     current_dir: current_dir.to_string(),
-                })
-                .tool(FileReadTool {
-                    proxy: claw_proxy.clone(),
-                    current_dir: current_dir.to_string(),
-                })
-                .tool(FileWriteTool {
-                    proxy: claw_proxy.clone(),
-                    current_dir: current_dir.to_string(),
-                    tx_ui: tx_ui.clone(),
-                    state: state.clone(),
                 })
                 .tool(crate::memories::MemoryStoreTool {
                     db: db.clone(),
@@ -174,32 +219,78 @@ pub fn create_claw_agent(
                 .tool(SendKeystrokesTool {
                     tx_ui: tx_ui.clone(),
                 })
-                .tool(SetGlobalIntentTool)
-                .build();
+                .tool(ListProcessesTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                })
+                .tool(SetGlobalIntentTool);
 
-            ClawAgent::Ollama(agent)
+            // Conditional Core Toolbox tools
+            if settings.enable_file_tools {
+                builder = builder
+                    .tool(FileReadTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileWriteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(ListDirectoryTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileDeleteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            if settings.enable_system_tools {
+                builder = builder.tool(GetSystemInfoTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_dangerous_tools {
+                builder = builder.tool(KillProcessTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_web_tools {
+                builder = builder.tool(HttpFetchTool);
+            }
+
+            if settings.enable_clipboard_tools {
+                builder = builder
+                    .tool(GetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(SetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            ClawAgent::Ollama(builder.build())
         }
         ModelProvider::Anthropic(model) => {
             let key = creds.api_keys.get("Anthropic").cloned().unwrap_or_default();
             let client = rig::providers::anthropic::Client::new(key.trim()).unwrap();
             let anthropic_model = client.completion_model(model.api_name());
 
-            let agent = rig::agent::AgentBuilder::new(anthropic_model)
+            let mut builder = rig::agent::AgentBuilder::new(anthropic_model)
                 .preamble(system_prompt)
                 .default_max_turns(5)
                 .tool(SysShellTool {
                     proxy: claw_proxy.clone(),
                     current_dir: current_dir.to_string(),
-                })
-                .tool(FileReadTool {
-                    proxy: claw_proxy.clone(),
-                    current_dir: current_dir.to_string(),
-                })
-                .tool(FileWriteTool {
-                    proxy: claw_proxy.clone(),
-                    current_dir: current_dir.to_string(),
-                    tx_ui: tx_ui.clone(),
-                    state: state.clone(),
                 })
                 .tool(crate::memories::MemoryStoreTool {
                     db: db.clone(),
@@ -229,10 +320,66 @@ pub fn create_claw_agent(
                 .tool(SendKeystrokesTool {
                     tx_ui: tx_ui.clone(),
                 })
-                .tool(SetGlobalIntentTool)
-                .build();
+                .tool(ListProcessesTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                })
+                .tool(SetGlobalIntentTool);
 
-            ClawAgent::Anthropic(agent)
+            // Conditional Core Toolbox tools
+            if settings.enable_file_tools {
+                builder = builder
+                    .tool(FileReadTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileWriteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(ListDirectoryTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileDeleteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            if settings.enable_system_tools {
+                builder = builder.tool(GetSystemInfoTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_dangerous_tools {
+                builder = builder.tool(KillProcessTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_web_tools {
+                builder = builder.tool(HttpFetchTool);
+            }
+
+            if settings.enable_clipboard_tools {
+                builder = builder
+                    .tool(GetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(SetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            ClawAgent::Anthropic(builder.build())
         }
     }
 }

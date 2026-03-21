@@ -44,6 +44,8 @@ pub(super) fn setup_claw(
 
     let inner_clone_for_cmd = Rc::downgrade(inner);
     let inner_clone_for_reply = Rc::downgrade(inner);
+    let inner_clone_for_file_reply = Rc::downgrade(inner);
+    let inner_clone_for_cancel = Rc::downgrade(inner);
     let tx_user_reply = claw_sender.clone();
     let tx_file_reply = claw_sender.clone();
     let tx_lazy_reply = claw_sender.clone();
@@ -59,6 +61,7 @@ pub(super) fn setup_claw(
                 let mut bytes = cmd.as_bytes().to_vec();
                 bytes.push(b'\r');
                 inner.borrow().terminal.write_all(bytes);
+                inner.borrow().terminal.grab_focus();
             }
         },
         move |reply| {
@@ -67,6 +70,7 @@ pub(super) fn setup_claw(
             if let Some(inner) = inner_opt {
                 let pane = inner.borrow().terminal.clone();
                 let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                inner.borrow().terminal.grab_focus();
                 gtk::glib::spawn_future_local(async move {
                     if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                         let _ = tx
@@ -84,6 +88,9 @@ pub(super) fn setup_claw(
             if let Some(btns) = pending_sidebar_btns_popover_clone.borrow_mut().take() {
                 btns.set_visible(false);
             }
+            if let Some(inner) = inner_clone_for_file_reply.upgrade() {
+                inner.borrow().terminal.grab_focus();
+            }
 
             let tx = tx_file_reply.clone();
             gtk::glib::spawn_future_local(async move {
@@ -98,6 +105,9 @@ pub(super) fn setup_claw(
         {
             let tx_cancel = claw_sender.clone();
             move |mode| {
+                if let Some(inner) = inner_clone_for_cancel.upgrade() {
+                    inner.borrow().terminal.grab_focus();
+                }
                 if mode == OverlayMode::Claw {
                     let tx = tx_cancel.clone();
                     gtk::glib::spawn_future_local(async move {
@@ -283,6 +293,218 @@ pub(super) fn setup_claw(
                         );
                     }
                 }
+                boxxy_claw::engine::ClawEngineEvent::ProposeFileDelete { path, agent_name } => {
+                    let tx_file_reply_for_events = claw_sender.clone();
+                    let tx_text_reply = claw_sender.clone();
+                    let popover = popover_event_clone.clone();
+                    let inner_for_reply = inner_for_events.clone();
+
+                    let btns = boxxy_claw::ui::add_file_delete_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        Some(agent_name.clone()),
+                        &path,
+                        move |approved| {
+                            let tx = tx_file_reply_for_events.clone();
+                            let popover = popover.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                popover.hide();
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::FileDeleteReply {
+                                        approved,
+                                    })
+                                    .await;
+                            });
+                        },
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
+                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
+
+                    if show_on_terminal {
+                        popover_event_clone.show(
+                            OverlayMode::Claw,
+                            &format!("Agent: {agent_name}"),
+                            &format!("I want to DELETE this file:\n\n`{path}`"),
+                            crate::TerminalProposal::Command(format!("rm '{path}'")),
+                        );
+                    }
+                }
+                boxxy_claw::engine::ClawEngineEvent::ProposeKillProcess {
+                    pid,
+                    process_name,
+                    agent_name,
+                } => {
+                    let tx_kill_reply_for_events = claw_sender.clone();
+                    let tx_text_reply = claw_sender.clone();
+                    let popover = popover_event_clone.clone();
+                    let inner_for_reply = inner_for_events.clone();
+
+                    let btns = boxxy_claw::ui::add_kill_process_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        Some(agent_name.clone()),
+                        *pid,
+                        &process_name,
+                        move |approved| {
+                            let tx = tx_kill_reply_for_events.clone();
+                            let popover = popover.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                popover.hide();
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::KillProcessReply {
+                                        approved,
+                                    })
+                                    .await;
+                            });
+                        },
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
+                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
+
+                    if show_on_terminal {
+                        popover_event_clone.show(
+                            OverlayMode::Claw,
+                            &format!("Agent: {agent_name}"),
+                            &format!("I want to KILL this process:\n\nPID: {pid} ({process_name})"),
+                            crate::TerminalProposal::Command(format!("kill {pid}")),
+                        );
+                    }
+                }
+                boxxy_claw::engine::ClawEngineEvent::ProposeGetClipboard { agent_name } => {
+                    let tx_cb_reply_for_events = claw_sender.clone();
+                    let tx_text_reply = claw_sender.clone();
+                    let popover = popover_event_clone.clone();
+                    let inner_for_reply = inner_for_events.clone();
+
+                    let btns = boxxy_claw::ui::add_clipboard_get_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        Some(agent_name.clone()),
+                        move |approved| {
+                            let tx = tx_cb_reply_for_events.clone();
+                            let popover = popover.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                popover.hide();
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::GetClipboardReply {
+                                        approved,
+                                    })
+                                    .await;
+                            });
+                        },
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
+                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
+
+                    if show_on_terminal {
+                        popover_event_clone.show(
+                            OverlayMode::Claw,
+                            &format!("Agent: {agent_name}"),
+                            "I want to read your clipboard.",
+                            crate::TerminalProposal::None,
+                        );
+                    }
+                }
+                boxxy_claw::engine::ClawEngineEvent::ProposeSetClipboard { agent_name, text } => {
+                    let tx_cb_reply_for_events = claw_sender.clone();
+                    let tx_text_reply = claw_sender.clone();
+                    let popover = popover_event_clone.clone();
+                    let inner_for_reply = inner_for_events.clone();
+
+                    let btns = boxxy_claw::ui::add_clipboard_set_approval_row(
+                        &claw_list_events,
+                        id.clone(),
+                        Some(agent_name.clone()),
+                        text,
+                        move |approved| {
+                            let tx = tx_cb_reply_for_events.clone();
+                            let popover = popover.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                popover.hide();
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::SetClipboardReply {
+                                        approved,
+                                    })
+                                    .await;
+                            });
+                        },
+                        move |reply_text| {
+                            let tx = tx_text_reply.clone();
+                            let inner = inner_for_reply.clone();
+                            gtk::glib::spawn_future_local(async move {
+                                let pane = inner.borrow().terminal.clone();
+                                let cwd = inner.borrow().working_dir.clone().unwrap_or_default();
+                                if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                    let _ = tx
+                                        .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                            message: reply_text,
+                                            snapshot,
+                                            cwd,
+                                        })
+                                        .await;
+                                }
+                            });
+                        },
+                    );
+                    *pending_sidebar_buttons.borrow_mut() = Some(btns);
+
+                    if show_on_terminal {
+                        popover_event_clone.show(
+                            OverlayMode::Claw,
+                            &format!("Agent: {agent_name}"),
+                            &format!("I want to write this to your clipboard:\n\n{text}"),
+                            crate::TerminalProposal::None,
+                        );
+                    }
+                }
                 boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand {
                     command,
                     explanation,
@@ -382,6 +604,42 @@ pub(super) fn setup_claw(
                 | boxxy_claw::engine::ClawEngineEvent::RequestCloseAgent { .. }
                 | boxxy_claw::engine::ClawEngineEvent::InjectKeystrokes { .. } => {
                     // Handled upstream by TerminalComponent / Window
+                }
+                boxxy_claw::engine::ClawEngineEvent::ToolResult {
+                    agent_name,
+                    tool_name,
+                    result,
+                } => {
+                    if tool_name == "list_processes" {
+                        let inner_for_reply = inner_for_events.clone();
+                        let tx_reply = claw_sender.clone();
+                        let pane_id = id.clone();
+                        boxxy_claw::ui::add_process_list_row(
+                            &claw_list_events,
+                            pane_id,
+                            Some(agent_name.clone()),
+                            result,
+                            move |pid, name| {
+                                let tx = tx_reply.clone();
+                                let inner = inner_for_reply.clone();
+                                let query = format!("I want to kill process {} ({})", pid, name);
+                                gtk::glib::spawn_future_local(async move {
+                                    let pane = inner.borrow().terminal.clone();
+                                    let cwd =
+                                        inner.borrow().working_dir.clone().unwrap_or_default();
+                                    if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                        let _ = tx
+                                            .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                                                message: query,
+                                                snapshot,
+                                                cwd,
+                                            })
+                                            .await;
+                                    }
+                                });
+                            },
+                        );
+                    }
                 }
             }
 

@@ -33,7 +33,9 @@ pub(super) fn wire_terminal_events(
 
     let cb_clone = callback.clone();
     let id_clone = id.clone();
+    let inner_for_cwd = inner.clone();
     terminal.on_cwd_changed(move |dir| {
+        inner_for_cwd.borrow_mut().working_dir = Some(dir.clone());
         cb_clone(PaneOutput::DirectoryChanged(id_clone.clone(), dir));
     });
 

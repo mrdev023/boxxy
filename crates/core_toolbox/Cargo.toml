@@ -1,0 +1,19 @@
+[package]
+name = "boxxy-core-toolbox"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Core high-level tools for Boxxy agents"
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rig-core.workspace = true
+boxxy-agent = { path = "../boxxy_agent" }
+log = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+directories = { workspace = true }

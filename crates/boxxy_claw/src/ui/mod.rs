@@ -652,3 +652,714 @@ pub fn add_file_write_approval_row(
 
     action_container
 }
+
+pub fn add_file_delete_approval_row(
+    list: &gtk::ListBox,
+    pane_id: String,
+    agent_name: Option<String>,
+    path: &str,
+    on_reply: impl Fn(bool) + 'static,
+    on_text_reply: impl Fn(String) + 'static,
+) -> gtk::Box {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    vbox.set_margin_top(8);
+    vbox.set_margin_bottom(8);
+    vbox.set_margin_start(8);
+    vbox.set_margin_end(8);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let icon = gtk::Image::from_icon_name("user-trash-symbolic");
+    icon.add_css_class("error");
+    header.append(&icon);
+
+    let title = gtk::Label::new(Some("Propose File Deletion"));
+    title.add_css_class("heading");
+    title.set_halign(gtk::Align::Start);
+    header.append(&title);
+
+    let id_short = if pane_id.len() >= 7 {
+        &pane_id[..7]
+    } else {
+        &pane_id
+    };
+
+    let pane_text = if let Some(name) = agent_name {
+        format!("{} ({})", name, id_short)
+    } else {
+        format!("Pane {}", id_short)
+    };
+
+    let pane_lbl = gtk::Label::new(Some(&pane_text));
+    pane_lbl.add_css_class("caption");
+    pane_lbl.add_css_class("dim-label");
+    header.append(&pane_lbl);
+
+    vbox.append(&header);
+
+    let path_label = gtk::Label::new(Some(path));
+    path_label.set_halign(gtk::Align::Start);
+    path_label.set_wrap(true);
+    path_label.add_css_class("monospace");
+    path_label.add_css_class("error");
+    vbox.append(&path_label);
+
+    let action_container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+
+    let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    reply_box.set_margin_top(4);
+    reply_box.set_margin_bottom(4);
+
+    let reply_entry = gtk::Entry::builder()
+        .placeholder_text("Reply to Boxxy-Claw...")
+        .hexpand(true)
+        .build();
+
+    let reply_btn = gtk::Button::builder()
+        .icon_name("paper-plane-symbolic")
+        .css_classes(["flat"])
+        .tooltip_text("Send Reply")
+        .build();
+
+    reply_box.append(&reply_entry);
+    reply_box.append(&reply_btn);
+    action_container.append(&reply_box);
+
+    let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    btn_box.set_halign(gtk::Align::End);
+
+    let reject_btn = gtk::Button::builder()
+        .label("Reject")
+        .css_classes(["flat"])
+        .build();
+
+    let approve_btn = gtk::Button::builder()
+        .label("Approve & Delete")
+        .css_classes(["destructive-action"])
+        .build();
+
+    btn_box.append(&reject_btn);
+    btn_box.append(&approve_btn);
+    action_container.append(&btn_box);
+    vbox.append(&action_container);
+
+    let on_reply_rc = std::rc::Rc::new(on_reply);
+    let cb_approve = on_reply_rc.clone();
+    let action_container_clone1 = action_container.clone();
+    approve_btn.connect_clicked(move |_| {
+        cb_approve(true);
+        action_container_clone1.set_visible(false);
+    });
+
+    let cb_reject = on_reply_rc.clone();
+    let action_container_clone2 = action_container.clone();
+    reject_btn.connect_clicked(move |_| {
+        cb_reject(false);
+        action_container_clone2.set_visible(false);
+    });
+
+    let on_text_reply_rc = std::rc::Rc::new(on_text_reply);
+    let on_text_reply_clone1 = on_text_reply_rc.clone();
+    let entry_clone1 = reply_entry.clone();
+    let action_container_clone3 = action_container.clone();
+
+    let do_reply = move || {
+        let text = entry_clone1.text().to_string();
+        if !text.is_empty() {
+            on_text_reply_clone1(text);
+            action_container_clone3.set_visible(false);
+        }
+    };
+
+    let do_reply_clone = do_reply.clone();
+    reply_btn.connect_clicked(move |_| {
+        do_reply_clone();
+    });
+
+    reply_entry.connect_activate(move |_| {
+        do_reply();
+    });
+
+    row.set_child(Some(&vbox));
+    list.append(&row);
+
+    action_container
+}
+
+pub fn add_kill_process_approval_row(
+    list: &gtk::ListBox,
+    pane_id: String,
+    agent_name: Option<String>,
+    pid: u32,
+    process_name: &str,
+    on_reply: impl Fn(bool) + 'static,
+    on_text_reply: impl Fn(String) + 'static,
+) -> gtk::Box {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    vbox.set_margin_top(8);
+    vbox.set_margin_bottom(8);
+    vbox.set_margin_start(8);
+    vbox.set_margin_end(8);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let icon = gtk::Image::from_icon_name("process-stop-symbolic");
+    icon.add_css_class("error");
+    header.append(&icon);
+
+    let title = gtk::Label::new(Some("Propose Process Termination"));
+    title.add_css_class("heading");
+    title.set_halign(gtk::Align::Start);
+    header.append(&title);
+
+    let id_short = if pane_id.len() >= 7 {
+        &pane_id[..7]
+    } else {
+        &pane_id
+    };
+
+    let pane_text = if let Some(name) = agent_name {
+        format!("{} ({})", name, id_short)
+    } else {
+        format!("Pane {}", id_short)
+    };
+
+    let pane_lbl = gtk::Label::new(Some(&pane_text));
+    pane_lbl.add_css_class("caption");
+    pane_lbl.add_css_class("dim-label");
+    header.append(&pane_lbl);
+
+    vbox.append(&header);
+
+    let info_label = gtk::Label::new(Some(&format!("PID: {} | Process: {}", pid, process_name)));
+    info_label.set_halign(gtk::Align::Start);
+    info_label.set_wrap(true);
+    info_label.add_css_class("monospace");
+    info_label.add_css_class("error");
+    vbox.append(&info_label);
+
+    let action_container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+
+    let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    reply_box.set_margin_top(4);
+    reply_box.set_margin_bottom(4);
+
+    let reply_entry = gtk::Entry::builder()
+        .placeholder_text("Reply to Boxxy-Claw...")
+        .hexpand(true)
+        .build();
+
+    let reply_btn = gtk::Button::builder()
+        .icon_name("paper-plane-symbolic")
+        .css_classes(["flat"])
+        .tooltip_text("Send Reply")
+        .build();
+
+    reply_box.append(&reply_entry);
+    reply_box.append(&reply_btn);
+    action_container.append(&reply_box);
+
+    let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    btn_box.set_halign(gtk::Align::End);
+
+    let reject_btn = gtk::Button::builder()
+        .label("Reject")
+        .css_classes(["flat"])
+        .build();
+
+    let approve_btn = gtk::Button::builder()
+        .label("Approve & Kill")
+        .css_classes(["destructive-action"])
+        .build();
+
+    btn_box.append(&reject_btn);
+    btn_box.append(&approve_btn);
+    action_container.append(&btn_box);
+    vbox.append(&action_container);
+
+    let on_reply_rc = std::rc::Rc::new(on_reply);
+    let cb_approve = on_reply_rc.clone();
+    let action_container_clone1 = action_container.clone();
+    approve_btn.connect_clicked(move |_| {
+        cb_approve(true);
+        action_container_clone1.set_visible(false);
+    });
+
+    let cb_reject = on_reply_rc.clone();
+    let action_container_clone2 = action_container.clone();
+    reject_btn.connect_clicked(move |_| {
+        cb_reject(false);
+        action_container_clone2.set_visible(false);
+    });
+
+    let on_text_reply_rc = std::rc::Rc::new(on_text_reply);
+    let on_text_reply_clone1 = on_text_reply_rc.clone();
+    let entry_clone1 = reply_entry.clone();
+    let action_container_clone3 = action_container.clone();
+
+    let do_reply = move || {
+        let text = entry_clone1.text().to_string();
+        if !text.is_empty() {
+            on_text_reply_clone1(text);
+            action_container_clone3.set_visible(false);
+        }
+    };
+
+    let do_reply_clone = do_reply.clone();
+    reply_btn.connect_clicked(move |_| {
+        do_reply_clone();
+    });
+
+    reply_entry.connect_activate(move |_| {
+        do_reply();
+    });
+
+    row.set_child(Some(&vbox));
+    list.append(&row);
+
+    action_container
+}
+
+pub fn add_clipboard_get_approval_row(
+    list: &gtk::ListBox,
+    pane_id: String,
+    agent_name: Option<String>,
+    on_reply: impl Fn(bool) + 'static,
+    on_text_reply: impl Fn(String) + 'static,
+) -> gtk::Box {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    vbox.set_margin_top(8);
+    vbox.set_margin_bottom(8);
+    vbox.set_margin_start(8);
+    vbox.set_margin_end(8);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let icon = gtk::Image::from_icon_name("edit-paste-symbolic");
+    icon.add_css_class("accent");
+    header.append(&icon);
+
+    let title = gtk::Label::new(Some("Propose Clipboard Read"));
+    title.add_css_class("heading");
+    title.set_halign(gtk::Align::Start);
+    header.append(&title);
+
+    let id_short = if pane_id.len() >= 7 {
+        &pane_id[..7]
+    } else {
+        &pane_id
+    };
+
+    let pane_text = if let Some(name) = agent_name {
+        format!("{} ({})", name, id_short)
+    } else {
+        format!("Pane {}", id_short)
+    };
+
+    let pane_lbl = gtk::Label::new(Some(&pane_text));
+    pane_lbl.add_css_class("caption");
+    pane_lbl.add_css_class("dim-label");
+    header.append(&pane_lbl);
+
+    vbox.append(&header);
+
+    let description = gtk::Label::new(Some(
+        "The agent wants to read the contents of your system clipboard.",
+    ));
+    description.set_halign(gtk::Align::Start);
+    description.set_wrap(true);
+    vbox.append(&description);
+
+    let action_container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+
+    let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    reply_box.set_margin_top(4);
+    reply_box.set_margin_bottom(4);
+
+    let reply_entry = gtk::Entry::builder()
+        .placeholder_text("Reply to Boxxy-Claw...")
+        .hexpand(true)
+        .build();
+
+    let reply_btn = gtk::Button::builder()
+        .icon_name("paper-plane-symbolic")
+        .css_classes(["flat"])
+        .tooltip_text("Send Reply")
+        .build();
+
+    reply_box.append(&reply_entry);
+    reply_box.append(&reply_btn);
+    action_container.append(&reply_box);
+
+    let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    btn_box.set_halign(gtk::Align::End);
+
+    let reject_btn = gtk::Button::builder()
+        .label("Reject")
+        .css_classes(["flat"])
+        .build();
+
+    let approve_btn = gtk::Button::builder()
+        .label("Approve & Read")
+        .css_classes(["suggested-action"])
+        .build();
+
+    btn_box.append(&reject_btn);
+    btn_box.append(&approve_btn);
+    action_container.append(&btn_box);
+    vbox.append(&action_container);
+
+    let on_reply_rc = std::rc::Rc::new(on_reply);
+    let cb_approve = on_reply_rc.clone();
+    let action_container_clone1 = action_container.clone();
+    approve_btn.connect_clicked(move |_| {
+        cb_approve(true);
+        action_container_clone1.set_visible(false);
+    });
+
+    let cb_reject = on_reply_rc.clone();
+    let action_container_clone2 = action_container.clone();
+    reject_btn.connect_clicked(move |_| {
+        cb_reject(false);
+        action_container_clone2.set_visible(false);
+    });
+
+    let on_text_reply_rc = std::rc::Rc::new(on_text_reply);
+    let on_text_reply_clone1 = on_text_reply_rc.clone();
+    let entry_clone1 = reply_entry.clone();
+    let action_container_clone3 = action_container.clone();
+
+    let do_reply = move || {
+        let text = entry_clone1.text().to_string();
+        if !text.is_empty() {
+            on_text_reply_clone1(text);
+            action_container_clone3.set_visible(false);
+        }
+    };
+
+    let do_reply_clone = do_reply.clone();
+    reply_btn.connect_clicked(move |_| {
+        do_reply_clone();
+    });
+
+    reply_entry.connect_activate(move |_| {
+        do_reply();
+    });
+
+    row.set_child(Some(&vbox));
+    list.append(&row);
+
+    action_container
+}
+
+pub fn add_clipboard_set_approval_row(
+    list: &gtk::ListBox,
+    pane_id: String,
+    agent_name: Option<String>,
+    text_to_set: &str,
+    on_reply: impl Fn(bool) + 'static,
+    on_text_reply: impl Fn(String) + 'static,
+) -> gtk::Box {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    vbox.set_margin_top(8);
+    vbox.set_margin_bottom(8);
+    vbox.set_margin_start(8);
+    vbox.set_margin_end(8);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let icon = gtk::Image::from_icon_name("edit-copy-symbolic");
+    icon.add_css_class("accent");
+    header.append(&icon);
+
+    let title = gtk::Label::new(Some("Propose Clipboard Write"));
+    title.add_css_class("heading");
+    title.set_halign(gtk::Align::Start);
+    header.append(&title);
+
+    let id_short = if pane_id.len() >= 7 {
+        &pane_id[..7]
+    } else {
+        &pane_id
+    };
+
+    let pane_text = if let Some(name) = agent_name {
+        format!("{} ({})", name, id_short)
+    } else {
+        format!("Pane {}", id_short)
+    };
+
+    let pane_lbl = gtk::Label::new(Some(&pane_text));
+    pane_lbl.add_css_class("caption");
+    pane_lbl.add_css_class("dim-label");
+    header.append(&pane_lbl);
+
+    vbox.append(&header);
+
+    let description = gtk::Label::new(Some(
+        "The agent wants to write the following text to your system clipboard:",
+    ));
+    description.set_halign(gtk::Align::Start);
+    description.set_wrap(true);
+    vbox.append(&description);
+
+    let preview = gtk::TextView::builder()
+        .editable(false)
+        .cursor_visible(false)
+        .monospace(true)
+        .wrap_mode(gtk::WrapMode::WordChar)
+        .build();
+    preview.buffer().set_text(text_to_set);
+
+    let scroll_view = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_height(60)
+        .max_content_height(200)
+        .child(&preview)
+        .build();
+    vbox.append(&scroll_view);
+
+    let action_container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+
+    let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    reply_box.set_margin_top(4);
+    reply_box.set_margin_bottom(4);
+
+    let reply_entry = gtk::Entry::builder()
+        .placeholder_text("Reply to Boxxy-Claw...")
+        .hexpand(true)
+        .build();
+
+    let reply_btn = gtk::Button::builder()
+        .icon_name("paper-plane-symbolic")
+        .css_classes(["flat"])
+        .tooltip_text("Send Reply")
+        .build();
+
+    reply_box.append(&reply_entry);
+    reply_box.append(&reply_btn);
+    action_container.append(&reply_box);
+
+    let btn_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    btn_box.set_halign(gtk::Align::End);
+
+    let reject_btn = gtk::Button::builder()
+        .label("Reject")
+        .css_classes(["flat"])
+        .build();
+
+    let approve_btn = gtk::Button::builder()
+        .label("Approve & Write")
+        .css_classes(["suggested-action"])
+        .build();
+
+    btn_box.append(&reject_btn);
+    btn_box.append(&approve_btn);
+    action_container.append(&btn_box);
+    vbox.append(&action_container);
+
+    let on_reply_rc = std::rc::Rc::new(on_reply);
+    let cb_approve = on_reply_rc.clone();
+    let action_container_clone1 = action_container.clone();
+    approve_btn.connect_clicked(move |_| {
+        cb_approve(true);
+        action_container_clone1.set_visible(false);
+    });
+
+    let cb_reject = on_reply_rc.clone();
+    let action_container_clone2 = action_container.clone();
+    reject_btn.connect_clicked(move |_| {
+        cb_reject(false);
+        action_container_clone2.set_visible(false);
+    });
+
+    let on_text_reply_rc = std::rc::Rc::new(on_text_reply);
+    let on_text_reply_clone1 = on_text_reply_rc.clone();
+    let entry_clone1 = reply_entry.clone();
+    let action_container_clone3 = action_container.clone();
+
+    let do_reply = move || {
+        let text = entry_clone1.text().to_string();
+        if !text.is_empty() {
+            on_text_reply_clone1(text);
+            action_container_clone3.set_visible(false);
+        }
+    };
+
+    let do_reply_clone = do_reply.clone();
+    reply_btn.connect_clicked(move |_| {
+        do_reply_clone();
+    });
+
+    reply_entry.connect_activate(move |_| {
+        do_reply();
+    });
+
+    row.set_child(Some(&vbox));
+    list.append(&row);
+
+    action_container
+}
+
+pub fn add_process_list_row(
+    list: &gtk::ListBox,
+    pane_id: String,
+    agent_name: Option<String>,
+    json_data: &str,
+    on_kill_request: impl Fn(u32, String) + 'static,
+) {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    vbox.set_margin_top(8);
+    vbox.set_margin_bottom(8);
+    vbox.set_margin_start(8);
+    vbox.set_margin_end(8);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let icon = gtk::Image::from_icon_name("utilities-system-monitor-symbolic");
+    icon.add_css_class("accent");
+    header.append(&icon);
+
+    let title = gtk::Label::new(Some("Process List"));
+    title.add_css_class("heading");
+    title.set_halign(gtk::Align::Start);
+    header.append(&title);
+
+    let id_short = if pane_id.len() >= 7 {
+        &pane_id[..7]
+    } else {
+        &pane_id
+    };
+
+    let pane_text = if let Some(name) = agent_name {
+        format!("{} ({})", name, id_short)
+    } else {
+        format!("Pane {}", id_short)
+    };
+
+    let pane_lbl = gtk::Label::new(Some(&pane_text));
+    pane_lbl.add_css_class("caption");
+    pane_lbl.add_css_class("dim-label");
+    header.append(&pane_lbl);
+
+    vbox.append(&header);
+
+    let table_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    table_box.add_css_class("boxed-list");
+
+    // Header row
+    let h_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    h_row.set_margin_top(4);
+    h_row.set_margin_bottom(4);
+    h_row.set_margin_start(8);
+    h_row.set_margin_end(8);
+
+    let pid_h = gtk::Label::new(Some("PID"));
+    pid_h.set_width_chars(6);
+    pid_h.set_halign(gtk::Align::Start);
+    pid_h.add_css_class("caption");
+    pid_h.add_css_class("dim-label");
+
+    let name_h = gtk::Label::new(Some("Process Name"));
+    name_h.set_hexpand(true);
+    name_h.set_halign(gtk::Align::Start);
+    name_h.add_css_class("caption");
+    name_h.add_css_class("dim-label");
+
+    let cpu_h = gtk::Label::new(Some("CPU %"));
+    cpu_h.set_width_chars(6);
+    cpu_h.set_halign(gtk::Align::End);
+    cpu_h.add_css_class("caption");
+    cpu_h.add_css_class("dim-label");
+
+    h_row.append(&pid_h);
+    h_row.append(&name_h);
+    h_row.append(&cpu_h);
+    table_box.append(&h_row);
+
+    let sep = gtk::Separator::new(gtk::Orientation::Horizontal);
+    table_box.append(&sep);
+
+    if let Ok(processes) = serde_json::from_str::<Vec<serde_json::Value>>(json_data) {
+        let on_kill_rc = std::rc::Rc::new(on_kill_request);
+
+        for proc in processes.iter().take(20) {
+            // Limit to 20 for UI sanity
+            let pid = proc["pid"].as_u64().unwrap_or(0) as u32;
+            let name = proc["name"].as_str().unwrap_or("unknown").to_string();
+            let cpu = proc["cpu_usage"].as_f64().unwrap_or(0.0);
+
+            let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            row_box.set_margin_top(4);
+            row_box.set_margin_bottom(4);
+            row_box.set_margin_start(8);
+            row_box.set_margin_end(8);
+
+            let pid_l = gtk::Label::new(Some(&pid.to_string()));
+            pid_l.set_width_chars(6);
+            pid_l.set_halign(gtk::Align::Start);
+            pid_l.add_css_class("monospace");
+
+            let name_l = gtk::Label::new(Some(&name));
+            name_l.set_hexpand(true);
+            name_l.set_halign(gtk::Align::Start);
+            name_l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+
+            let cpu_l = gtk::Label::new(Some(&format!("{:.1}%", cpu)));
+            cpu_l.set_width_chars(6);
+            cpu_l.set_halign(gtk::Align::End);
+
+            let kill_btn = gtk::Button::builder()
+                .icon_name("process-stop-symbolic")
+                .css_classes(["flat", "circular"])
+                .tooltip_text("Propose Killing this process")
+                .build();
+
+            let on_kill_clone = on_kill_rc.clone();
+            let name_for_kill = name.clone();
+            kill_btn.connect_clicked(move |_| {
+                let on_kill = on_kill_clone.clone();
+                on_kill(pid, name_for_kill.clone());
+            });
+
+            row_box.append(&pid_l);
+            row_box.append(&name_l);
+            row_box.append(&cpu_l);
+            row_box.append(&kill_btn);
+
+            table_box.append(&row_box);
+        }
+
+        if processes.len() > 20 {
+            let more_lbl = gtk::Label::new(Some(&format!(
+                "... and {} more processes",
+                processes.len() - 20
+            )));
+            more_lbl.set_margin_top(4);
+            more_lbl.set_margin_bottom(4);
+            more_lbl.add_css_class("caption");
+            more_lbl.add_css_class("dim-label");
+            table_box.append(&more_lbl);
+        }
+    }
+
+    vbox.append(&table_box);
+    row.set_child(Some(&vbox));
+    list.append(&row);
+}

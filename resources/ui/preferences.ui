@@ -79,6 +79,20 @@
                               </object>
                             </child>
                             <child>
+                              <object class="GtkListBoxRow" id="nav_agents">
+                                <property name="child">
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">Agents</property>
+                                    <property name="xalign">0</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="margin-end">12</property>
+                                    <property name="margin-top">10</property>
+                                    <property name="margin-bottom">10</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
                               <object class="GtkListBoxRow" id="nav_shortcuts">
                                 <property name="child">
                                   <object class="GtkLabel">
@@ -402,6 +416,70 @@
 
                     <child>
                       <object class="AdwViewStackPage">
+                        <property name="name">agents</property>
+                        <property name="child">
+                          <object class="AdwPreferencesPage" id="page_agents">
+                            <child>
+                              <object class="AdwPreferencesGroup" id="group_agent_general">
+                                <property name="title" translatable="yes">General</property>
+                                <child>
+                                  <object class="AdwSwitchRow" id="claw_on_by_default_switch">
+                                    <property name="title" translatable="yes">BoxxyClaw On by Default</property>
+                                    <property name="subtitle" translatable="yes">Start BoxxyClaw automatically for every new terminal.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="hide_agent_badge_switch">
+                                    <property name="title" translatable="yes">Hide Agent Badge</property>
+                                    <property name="subtitle" translatable="yes">Hide the agent identity badge in the top right corner.</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
+                              <object class="AdwPreferencesGroup" id="group_agent_toolbox">
+                                <property name="title" translatable="yes">Agent Toolbox</property>
+                                <property name="description" translatable="yes">Enable or disable specific high-level tools for Boxxy agents.</property>
+                                <child>
+                                  <object class="AdwSwitchRow" id="enable_file_tools_switch">
+                                    <property name="title" translatable="yes">Enable File Tools</property>
+                                    <property name="subtitle" translatable="yes">Allows agents to read, write, and list files directly.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="enable_system_tools_switch">
+                                    <property name="title" translatable="yes">Enable System Monitoring</property>
+                                    <property name="subtitle" translatable="yes">Allows agents to list processes and see system information.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="enable_dangerous_tools_switch">
+                                    <property name="title" translatable="yes">Enable Dangerous Tools</property>
+                                    <property name="subtitle" translatable="yes">Allows agents to terminate processes. (Use with caution!)</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="enable_web_tools_switch">
+                                    <property name="title" translatable="yes">Enable Web Tools</property>
+                                    <property name="subtitle" translatable="yes">Allows agents to fetch content from the web (documentation, etc).</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="enable_clipboard_tools_switch">
+                                    <property name="title" translatable="yes">Enable Clipboard Tools</property>
+                                    <property name="subtitle" translatable="yes">Allows agents to read from and write to your system clipboard.</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="AdwViewStackPage">
                         <property name="name">shortcuts</property>
                         <property name="child">
                           <object class="AdwPreferencesPage" id="page_shortcuts">
@@ -428,18 +506,6 @@
                                   <object class="AdwSwitchRow" id="show_vte_grid_switch">
                                     <property name="title" translatable="yes">Show VTE Grid</property>
                                     <property name="subtitle" translatable="yes">Draw grid lines representing terminal cells.</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwSwitchRow" id="hide_agent_badge_switch">
-                                    <property name="title" translatable="yes">Hide Agent Badge</property>
-                                    <property name="subtitle" translatable="yes">Hide the agent identity badge in the top right corner.</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwSwitchRow" id="claw_on_by_default_switch">
-                                    <property name="title" translatable="yes">BoxxyClaw On by Default</property>
-                                    <property name="subtitle" translatable="yes">Start BoxxyClaw automatically for every new terminal.</property>
                                   </object>
                                 </child>
                               </object>

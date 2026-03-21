@@ -29,6 +29,14 @@ pub enum ClawMessage {
     },
     /// The user clicked Approve or Reject on a file write proposal.
     FileWriteReply { approved: bool },
+    /// The user clicked Approve or Reject on a file deletion proposal.
+    FileDeleteReply { approved: bool },
+    /// The user clicked Approve or Reject on a process kill proposal.
+    KillProcessReply { approved: bool },
+    /// The user clicked Approve or Reject on a clipboard read proposal.
+    GetClipboardReply { approved: bool },
+    /// The user clicked Approve or Reject on a clipboard write proposal.
+    SetClipboardReply { approved: bool },
     /// The user requested to diagnose the last failed command (from the Lazy Error Pill).
     RequestLazyDiagnosis,
     /// The user rejected or dismissed a proposal. The agent should cancel any pending tools.
@@ -74,6 +82,18 @@ pub enum ClawEngineEvent {
         path: String,
         content: String,
     },
+    /// The agent proposes to delete a file, requiring user approval.
+    ProposeFileDelete { agent_name: String, path: String },
+    /// The agent proposes to kill a process, requiring user approval.
+    ProposeKillProcess {
+        agent_name: String,
+        pid: u32,
+        process_name: String,
+    },
+    /// The agent proposes to read the system clipboard, requiring user approval.
+    ProposeGetClipboard { agent_name: String },
+    /// The agent proposes to set the system clipboard, requiring user approval.
+    ProposeSetClipboard { agent_name: String, text: String },
     /// The agent wants the user to run a command in the terminal and wait for the result.
     ProposeTerminalCommand {
         agent_name: String,
@@ -111,5 +131,11 @@ pub enum ClawEngineEvent {
     InjectKeystrokes {
         target_agent_name: String,
         keys: String,
+    },
+    /// Emitted when a tool produces structured output (e.g. process list).
+    ToolResult {
+        agent_name: String,
+        tool_name: String,
+        result: String, // JSON
     },
 }

@@ -13,6 +13,10 @@ pub struct SessionState {
     pub agent_name: String,
     pub pending_terminal_reply: Option<tokio::sync::oneshot::Sender<Result<String, String>>>,
     pub pending_file_reply: Option<tokio::sync::oneshot::Sender<bool>>,
+    pub pending_file_delete_reply: Option<tokio::sync::oneshot::Sender<bool>>,
+    pub pending_kill_process_reply: Option<tokio::sync::oneshot::Sender<bool>>,
+    pub pending_get_clipboard_reply: Option<tokio::sync::oneshot::Sender<bool>>,
+    pub pending_set_clipboard_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub history: Vec<Message>,
     pub pending_lazy_diagnosis: Option<(String, String, String)>,
 }
@@ -59,6 +63,10 @@ impl ClawSession {
                 agent_name: name,
                 pending_terminal_reply: None,
                 pending_file_reply: None,
+                pending_file_delete_reply: None,
+                pending_kill_process_reply: None,
+                pending_get_clipboard_reply: None,
+                pending_set_clipboard_reply: None,
                 history: Vec::new(),
                 pending_lazy_diagnosis: None,
             })),
@@ -290,6 +298,30 @@ impl ClawSession {
                         let _ = reply.send(approved);
                     }
                 }
+                ClawMessage::FileDeleteReply { approved } => {
+                    let mut state_lock = self.state.lock().await;
+                    if let Some(reply) = state_lock.pending_file_delete_reply.take() {
+                        let _ = reply.send(approved);
+                    }
+                }
+                ClawMessage::KillProcessReply { approved } => {
+                    let mut state_lock = self.state.lock().await;
+                    if let Some(reply) = state_lock.pending_kill_process_reply.take() {
+                        let _ = reply.send(approved);
+                    }
+                }
+                ClawMessage::GetClipboardReply { approved } => {
+                    let mut state_lock = self.state.lock().await;
+                    if let Some(reply) = state_lock.pending_get_clipboard_reply.take() {
+                        let _ = reply.send(approved);
+                    }
+                }
+                ClawMessage::SetClipboardReply { approved } => {
+                    let mut state_lock = self.state.lock().await;
+                    if let Some(reply) = state_lock.pending_set_clipboard_reply.take() {
+                        let _ = reply.send(approved);
+                    }
+                }
                 ClawMessage::UserMessage {
                     message,
                     snapshot,
@@ -389,6 +421,18 @@ impl ClawSession {
                         let _ = reply.send(Err("[USER_EXPLICIT_REJECT]".to_string()));
                     }
                     if let Some(reply) = state_lock.pending_file_reply.take() {
+                        let _ = reply.send(false);
+                    }
+                    if let Some(reply) = state_lock.pending_file_delete_reply.take() {
+                        let _ = reply.send(false);
+                    }
+                    if let Some(reply) = state_lock.pending_kill_process_reply.take() {
+                        let _ = reply.send(false);
+                    }
+                    if let Some(reply) = state_lock.pending_get_clipboard_reply.take() {
+                        let _ = reply.send(false);
+                    }
+                    if let Some(reply) = state_lock.pending_set_clipboard_reply.take() {
                         let _ = reply.send(false);
                     }
                     debug!("Pane {}: User cancelled pending proposals.", self.pane_id);
@@ -564,6 +608,7 @@ fn spawn_turn(
             tx_ui.clone(),
             state.clone(),
             db.clone(),
+            &settings,
         );
 
         let full_prompt =

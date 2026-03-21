@@ -134,6 +134,11 @@ pub struct Settings {
     pub claw_terminal_suggestions: bool,
     pub hide_agent_badge: bool,
     pub claw_on_by_default: bool,
+    pub enable_file_tools: bool,
+    pub enable_system_tools: bool,
+    pub enable_dangerous_tools: bool,
+    pub enable_web_tools: bool,
+    pub enable_clipboard_tools: bool,
 }
 
 impl Default for Settings {
@@ -174,6 +179,11 @@ impl Default for Settings {
             claw_terminal_suggestions: true,
             hide_agent_badge: false,
             claw_on_by_default: false,
+            enable_file_tools: true,
+            enable_system_tools: true,
+            enable_dangerous_tools: false,
+            enable_web_tools: true,
+            enable_clipboard_tools: true,
         }
     }
 }

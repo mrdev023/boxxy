@@ -1,5 +1,6 @@
 /target
 .claude
+.geminiignore
 build-dir
 .flatpak-builder
 releases

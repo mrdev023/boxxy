@@ -12,7 +12,7 @@ The leaf component representing a single terminal instance. Modularized into:
 - **`pane/ui.rs`**: Core widget initialization using `gtk::Overlay`, `gtk::ScrolledWindow`, and the `SearchBarComponent`.
 - **`pane/gestures.rs`**: Input handling, including middle-click paste, context menus, and focus tracking.
 - **`pane/events.rs`**: VTE signal wiring and PTY event routing.
-- **`pane/claw.rs`**: Integration with the `boxxy-claw` actor model (popovers, indicators, event loops).
+- **`pane/claw.rs`**: Integration with the `boxxy-claw` actor model. Manages popovers, status indicators, and handles structured `ToolResult` events for rendering interactive components in the sidebar.
 - **`pane/preview.rs`**: OSC 8 hyperlink media previews (hover/click detection).
 
 ### `TerminalComponent` (`component.rs`)

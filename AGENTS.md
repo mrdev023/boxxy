@@ -47,13 +47,13 @@ Manages the split-pane terminal environment. Features a deep modular architectur
 Host Privileged Agent. Bypasses Flatpak sandboxing to handle PTY management and host-level system administration via D-Bus IPC.
 
 ### 5. `boxxy-claw` (Library Crate)
-Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID, operating as a "Clean Slate" agent that does not leak conversational context to other panes. 
+Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID.
 
-Handles context synthesis, tool execution, and LLM communication via a modular dispatcher. Features a **Hybrid Memory System** for both explicit tool-based storage and implicit background fact extraction. It utilizes OSC 133 semantic prompt tracking and Dynamic Scrollback Paging from the VTE to autonomously pull structured history context to the AI on-demand. 
-
-Agents interact with peers via the **Global Workspace Radar**, allowing them to read buffers, delegate tasks, and autonomously coordinate multi-pane workflows across the entire PC using their mnemonic identities. Agents can proactively discover all active peers using the `list_active_agents` tool and share high-level objectives via the **Global Intent Blackboard**.
-
-Agents also have full **Pane Lifecycle Management** authority, capable of spawning new sibling panes or tabs (passing initial intents), injecting raw keystrokes (Esc, Ctrl+C, etc.) into peer terminals, and closing active panes dynamically without IPC overhead.
+Agents possess full **System & Environment Authority**:
+- **Clipboard Management**: Securely read and write to the system clipboard with user approval.
+- **Process Inspection & Control**: View real-time process lists and terminate misbehaving tasks via a rich sidebar UI.
+- **Pane Lifecycle Management**: Spawn new sibling panes/tabs, inject raw keystrokes (Esc, Ctrl+C), and close active panes dynamically.
+- **Global Workspace Radar**: Discover all active peers and share high-level objectives via the **Global Intent Blackboard**.
 
 ### 6. `boxxy-vte` (Library Crate)
 Headless pure-Rust terminal emulator. Renders via GSK Snapshot and supports Kittygraphics natively. OSC 7/8/133 support. Features native semantic prompt tracking (`Flags::SEMANTIC_*`) embedded directly into the terminal cell grid to provide structured context blocks (`[PROMPT]`, `[COMMAND]`, `[OUTPUT]`).
@@ -61,10 +61,16 @@ Headless pure-Rust terminal emulator. Renders via GSK Snapshot and supports Kitt
 ### 7. `boxxy-ai-core` (Library Crate)
 Unified AI interface layer. Abstracts multiple providers (Gemini, Anthropic, Ollama) behind a single `BoxxyAgent` interface. Manages `AiCredentials` mapping and the global multi-threaded Tokio runtime.
 
-### 8. `boxxy-preferences` (Library Crate)
+### 8. `boxxy-core-toolbox` (Library Crate)
+Provides a structured library of high-level tools for Boxxy agents, completely decoupled from the reasoning engine. Includes:
+- **Host Operations:** File management (with line-range limits), process inspection, system info (structured JSON), and clipboard access.
+- **Web/Network:** HTTP fetching with built-in timeouts and 1MB size limits.
+- **Approval Protocol:** Uses the `ApprovalHandler` trait to ensure dangerous actions (like `rm` or `kill`) always prompt the user via the GTK UI before execution.
+
+### 9. `boxxy-preferences` (Library Crate)
 Settings management using an `AdwNavigationSplitView` architecture. UI is defined in `resources/ui/preferences.ui` and supports real-time search filtering.
 
-### 9. `boxxy-model-selection` (Library Crate)
+### 10. `boxxy-model-selection` (Library Crate)
 Data-driven model configuration UI. Uses a registry pattern to dynamically build selection dialogs and dropdowns based on registered `AiProvider` traits. Decouples AI capability discovery from the main application window.
 
 ## Distribution & Updates
