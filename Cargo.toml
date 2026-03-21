@@ -19,6 +19,7 @@ members = [
     "crates/db",
     "crates/boxxy_bookmarks",
     "crates/core_toolbox",
+    "crates/viewer",
     ]
 
 [workspace.package]
@@ -112,3 +113,6 @@ toml = "1.0.6+spec-1.1.0"
 boxxy-bookmarks = { path = "crates/boxxy_bookmarks" }
 sysinfo = "0.33.1"
 arboard = "3.4.1"
+pulldown-cmark = "0.13.2"
+syntect = "5.2.0"
+boxxy-viewer = { path = "crates/viewer" }

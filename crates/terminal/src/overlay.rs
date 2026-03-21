@@ -1,3 +1,4 @@
+use boxxy_viewer::StructuredViewer;
 use gtk::prelude::*;
 use gtk4 as gtk;
 use std::cell::RefCell;
@@ -13,7 +14,7 @@ pub enum OverlayMode {
 pub struct TerminalOverlay {
     revealer: gtk::Revealer,
     title_label: gtk::Label,
-    diagnosis_label: gtk::Label,
+    diagnosis_viewer: StructuredViewer,
     command_view: gtk::TextView,
     reply_entry: gtk::Entry,
     template_entry: gtk::Entry,
@@ -98,16 +99,8 @@ impl TerminalOverlay {
             .hexpand(true)
             .build();
 
-        let diagnosis_label = gtk::Label::new(None);
-        diagnosis_label.set_wrap(true);
-        diagnosis_label.set_wrap_mode(gtk::pango::WrapMode::Word);
-        diagnosis_label.set_width_chars(40);
-        diagnosis_label.set_max_width_chars(60);
-        diagnosis_label.set_halign(gtk::Align::Start);
-        diagnosis_label.set_xalign(0.0);
-        diagnosis_label.set_hexpand(true);
-        diagnosis_label.set_selectable(true);
-        diag_scroll.set_child(Some(&diagnosis_label));
+        let diagnosis_viewer = StructuredViewer::new(boxxy_claw::ui::get_claw_viewer_registry());
+        diag_scroll.set_child(Some(diagnosis_viewer.widget()));
         vbox.append(&diag_scroll);
 
         let command_frame = gtk::Frame::new(None);
@@ -341,7 +334,7 @@ impl TerminalOverlay {
         Self {
             revealer,
             title_label,
-            diagnosis_label,
+            diagnosis_viewer,
             command_view,
             reply_entry,
             template_entry,
@@ -375,7 +368,7 @@ impl TerminalOverlay {
         proposal: crate::TerminalProposal,
     ) {
         self.title_label.set_label(title);
-        self.diagnosis_label.set_label(diagnosis);
+        self.diagnosis_viewer.set_content(diagnosis);
         self.reply_entry.set_text("");
         self.template_entry.set_text("");
         *self.current_proposal.borrow_mut() = proposal.clone();

@@ -388,10 +388,7 @@ impl AiSidebarComponent {
 
         inner.input_entry.grab_focus();
 
-        let adj = inner.scroll_adj.clone();
-        glib::idle_add_local_once(move || {
-            adj.set_value(adj.upper() - adj.page_size());
-        });
+        Self::smart_scroll(&inner.scroll_adj);
 
         let provider = inner.model_provider.clone();
         drop(inner);
@@ -448,9 +445,20 @@ impl AiSidebarComponent {
         inner.action_btn.set_icon_name("paper-plane-symbolic");
         inner.action_btn.set_tooltip_text(Some("Send"));
 
-        let adj = inner.scroll_adj.clone();
+        Self::smart_scroll(&inner.scroll_adj);
+    }
+
+    fn smart_scroll(adj: &gtk::Adjustment) {
+        let adj = adj.clone();
         glib::idle_add_local_once(move || {
-            adj.set_value(adj.upper() - adj.page_size());
+            let value = adj.value();
+            let upper = adj.upper();
+            let page_size = adj.page_size();
+
+            // If we are close to the bottom (within 100 pixels), keep scrolling
+            if value > upper - page_size - 100.0 || value < 1.0 {
+                adj.set_value(upper - page_size);
+            }
         });
     }
 }

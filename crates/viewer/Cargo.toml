@@ -1,0 +1,16 @@
+[package]
+name = "boxxy-viewer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+gtk4.workspace = true
+libadwaita.workspace = true
+glib.workspace = true
+pango.workspace = true
+serde_json.workspace = true
+pulldown-cmark.workspace = true
+syntect.workspace = true
+async-channel.workspace = true
+log.workspace = true

@@ -16,6 +16,7 @@ boxxy-themes = { path = "../themes" }
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-agent = { path = "../boxxy_agent" }
 boxxy-claw = { path = "../boxxy_claw" }
+boxxy-viewer = { path = "../viewer" }
 async-channel.workspace = true
 ashpd.workspace = true
 tokio.workspace = true

@@ -27,6 +27,7 @@ boxxy-agent = { path = "../boxxy_agent" }
 boxxy-model-selection = { path = "../model_selection" }
 boxxy-preferences = { path = "../preferences" }
 boxxy-db = { path = "../db" }
+boxxy-viewer = { path = "../viewer" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }

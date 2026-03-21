@@ -16,4 +16,5 @@ tokio.workspace = true
 rig-core.workspace = true
 boxxy-model-selection.workspace = true
 boxxy-preferences = { path = "../preferences" }
+boxxy-viewer = { path = "../viewer" }
 uuid.workspace = true

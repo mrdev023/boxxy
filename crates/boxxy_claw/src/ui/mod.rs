@@ -1,8 +1,75 @@
+use boxxy_viewer::{BlockRenderer, ContentBlock, StructuredViewer, ViewerRegistry};
 use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 use std::cell::Cell;
 use std::rc::Rc;
+
+pub struct ProcessListRenderer;
+
+impl BlockRenderer for ProcessListRenderer {
+    fn can_render(&self, block: &ContentBlock) -> bool {
+        matches!(block, ContentBlock::Custom { schema, .. } if schema == "list_processes")
+    }
+
+    fn render(&self, block: &ContentBlock) -> gtk::Widget {
+        if let ContentBlock::Custom { raw_payload, .. } = block {
+            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
+            if let Ok(processes) = serde_json::from_str::<Vec<(u32, String, f64, u64)>>(raw_payload)
+            {
+                let list_box = gtk::ListBox::new();
+                list_box.add_css_class("boxed-list");
+                list_box.set_selection_mode(gtk::SelectionMode::None);
+
+                for (pid, name, cpu, mem) in processes {
+                    let item_row = gtk::ListBoxRow::new();
+                    let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                    item_box.set_margin_top(4);
+                    item_box.set_margin_bottom(4);
+                    item_box.set_margin_start(4);
+                    item_box.set_margin_end(4);
+
+                    let pid_lbl = gtk::Label::new(Some(&format!("{pid}")));
+                    pid_lbl.set_width_chars(6);
+                    item_box.append(&pid_lbl);
+
+                    let name_lbl = gtk::Label::new(Some(&name));
+                    name_lbl.set_hexpand(true);
+                    name_lbl.set_halign(gtk::Align::Start);
+                    name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                    item_box.append(&name_lbl);
+
+                    let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
+                    cpu_lbl.add_css_class("caption");
+                    cpu_lbl.add_css_class("dim-label");
+                    item_box.append(&cpu_lbl);
+
+                    let mem_mb = mem / (1024 * 1024);
+                    let mem_lbl = gtk::Label::new(Some(&format!("{mem_mb}MB")));
+                    mem_lbl.add_css_class("caption");
+                    mem_lbl.add_css_class("dim-label");
+                    item_box.append(&mem_lbl);
+
+                    item_row.set_child(Some(&item_box));
+                    list_box.append(&item_row);
+                }
+                vbox.append(&list_box);
+            } else {
+                let error_lbl = gtk::Label::new(Some("Failed to parse process list."));
+                vbox.append(&error_lbl);
+            }
+            vbox.upcast()
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+pub fn get_claw_viewer_registry() -> Rc<ViewerRegistry> {
+    let mut registry = ViewerRegistry::new_with_defaults();
+    registry.register(Box::new(ProcessListRenderer));
+    Rc::new(registry)
+}
 
 pub struct ClawSidebarComponent {
     widget: gtk::Box,
@@ -151,8 +218,15 @@ impl ClawSidebarComponent {
 
     pub fn scroll_to_bottom(&self) {
         let adj = self.scroll.vadjustment();
-        gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
-            adj.set_value(adj.upper() - adj.page_size());
+        gtk::glib::idle_add_local_once(move || {
+            let value = adj.value();
+            let upper = adj.upper();
+            let page_size = adj.page_size();
+
+            // If we are close to the bottom (within 100 pixels), keep scrolling
+            if value > upper - page_size - 100.0 || value < 1.0 {
+                adj.set_value(upper - page_size);
+            }
         });
     }
 
@@ -266,15 +340,10 @@ pub fn add_diagnosis_row(
 
     vbox.append(&header);
 
-    let text_view = gtk::TextView::builder()
-        .editable(false)
-        .wrap_mode(gtk::WrapMode::Word)
-        .cursor_visible(false)
-        .css_classes(["claw-diagnosis"])
-        .build();
-    text_view.buffer().set_text(diagnosis);
+    let viewer = StructuredViewer::new(get_claw_viewer_registry());
+    viewer.set_content(diagnosis);
+    vbox.append(viewer.widget());
 
-    vbox.append(&text_view);
     row.set_child(Some(&vbox));
 
     list.append(&row);
@@ -327,14 +396,9 @@ pub fn add_suggested_row(
     vbox.append(&header);
 
     if !diagnosis.is_empty() {
-        let text_view = gtk::TextView::builder()
-            .editable(false)
-            .wrap_mode(gtk::WrapMode::Word)
-            .cursor_visible(false)
-            .css_classes(["claw-diagnosis"])
-            .build();
-        text_view.buffer().set_text(diagnosis);
-        vbox.append(&text_view);
+        let viewer = StructuredViewer::new(get_claw_viewer_registry());
+        viewer.set_content(diagnosis);
+        vbox.append(viewer.widget());
     }
 
     let cmd_label = gtk::Label::new(Some(command));
@@ -496,48 +560,9 @@ pub fn add_process_list_row(
 
     vbox.append(&header);
 
-    if let Ok(processes) = serde_json::from_str::<Vec<(u32, String, f64, u64)>>(result_json) {
-        let list_box = gtk::ListBox::new();
-        list_box.add_css_class("boxed-list");
-        list_box.set_selection_mode(gtk::SelectionMode::None);
-
-        for (pid, name, cpu, mem) in processes {
-            let item_row = gtk::ListBoxRow::new();
-            let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-            item_box.set_margin_top(4);
-            item_box.set_margin_bottom(4);
-            item_box.set_margin_start(4);
-            item_box.set_margin_end(4);
-
-            let pid_lbl = gtk::Label::new(Some(&format!("{pid}")));
-            pid_lbl.set_width_chars(6);
-            item_box.append(&pid_lbl);
-
-            let name_lbl = gtk::Label::new(Some(&name));
-            name_lbl.set_hexpand(true);
-            name_lbl.set_halign(gtk::Align::Start);
-            name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            item_box.append(&name_lbl);
-
-            let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
-            cpu_lbl.add_css_class("caption");
-            cpu_lbl.add_css_class("dim-label");
-            item_box.append(&cpu_lbl);
-
-            let mem_mb = mem / (1024 * 1024);
-            let mem_lbl = gtk::Label::new(Some(&format!("{mem_mb}MB")));
-            mem_lbl.add_css_class("caption");
-            mem_lbl.add_css_class("dim-label");
-            item_box.append(&mem_lbl);
-
-            item_row.set_child(Some(&item_box));
-            list_box.append(&item_row);
-        }
-        vbox.append(&list_box);
-    } else {
-        let error_lbl = gtk::Label::new(Some("Failed to parse process list."));
-        vbox.append(&error_lbl);
-    }
+    let viewer = StructuredViewer::new(get_claw_viewer_registry());
+    viewer.append_custom_block("list_processes", result_json);
+    vbox.append(viewer.widget());
 
     row.set_child(Some(&vbox));
     list.append(&row);
