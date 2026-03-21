@@ -329,9 +329,17 @@ boxxyterminalwidget {
     background-color: transparent;
 }
 
-/* Ensure the sidebar remains opaque */
+
+/* Sidebar: use the native Adwaita sidebar colour instead of @window_bg_color */
 .sidebar-toolbar,
 .sidebar-toolbar > contents {
+    background-color: @sidebar_bg_color;
+}
+
+/* Restore opaque background for non-terminal tabs (bookmarks, apps).
+   Two-class selector wins over the single-class `.terminal-toolbar` rule above. */
+.terminal-toolbar.non-terminal-toolbar,
+.terminal-toolbar.non-terminal-toolbar > contents {
     background-color: @window_bg_color;
 }
 

@@ -245,10 +245,26 @@ pub fn focus_active_terminal(inner: &mut AppWindowInner) {
         let child = page.child();
         let is_bookmarks = inner.bookmarks_page.as_ref() == Some(&page);
 
+        // Reach the AdwToolbarView that wraps the header + tab-view.
+        // Adding "non-terminal-toolbar" gives it a 2-class selector that wins
+        // over the single-class `.terminal-toolbar { background: transparent }`
+        // rule, restoring an opaque background for non-terminal pages.
+        let toolbar_opt = inner
+            .content_header
+            .ancestor(libadwaita::ToolbarView::static_type());
+
         if is_bookmarks {
             inner.content_header.remove_css_class("terminal-header");
+            inner.tab_view.add_css_class("non-terminal-tab");
+            if let Some(ref toolbar) = toolbar_opt {
+                toolbar.add_css_class("non-terminal-toolbar");
+            }
         } else {
             inner.content_header.add_css_class("terminal-header");
+            inner.tab_view.remove_css_class("non-terminal-tab");
+            if let Some(ref toolbar) = toolbar_opt {
+                toolbar.remove_css_class("non-terminal-toolbar");
+            }
         }
 
         if let Some(pos) = inner
