@@ -112,6 +112,19 @@ impl BoxxyAgent {
             cmd.current_dir(&options.cwd);
         }
 
+        // When the UI sends an empty env vector (Flatpak mode) we populate a
+        // minimal baseline from the host passwd entry so the shell has at least
+        // HOME, USER, LOGNAME, and SHELL set correctly before sourcing its own
+        // startup files (e.g. ~/.config/fish/config.fish, ~/.bashrc, etc.).
+        if options.env.is_empty() {
+            if let Ok(Some(user)) = User::from_uid(getuid()) {
+                cmd.env("HOME", user.dir.to_string_lossy().as_ref());
+                cmd.env("USER", &user.name);
+                cmd.env("LOGNAME", &user.name);
+                cmd.env("SHELL", user.shell.to_string_lossy().as_ref());
+            }
+        }
+
         for (key, value) in options.env {
             cmd.env(key, value);
         }
