@@ -37,6 +37,7 @@ pub type Osc133BCallback = Box<dyn Fn() + 'static>;
 pub type Osc133CCallback = Box<dyn Fn() + 'static>;
 pub type Osc133DCallback = Box<dyn Fn(Option<i32>) + 'static>;
 pub type ClawQueryCallback = Box<dyn Fn(String) + 'static>;
+pub type ContextMenuCallback = Box<dyn Fn(f64, f64) + 'static>;
 
 pub struct TerminalWidget {
     pub backend: RefCell<Option<TerminalBackend>>,
@@ -77,6 +78,7 @@ pub struct TerminalWidget {
     pub osc_133_c_callback: RefCell<Option<Osc133CCallback>>,
     pub osc_133_d_callback: RefCell<Option<Osc133DCallback>>,
     pub claw_query_callback: RefCell<Option<ClawQueryCallback>>,
+    pub context_menu_callback: RefCell<Option<ContextMenuCallback>>,
     pub last_cwd: RefCell<Option<String>>,
     pub kitty_textures: RefCell<HashMap<u32, gtk4::gdk::Texture>>,
     pub is_dimmed: Cell<bool>,
@@ -125,6 +127,7 @@ impl Default for TerminalWidget {
             osc_133_c_callback: RefCell::new(None),
             osc_133_d_callback: RefCell::new(None),
             claw_query_callback: RefCell::new(None),
+            context_menu_callback: RefCell::new(None),
             last_cwd: RefCell::new(None),
             kitty_textures: RefCell::new(HashMap::new()),
             is_dimmed: Cell::new(false),
@@ -234,7 +237,7 @@ impl ObjectImpl for TerminalWidget {
                     obj.paste_clipboard();
                     return glib::Propagation::Stop;
                 }
-                if key == gtk4::gdk::Key::C
+                if (key == gtk4::gdk::Key::C || key == gtk4::gdk::Key::c)
                     && modifier.contains(
                         gtk4::gdk::ModifierType::CONTROL_MASK | gtk4::gdk::ModifierType::SHIFT_MASK,
                     )
@@ -355,6 +358,9 @@ impl ObjectImpl for TerminalWidget {
             move |gesture, n_press, x, y| {
                 let imp = obj.imp();
                 obj.grab_focus();
+                // Claim the sequence immediately so parent widgets (e.g. OverlaySplitView)
+                // don't also handle this click via their own GestureClick controllers.
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
                 if let Some(backend) = imp.backend.borrow().as_ref() {
                     let state = backend.render_state.load();
                     let modifiers = gesture.current_event_state();
@@ -370,11 +376,25 @@ impl ObjectImpl for TerminalWidget {
                     let row = ((y - padding) / char_size.1).floor() as usize;
                     let point = Point::new(Line(row as i32 - state.display_offset), Column(col));
 
-                    if state
+                    let is_shift = modifiers.contains(gtk4::gdk::ModifierType::SHIFT_MASK);
+                    // App owns the mouse when it has enabled any mouse-reporting
+                    // mode (1000/1002/1003) OR is running in the alt screen
+                    // (TUI editors like Fresh/vim always use alt screen and
+                    // mouse reporting together).  Shift overrides this so the
+                    // user can always force a terminal selection or open the
+                    // context menu regardless of what the app is doing.
+                    let app_owns_mouse = state
                         .mode
                         .intersects(crate::engine::term::TermMode::MOUSE_MODE)
-                        && !modifiers.contains(gtk4::gdk::ModifierType::SHIFT_MASK)
-                    {
+                        && !is_shift;
+
+                    if app_owns_mouse {
+                        // Clear any terminal selection the user may have made
+                        // with Shift+drag — a plain click means "app takes over".
+                        if backend.has_selection() {
+                            backend.set_selection(None);
+                            obj.queue_draw();
+                        }
                         imp.mouse_pressed.set(true);
                         imp.mouse_pos.set(Some((x, y)));
                         let button = match gesture.current_button() {
@@ -393,6 +413,15 @@ impl ObjectImpl for TerminalWidget {
                                     std::borrow::Cow::Owned(seq),
                                 ))
                                 .ok();
+                        }
+                        return;
+                    }
+
+                    // ── Terminal owns this click ─────────────────────────────
+                    // Right-click: fire the context menu callback (if set).
+                    if gesture.current_button() == 3 {
+                        if let Some(f) = imp.context_menu_callback.borrow().as_ref() {
+                            f(x, y);
                         }
                         return;
                     }
@@ -876,6 +905,20 @@ impl TerminalWidget {
     }
 
     pub(crate) fn copy_clipboard(&self) {
+        let backend_ref = self.backend.borrow();
+        let Some(backend) = backend_ref.as_ref() else {
+            return;
+        };
+        // Fast path: extract selection text synchronously from the render state.
+        // This avoids an async round-trip through the event loop and works
+        // reliably even in alt-screen apps like Fresh or vim.
+        let state = backend.render_state.load();
+        if let Some(text) = state.selection_text() {
+            self.obj().clipboard().set_text(&text);
+            return;
+        }
+        // Fallback for selections that span scrollback history (not in render state).
+        drop(backend_ref);
         if let Some(backend) = self.backend.borrow().as_ref() {
             backend.copy_selection(crate::engine::term::ClipboardType::Clipboard);
         }
@@ -897,7 +940,7 @@ impl TerminalWidget {
                 if let Some(w) = ow.upgrade()
                     && let Some(b) = w.imp().backend.borrow().as_ref()
                 {
-                    b.write_to_pty(text.as_str().as_bytes().to_vec());
+                    b.paste(text.to_string());
                 }
             }
         });

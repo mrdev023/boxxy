@@ -362,4 +362,24 @@ impl TerminalBackend {
     pub fn is_alt_screen(&self) -> bool {
         self.render_state.load().is_alt_screen
     }
+
+    /// Write text to the PTY, wrapping in bracketed-paste sequences when the
+    /// running application has enabled that mode (e.g. fish, Fresh, vim).
+    pub fn paste(&self, text: String) {
+        let bracketed = self
+            .render_state
+            .load()
+            .mode
+            .contains(crate::engine::term::TermMode::BRACKETED_PASTE);
+        let bytes = if bracketed {
+            let mut buf = Vec::with_capacity(text.len() + 12);
+            buf.extend_from_slice(b"\x1b[200~");
+            buf.extend_from_slice(text.as_bytes());
+            buf.extend_from_slice(b"\x1b[201~");
+            buf
+        } else {
+            text.into_bytes()
+        };
+        self.write_to_pty(bytes);
+    }
 }

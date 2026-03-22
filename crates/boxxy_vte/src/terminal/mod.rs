@@ -459,6 +459,20 @@ impl TerminalWidget {
         }
     }
 
+    /// Returns true when the running application has enabled any mouse
+    /// reporting mode (1000/1002/1003).  Used to decide who owns mouse events.
+    pub fn is_mouse_mode(&self) -> bool {
+        if let Some(backend) = self.imp().backend.borrow().as_ref() {
+            backend
+                .render_state
+                .load()
+                .mode
+                .intersects(crate::engine::term::TermMode::MOUSE_MODE)
+        } else {
+            false
+        }
+    }
+
     pub fn on_osc_133_c<F: Fn() + 'static>(&self, f: F) {
         self.imp().osc_133_c_callback.replace(Some(Box::new(f)));
     }
@@ -469,6 +483,13 @@ impl TerminalWidget {
 
     pub fn on_claw_query<F: Fn(String) + 'static>(&self, f: F) {
         self.imp().claw_query_callback.replace(Some(Box::new(f)));
+    }
+
+    /// Register a callback invoked when the terminal engine decides the
+    /// terminal (not the running app) owns a right-click event.  The arguments
+    /// are the pixel coordinates of the click within the widget.
+    pub fn on_context_menu<F: Fn(f64, f64) + 'static>(&self, f: F) {
+        self.imp().context_menu_callback.replace(Some(Box::new(f)));
     }
 
     /// Return the current working directory of the child process by reading
@@ -488,7 +509,7 @@ impl TerminalWidget {
                     if let Some(widget) = obj_weak.upgrade()
                         && let Some(backend) = widget.imp().backend.borrow().as_ref()
                     {
-                        backend.write_to_pty(text.as_str().as_bytes().to_vec());
+                        backend.paste(text.to_string());
                     }
                 }
                 _ => {

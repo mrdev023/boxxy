@@ -92,18 +92,16 @@ pub(super) fn setup_gestures(
     });
     terminal.add_controller(middle_gesture);
 
-    let gesture = gtk::GestureClick::new();
-    gesture.set_button(gdk::BUTTON_SECONDARY);
-    gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-
-    let term_for_click = terminal.clone();
+    // Right-click context menu is driven by the terminal engine's ownership
+    // decision (inside boxxy-vte's click_gesture).  When the engine decides
+    // the terminal owns the right-click (no mouse-reporting mode active, or
+    // Shift is held), it calls this callback instead of forwarding to the PTY.
+    let term_for_menu = terminal.clone();
     let app_menu_clone = app_menu.clone();
-    gesture.connect_pressed(move |gesture: &gtk::GestureClick, _n_press, x, y| {
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-
+    terminal.on_context_menu(move |x, y| {
         let mut path_to_copy = None;
 
-        if let Some(hyperlink) = term_for_click.check_hyperlink_at(x, y) {
+        if let Some(hyperlink) = term_for_menu.check_hyperlink_at(x, y) {
             let hyper_str = hyperlink.to_string();
             if hyper_str.starts_with("file://") {
                 if let Some(after_scheme) = hyper_str.strip_prefix("file://") {
@@ -119,7 +117,7 @@ pub(super) fn setup_gestures(
                 path_to_copy = Some(hyper_str);
             }
         } else {
-            let (match_opt, _tag, _) = term_for_click.check_match_at(x, y);
+            let (match_opt, _tag, _) = term_for_menu.check_match_at(x, y);
             if let Some(matched) = match_opt {
                 let matched_str = matched.to_string();
 
@@ -136,7 +134,7 @@ pub(super) fn setup_gestures(
         }
 
         let mut is_maximized = false;
-        let mut current = term_for_click.parent();
+        let mut current = term_for_menu.parent();
         while let Some(parent) = current {
             if parent.widget_name() == "maximized-container" {
                 is_maximized = true;
@@ -149,12 +147,11 @@ pub(super) fn setup_gestures(
         let ctx = AppMenuContext {
             is_maximized,
             path_to_copy,
-            has_selection: term_for_click.has_selection(),
+            has_selection: term_for_menu.has_selection(),
         };
 
         app_menu_clone.show(rect, ctx);
     });
-    terminal.add_controller(gesture);
 
     terminal.set_allow_hyperlink(true);
 

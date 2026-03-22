@@ -10,7 +10,7 @@ The crate uses a deeply modular structure to manage the complexity of terminal p
 The leaf component representing a single terminal instance. Modularized into:
 - **`pane/mod.rs`**: Main component entry and public API. Handles configuration updates and state synchronization (e.g. inactive pane dimming).
 - **`pane/ui.rs`**: Core widget initialization using `gtk::Overlay`, `gtk::ScrolledWindow`, and the `SearchBarComponent`.
-- **`pane/gestures.rs`**: Input handling, including middle-click paste, context menus, and focus tracking.
+- **`pane/gestures.rs`**: Input handling, including middle-click paste, focus tracking, and context menu wiring. Right-click ownership logic lives entirely in `boxxy-vte`; this file registers a callback via `terminal.on_context_menu(...)` to receive the event only when the terminal (not the running app) owns the click.
 - **`pane/events.rs`**: VTE signal wiring and PTY event routing.
 - **`pane/claw.rs`**: Integration with the `boxxy-claw` actor model. Manages in-terminal popovers, status indicators, and handles structured `ToolResult` events for rendering a read-only debug log in the sidebar.
 - **`pane/preview.rs`**: OSC 8 hyperlink media previews (hover/click detection).

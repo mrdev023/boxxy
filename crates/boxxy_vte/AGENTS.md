@@ -52,6 +52,10 @@ The `TerminalWidget` GObject wrapper.
 | `on_cwd_changed(f)` | Register a callback for OSC 7 (primary) and /proc (fallback) CWD updates. |
 | `on_title_changed(f)` | Fired on OSC 0/2 title events. |
 | `on_bell(f)` / `on_exit(f)` | Fired on terminal bell and child process exit. |
+| `on_context_menu(f)` | Register a callback fired when the terminal decides a right-click belongs to the terminal (not the running app). Receives `(x, y)` in widget coordinates. |
+| `copy_clipboard()` | Synchronously copies the current selection to the clipboard via `RenderState::selection_text()`. |
+| `paste_clipboard()` / `paste_primary()` | Paste from clipboard/primary selection with automatic bracketed-paste wrapping (`\x1b[200~...\x1b[201~`) when the app has enabled `BRACKETED_PASTE` mode. |
+| `is_mouse_mode()` | Returns `true` if the running app has enabled any mouse-reporting mode (1000/1002/1003). |
 
 ---
 
@@ -73,3 +77,4 @@ The `TerminalWidget` GObject wrapper.
 - **Kitty Graphics Protocol:** Natively supports Kitty images (`_G` APC sequences) including zero-copy shared memory (`t=s`) rendering for raw RGB/RGBA buffers, `z-index` background/foreground layer ordering, image deletion, and High-DPI scaling directly through GTK4 memory textures.
 - **GSK Rendering:** Optimized GTK4 scene graph snapshots for high-performance text rendering.
 - **Keyboard Protocols:** Supports modern terminal keyboard protocols including CSI u.
+- **Mouse Ownership:** The internal `click_gesture` always calls `gesture.set_state(Claimed)` to prevent click events from bubbling to parent widgets. Ownership is decided by `MOUSE_MODE` only (not `is_alt_screen`) — apps must explicitly enable mouse reporting to receive clicks.

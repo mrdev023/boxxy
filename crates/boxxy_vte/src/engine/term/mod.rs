@@ -89,6 +89,51 @@ impl RenderState {
         &self.cells[(row as usize) * self.columns + point.column.0]
     }
 
+    /// Extract the selected text directly from the render-state cell grid.
+    ///
+    /// This runs on the GTK thread without any async round-trip to the event
+    /// loop.  It only covers the cells currently in the visible buffer, which
+    /// is sufficient for alt-screen apps (Fresh, vim, …) and normal selections
+    /// that haven't scrolled into history.
+    pub fn selection_text(&self) -> Option<String> {
+        let range = self.selection_range?;
+        let mut res = String::new();
+
+        for line_idx in range.start.line.0..=range.end.line.0 {
+            let row = line_idx + self.display_offset;
+            if row < 0 || row as usize >= self.screen_lines {
+                continue;
+            }
+            let row = row as usize;
+
+            let start_col = if line_idx == range.start.line.0 {
+                range.start.column.0
+            } else {
+                0
+            };
+            let end_col = if line_idx == range.end.line.0 {
+                range.end.column.0
+            } else {
+                self.columns.saturating_sub(1)
+            };
+
+            let mut line_str = String::new();
+            for col in start_col..=end_col {
+                if col < self.columns {
+                    let ch = self.cells[row * self.columns + col].c;
+                    line_str.push(if ch == '\0' { ' ' } else { ch });
+                }
+            }
+
+            res += line_str.trim_end();
+            if line_idx != range.end.line.0 {
+                res += "\n";
+            }
+        }
+
+        if res.is_empty() { None } else { Some(res) }
+    }
+
     pub fn calculate_character_delta(&self, start: Point, end: Point) -> isize {
         let mut char_delta = 0isize;
         let cur_line = start.line.0;
