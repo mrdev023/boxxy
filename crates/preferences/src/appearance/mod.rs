@@ -38,10 +38,9 @@ pub fn setup_appearance_page(
     let hide_scrollbars_switch: adw::SwitchRow = builder.object("hide_scrollbars_switch").unwrap();
     let invert_scroll_switch: adw::SwitchRow = builder.object("invert_scroll_switch").unwrap();
     let dim_inactive_switch: adw::SwitchRow = builder.object("dim_inactive_switch").unwrap();
-    let always_show_tabs_switch: adw::SwitchRow =
-        builder.object("always_show_tabs_switch").unwrap();
     let fixed_width_tabs_switch: adw::SwitchRow =
         builder.object("fixed_width_tabs_switch").unwrap();
+    let colored_tabs_switch: adw::SwitchRow = builder.object("colored_tabs_switch").unwrap();
     let chat_width_spin: adw::SpinRow = builder.object("chat_width_spin").unwrap();
 
     let group_appearance: adw::PreferencesGroup = builder.object("group_appearance").unwrap();
@@ -344,18 +343,6 @@ pub fn setup_appearance_page(
         }
     });
 
-    always_show_tabs_switch.set_active(settings_rc.borrow().always_show_tabs);
-    let s_rc = settings_rc.clone();
-    let cb = on_change.clone();
-    always_show_tabs_switch.connect_active_notify(move |row| {
-        let mut s = s_rc.borrow_mut();
-        if s.always_show_tabs != row.is_active() {
-            s.always_show_tabs = row.is_active();
-            s.save();
-            cb(s.clone());
-        }
-    });
-
     fixed_width_tabs_switch.set_active(settings_rc.borrow().fixed_width_tabs);
     let s_rc = settings_rc.clone();
     let cb = on_change.clone();
@@ -363,6 +350,18 @@ pub fn setup_appearance_page(
         let mut s = s_rc.borrow_mut();
         if s.fixed_width_tabs != row.is_active() {
             s.fixed_width_tabs = row.is_active();
+            s.save();
+            cb(s.clone());
+        }
+    });
+
+    colored_tabs_switch.set_active(settings_rc.borrow().colored_tabs);
+    let s_rc = settings_rc.clone();
+    let cb = on_change.clone();
+    colored_tabs_switch.connect_active_notify(move |row| {
+        let mut s = s_rc.borrow_mut();
+        if s.colored_tabs != row.is_active() {
+            s.colored_tabs = row.is_active();
             s.save();
             cb(s.clone());
         }
@@ -457,8 +456,8 @@ pub fn setup_appearance_page(
     let hide_scrollbars_switch_clone = hide_scrollbars_switch.clone();
     let invert_scroll_switch_clone = invert_scroll_switch.clone();
     let dim_inactive_switch_clone = dim_inactive_switch.clone();
-    let always_show_tabs_switch_clone = always_show_tabs_switch.clone();
     let fixed_width_tabs_switch_clone = fixed_width_tabs_switch.clone();
+    let colored_tabs_switch_clone = colored_tabs_switch.clone();
     let chat_width_spin_clone = chat_width_spin.clone();
     let color_scheme_combo_clone = color_scheme_combo.clone();
     let opacity_row_clone = opacity_row.clone();
@@ -490,6 +489,10 @@ pub fn setup_appearance_page(
             opacity_row_clone.upcast_ref(),
             "opacity transparent background",
         );
+        let c_tabs = match_row(
+            colored_tabs_switch_clone.upcast_ref(),
+            "new tab in random color colored tabs auto color",
+        );
         let t2 = match_row(padding_spin_clone.upcast_ref(), "padding px");
         let t3 = match_row(line_spacing_spin_clone.upcast_ref(), "line spacing");
         let t4 = match_row(col_spacing_spin_clone.upcast_ref(), "column spacing");
@@ -519,10 +522,6 @@ pub fn setup_appearance_page(
             dim_inactive_switch_clone.upcast_ref(),
             "dim inactive panes terminal splits slightly",
         );
-        let l4 = match_row(
-            always_show_tabs_switch_clone.upcast_ref(),
-            "always show tab bar",
-        );
         let l5 = match_row(
             fixed_width_tabs_switch_clone.upcast_ref(),
             "fixed width tabs do not expand",
@@ -532,10 +531,10 @@ pub fn setup_appearance_page(
             "sidebar width px hacky mouse resize overlay split view",
         );
 
-        group_appearance.set_visible(s1 || f1 || t_bg || t1 || t_op);
+        group_appearance.set_visible(s1 || f1 || t_bg || t1 || t_op || c_tabs);
         group_terminal.set_visible(t2 || t3 || t4 || t5);
         group_cursor.set_visible(c1 || c3 || c4);
-        group_layout.set_visible(pb || l1 || l2 || l3 || l4 || l5 || l6);
+        group_layout.set_visible(pb || l1 || l2 || l3 || l5 || l6);
 
         group_appearance.is_visible()
             || group_terminal.is_visible()

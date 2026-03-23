@@ -249,8 +249,6 @@ impl AppWindow {
             content_toolbar,
             content_header,
             bell_indicator,
-            single_tab_title,
-            header_title_stack,
             menu_btn,
             tab_bar,
             claw_indicator,
@@ -284,25 +282,10 @@ impl AppWindow {
         });
 
         let tx_focus2 = tx.clone();
-        tab_view.connect_selected_page_notify(move |_| {
+        let tab_view_for_focus = tab_view.clone();
+        tab_view_for_focus.connect_selected_page_notify(move |_| {
             let _ = tx_focus2.send_blocking(AppInput::FocusActiveTerminal);
         });
-
-        let tv_weak = tab_view.downgrade();
-        let tx_move = tx.clone();
-        let _ = TabContextMenu::new(
-            &tab_view,
-            &window,
-            move |page| {
-                if let Some(tv) = tv_weak.upgrade() {
-                    tv.close_page(&page);
-                }
-            },
-            move |page| {
-                let key = page.child().as_ptr() as usize;
-                let _ = tx_move.send_blocking(AppInput::MoveTabToNewWindowRequest(key));
-            },
-        );
 
         setup_actions(&window, tx.clone());
         boxxy_keybindings::bind_shortcuts(app);
@@ -336,9 +319,7 @@ impl AppWindow {
             window: window.clone(),
             tabs: Vec::new(),
             tab_view,
-            tab_bar,
-            single_tab_title,
-            header_title_stack,
+            tab_bar: tab_bar.clone(),
             content_header,
             _split_view: split_view,
             sidebar_toolbar,
@@ -371,15 +352,45 @@ impl AppWindow {
 
         let inner_ref = Rc::new(RefCell::new(inner));
 
-        let tab_bar_opt = inner_ref
-            .borrow()
-            .header_title_stack
-            .child_by_name("tabs")
-            .and_then(|w| w.downcast::<adw::TabBar>().ok());
+        let tv_weak = inner_ref.borrow().tab_view.downgrade();
+        let tx_move = tx.clone();
+        let tx_color = tx.clone();
+        let tx_title = tx.clone();
 
-        if let Some(tab_bar) = tab_bar_opt {
-            inner_ref.borrow_mut().tab_bar = tab_bar;
-        }
+        let inner_for_menu = inner_ref.clone();
+        // The tab bar to attach the gesture to
+        let context_tab_bar = inner_ref.borrow().tab_bar.clone();
+        let context_tab_view = inner_ref.borrow().tab_view.clone();
+        let _ = TabContextMenu::new(
+            &context_tab_bar,
+            &context_tab_view,
+            move |page| {
+                if let Some(tv) = tv_weak.upgrade() {
+                    tv.close_page(&page);
+                }
+            },
+            move |page| {
+                let key = page.child().as_ptr() as usize;
+                let _ = tx_move.send_blocking(AppInput::MoveTabToNewWindowRequest(key));
+            },
+            move |page, color| {
+                let key = page.child().as_ptr() as usize;
+                let _ = tx_color.send_blocking(AppInput::SetTabColor(key, color));
+            },
+            move |page, title| {
+                let key = page.child().as_ptr() as usize;
+                let _ = tx_title.send_blocking(AppInput::SetTabTitle(key, title));
+            },
+            move |page| {
+                let inner = inner_for_menu.borrow();
+                let key = page.child().as_ptr() as usize;
+                inner
+                    .tabs
+                    .iter()
+                    .find(|t| t.controller.widget().as_ptr() as usize == key)
+                    .and_then(|t| t.custom_title.clone())
+            },
+        );
 
         let tab_view_clone1 = inner_ref.borrow().tab_view.clone();
         let tx_detach = tx.clone();
@@ -584,8 +595,6 @@ impl AppWindow {
         adw::ToolbarView,
         adw::HeaderBar,
         gtk::Image,
-        adw::WindowTitle,
-        gtk::Stack,
         gtk::Button,
         adw::TabBar,
         gtk::Button,
@@ -602,21 +611,12 @@ impl AppWindow {
         content_header.add_css_class("content-header");
 
         let tab_bar = adw::TabBar::builder()
-            .autohide(!current_settings.always_show_tabs)
-            .expand_tabs(!current_settings.fixed_width_tabs)
+            .autohide(false)
+            .expand_tabs(false) // Will be synced in sync_header_title
             .view(tab_view)
             .build();
 
-        let single_tab_title = adw::WindowTitle::builder().title("Terminal").build();
-
-        let header_title_stack = gtk::Stack::builder()
-            .transition_type(gtk::StackTransitionType::None)
-            .build();
-        header_title_stack.add_named(&tab_bar, Some("tabs"));
-        header_title_stack.add_named(&single_tab_title, Some("title"));
-        header_title_stack.set_visible_child_name("title");
-
-        content_header.set_title_widget(Some(&header_title_stack));
+        content_header.set_title_widget(Some(&tab_bar));
 
         let toggle_sidebar_btn = gtk::Button::builder()
             .icon_name("sidebar-show-symbolic")
@@ -705,8 +705,6 @@ impl AppWindow {
             content_toolbar,
             content_header,
             bell_indicator,
-            single_tab_title,
-            header_title_stack,
             menu_btn,
             tab_bar,
             claw_indicator,

@@ -38,6 +38,15 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         AppInput::MoveTabToNewWindowRequest(key) => {
             tabs::move_tab_to_new_window_request(&mut inner, key);
         }
+        AppInput::SetTabColor(key, color) => {
+            tabs::set_tab_color(&mut inner, key, color);
+        }
+        AppInput::SetTabTitle(key, title) => {
+            tabs::set_tab_title(&mut inner, key, title);
+        }
+        AppInput::SyncTabColors => {
+            tabs::sync_tab_colors(&mut inner);
+        }
         AppInput::AdoptOrphanTabs => {
             tabs::adopt_orphan_tabs(&mut inner);
         }

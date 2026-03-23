@@ -13,12 +13,60 @@ use std::rc::Rc;
 use crate::init::TerminalController;
 use crate::widgets::notification::Notification;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum TabColor {
+    Default,
+    Blue,
+    Teal,
+    Green,
+    Yellow,
+    Orange,
+    Red,
+    Pink,
+    Purple,
+    Slate,
+}
+
+impl TabColor {
+    pub fn all() -> &'static [TabColor] {
+        &[
+            TabColor::Blue,
+            TabColor::Teal,
+            TabColor::Green,
+            TabColor::Yellow,
+            TabColor::Orange,
+            TabColor::Red,
+            TabColor::Pink,
+            TabColor::Purple,
+            TabColor::Slate,
+        ]
+    }
+
+    pub fn as_css_class(&self) -> Option<&'static str> {
+        match self {
+            TabColor::Default => None,
+            TabColor::Blue => Some("tab-blue"),
+            TabColor::Teal => Some("tab-teal"),
+            TabColor::Green => Some("tab-green"),
+            TabColor::Yellow => Some("tab-yellow"),
+            TabColor::Orange => Some("tab-orange"),
+            TabColor::Red => Some("tab-red"),
+            TabColor::Pink => Some("tab-pink"),
+            TabColor::Purple => Some("tab-purple"),
+            TabColor::Slate => Some("tab-slate"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum AppInput {
     NewWindow,
     NewTab,
     CloseTabRequest(usize),
     MoveTabToNewWindowRequest(usize),
+    SetTabColor(usize, TabColor),
+    SetTabTitle(usize, Option<String>),
+    SyncTabColors,
     CloseTab(String),
     CloseActiveTab,
     HandleTerminalEvent(Option<TerminalEvent>),
@@ -86,8 +134,6 @@ pub struct AppWindowInner {
     pub tabs: Vec<TerminalController>,
     pub tab_view: adw::TabView,
     pub tab_bar: adw::TabBar,
-    pub single_tab_title: adw::WindowTitle,
-    pub header_title_stack: gtk::Stack,
     pub content_header: adw::HeaderBar,
     pub _split_view: adw::OverlaySplitView,
     pub sidebar_toolbar: adw::ToolbarView,

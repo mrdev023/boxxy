@@ -3,6 +3,8 @@ use libadwaita;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use crate::state::TabColor;
+
 thread_local! {
     pub static ORPHAN_TABS: RefCell<HashMap<String, TerminalController>> = RefCell::new(HashMap::new());
 }
@@ -12,6 +14,8 @@ pub struct TerminalController {
     pub controller: TerminalComponent,
     pub id: String,
     pub cwd: Option<String>,
+    pub tab_color: TabColor,
+    pub custom_title: Option<String>,
 }
 
 pub struct AppInit {

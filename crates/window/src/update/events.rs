@@ -14,16 +14,18 @@ pub fn handle_terminal_event(
     if let Some(pos) = inner.tabs.iter().position(|c| c.id == event.id) {
         match event.kind {
             TerminalEventKind::TitleChanged(title) => {
-                let widget = inner.tabs[pos].controller.widget();
-                let page = inner.tab_view.page(widget);
-                page.set_title(&title);
-                if Some(&page) != inner.tab_view.selected_page().as_ref() {
-                    page.set_indicator_icon(Some(&gtk4::gio::ThemedIcon::new(
-                        "visual-bell-symbolic",
-                    )));
-                    page.set_indicator_activatable(false);
+                if inner.tabs[pos].custom_title.is_none() {
+                    let widget = inner.tabs[pos].controller.widget();
+                    let page = inner.tab_view.page(widget);
+                    page.set_title(&title);
+                    if Some(&page) != inner.tab_view.selected_page().as_ref() {
+                        page.set_indicator_icon(Some(&gtk4::gio::ThemedIcon::new(
+                            "visual-bell-symbolic",
+                        )));
+                        page.set_indicator_activatable(false);
+                    }
+                    super::tabs::sync_header_title(inner);
                 }
-                super::tabs::sync_header_title(inner);
             }
             TerminalEventKind::DirectoryChanged(path) => {
                 inner.tabs[pos].cwd = Some(path);

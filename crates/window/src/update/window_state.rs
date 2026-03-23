@@ -137,9 +137,6 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
         tab.controller.update_settings(settings.clone(), variant);
     }
 
-    inner.tab_bar.set_autohide(!settings.always_show_tabs);
-    inner.tab_bar.set_expand_tabs(!settings.fixed_width_tabs);
-
     if inner.sidebar_toolbar.width_request() != settings.ai_chat_width {
         inner
             .sidebar_toolbar

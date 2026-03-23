@@ -230,6 +230,12 @@
                                     </child>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="colored_tabs_switch">
+                                    <property name="title" translatable="yes">New Tab in Random Color</property>
+                                    <property name="subtitle" translatable="yes">Assign a random color to new terminal tabs automatically</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>
@@ -318,14 +324,7 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="AdwSwitchRow" id="always_show_tabs_switch">
-                                    <property name="title" translatable="yes">Always Show Tab Bar</property>
-                                    <property name="subtitle" translatable="yes">Show the tab bar even with only one tab</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwSwitchRow" id="fixed_width_tabs_switch">
-                                    <property name="title" translatable="yes">Fixed Width Tabs</property>
+                                  <object class="AdwSwitchRow" id="fixed_width_tabs_switch">                                    <property name="title" translatable="yes">Fixed Width Tabs</property>
                                     <property name="subtitle" translatable="yes">Do not expand tabs to fill the entire tab bar</property>
                                   </object>
                                 </child>

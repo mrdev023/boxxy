@@ -241,10 +241,7 @@ fn generate_gtk_css(v: &PaletteVariant) -> String {
         r#"
 .terminal-header {{
     background-color: {bg};
-    background-image: none;
     color: {fg};
-    border-color: transparent;
-    box-shadow: none;
 }}
 
 .terminal-header tabbar {{
@@ -253,17 +250,14 @@ fn generate_gtk_css(v: &PaletteVariant) -> String {
 
 .terminal-header tabbar tab {{
     background-color: {bg};
-    background-image: none;
     color: {fg};
-    border-color: transparent;
-    box-shadow: none;
 }}
 
 .terminal-header tabbar tab:selected {{
     background-color: {surface};
-    background-image: none;
     color: {fg};
     font-weight: bold;
+    border-color: transparent;
 }}
 "#
     )

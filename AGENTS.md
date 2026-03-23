@@ -25,6 +25,7 @@ To prevent UI starvation and zombie processes, the application utilizes a **sing
 
 ### 3. UI & Resource Management
 - **Declarative UI:** Do NOT write massive XML strings inside Rust source code. Always extract GTK widget trees into `.ui` XML files located in the `resources/ui/` directory.
+- **GTK CSS Specificity:** Avoid using `!important` in CSS files. GTK's CSS engine does not reliably support it; instead, use higher selector specificity (e.g., `tabbar tab.color` instead of just `.color`) to override default styles.
 - **GResource Integration:** Register all `.ui`, `.md` (prompts), `.css`, and icon files in `resources/resources.gresource.xml`. Load them at runtime via `gtk::Builder::from_resource` or `gio::resources_lookup_data`.
 - **Build Automation:** Ensure all resources are tracked in `crates/app/build.rs` for automatic recompilation.
 

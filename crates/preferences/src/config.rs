@@ -116,7 +116,6 @@ pub struct Settings {
     pub cursor_blinking: bool,
     pub hide_scrollbars: bool,
     pub dim_inactive_panes: bool,
-    pub always_show_tabs: bool,
     pub fixed_width_tabs: bool,
     pub api_keys: std::collections::HashMap<String, String>,
     pub ollama_base_url: String,
@@ -139,6 +138,7 @@ pub struct Settings {
     pub enable_web_tools: bool,
     pub enable_clipboard_tools: bool,
     pub enable_progress_bar: bool,
+    pub colored_tabs: bool,
 }
 
 impl Default for Settings {
@@ -161,7 +161,6 @@ impl Default for Settings {
             cursor_blinking: true,
             hide_scrollbars: false,
             dim_inactive_panes: false,
-            always_show_tabs: false,
             fixed_width_tabs: false,
             api_keys: std::collections::HashMap::new(),
             ollama_base_url: "http://localhost:11434".to_string(),
@@ -184,6 +183,7 @@ impl Default for Settings {
             enable_web_tools: true,
             enable_clipboard_tools: true,
             enable_progress_bar: true,
+            colored_tabs: false,
         }
     }
 }
