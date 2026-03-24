@@ -1,0 +1,20 @@
+[package]
+name = "boxxy-msgbar"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gtk4.workspace = true
+glib.workspace = true
+log.workspace = true
+tokio.workspace = true
+boxxy-preferences = { path = "../preferences" }
+boxxy-claw = { path = "../boxxy_claw" }
+boxxy-ai-core = { path = "../ai_core" }
+uuid = { workspace = true, features = ["v4"] }
+base64 = "0.22"

@@ -253,6 +253,33 @@ impl TerminalWidget {
         imp.cursor_color.replace(color.copied());
         self.queue_draw();
     }
+
+    /// Returns the exact pixel rectangle of the cursor relative to the widget's top-left corner.
+    pub fn get_cursor_rect(&self) -> Option<gtk4::graphene::Rect> {
+        let imp = self.imp();
+        let backend = imp.backend.borrow();
+        let backend = backend.as_ref()?;
+        let state = backend.render_state.load();
+
+        let display_offset = state.display_offset;
+        let cp = state.cursor_point;
+        let cr = cp.line.0 + display_offset;
+
+        if cr >= 0 && cr < state.screen_lines as i32 {
+            let (char_width, char_height) = imp.get_char_size(self);
+            let padding = imp.padding.get() as f64;
+            let x = (cp.column.0 as f64 * char_width + padding) as f32;
+            let y = (cr as f64 * char_height + padding) as f32;
+            Some(gtk4::graphene::Rect::new(
+                x,
+                y,
+                char_width as f32,
+                char_height as f32,
+            ))
+        } else {
+            None
+        }
+    }
     // ── OSC 8 hyperlink detection ─────────────────────────────────────────────
 
     /// Return the OSC 8 URI attached to the terminal cell at pixel position
@@ -484,10 +511,6 @@ impl TerminalWidget {
 
     pub fn on_osc_133_d<F: Fn(Option<i32>) + 'static>(&self, f: F) {
         self.imp().osc_133_d_callback.replace(Some(Box::new(f)));
-    }
-
-    pub fn on_claw_query<F: Fn(String) + 'static>(&self, f: F) {
-        self.imp().claw_query_callback.replace(Some(Box::new(f)));
     }
 
     /// Register a callback invoked when the terminal engine decides the

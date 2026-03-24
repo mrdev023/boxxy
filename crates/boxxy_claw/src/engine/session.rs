@@ -188,9 +188,7 @@ impl ClawSession {
                     // 4. Announce Identity to UI
                     let _ = self
                         .tx_ui
-                        .send(ClawEngineEvent::Identity {
-                            agent_name: name,
-                        })
+                        .send(ClawEngineEvent::Identity { agent_name: name })
                         .await;
                 }
                 ClawMessage::Reload => {
@@ -276,6 +274,7 @@ impl ClawSession {
                                 self.state.clone(),
                                 self.tx_ui.clone(),
                                 None,
+                                vec![],
                             );
                         }
                     }
@@ -298,6 +297,7 @@ impl ClawSession {
                             self.state.clone(),
                             self.tx_ui.clone(),
                             None,
+                            vec![],
                         );
                     }
                 }
@@ -305,6 +305,7 @@ impl ClawSession {
                     query,
                     snapshot,
                     cwd,
+                    image_attachments,
                 } => {
                     current_dir = cwd.clone();
 
@@ -336,6 +337,7 @@ impl ClawSession {
                         self.state.clone(),
                         self.tx_ui.clone(),
                         None,
+                        image_attachments,
                     );
                 }
                 ClawMessage::FileWriteReply { approved } => {
@@ -372,6 +374,7 @@ impl ClawSession {
                     message,
                     snapshot,
                     cwd,
+                    image_attachments,
                 } => {
                     current_dir = cwd.clone();
                     debug!(
@@ -423,6 +426,7 @@ impl ClawSession {
                             self.state.clone(),
                             self.tx_ui.clone(),
                             None,
+                            image_attachments,
                         );
                     }
                 }
@@ -459,6 +463,7 @@ impl ClawSession {
                         self.state.clone(),
                         self.tx_ui.clone(),
                         Some(reply_tx),
+                        vec![],
                     );
                 }
                 ClawMessage::CancelPending => {
@@ -514,11 +519,13 @@ fn spawn_turn(
     state: Arc<Mutex<SessionState>>,
     tx_ui: async_channel::Sender<ClawEngineEvent>,
     delegate_reply_tx: Option<tokio::sync::oneshot::Sender<String>>,
+    image_attachments: Vec<String>,
 ) {
     let prompt_clone = prompt.to_string();
     let snapshot_clone = snapshot.to_string();
     let session_ctx_clone = session_ctx.to_string();
     let cwd_clone = cwd.clone();
+    let images_clone = image_attachments.clone();
 
     tokio::spawn(async move {
         if is_new_task {
@@ -680,7 +687,40 @@ fn spawn_turn(
             })
             .await;
 
-        match agent.chat(&full_prompt, history).await {
+        let mut user_msg = vec![rig::message::Message::User {
+            content: rig::OneOrMany::one(rig::message::UserContent::text(full_prompt.clone())),
+        }];
+
+        let mut is_multimodal = false;
+
+        if !images_clone.is_empty() {
+            // Rig requires multimodal content for images
+            let mut contents = vec![rig::message::UserContent::text(full_prompt.clone())];
+            for b64 in images_clone {
+                contents.push(rig::message::UserContent::image_base64(
+                    b64,
+                    Some(rig::message::ImageMediaType::PNG),
+                    None,
+                ));
+            }
+            if let Ok(many) = rig::OneOrMany::many(contents) {
+                user_msg = vec![rig::message::Message::User { content: many }];
+                is_multimodal = true;
+            }
+        }
+
+        // We temporarily adapt the ClawAgent to accept `Vec<Message>` for the current prompt
+        // instead of just `&str` since we need to send the multimodal `user_msg`.
+        let mut final_history = history.clone();
+
+        let query_for_chat = if is_multimodal {
+            final_history.push(user_msg.into_iter().next().unwrap());
+            ""
+        } else {
+            &full_prompt
+        };
+
+        match agent.chat(query_for_chat, final_history).await {
             Ok(response) => {
                 let _ = tx_ui
                     .send(ClawEngineEvent::AgentThinking {

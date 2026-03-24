@@ -10,15 +10,8 @@ Boxxy relies on your Shell and not injecting features to modify it. It is strong
 For Boxxy to track your current directory (essential for opening new tabs in the same folder), your shell needs to emit OSC 7 escape sequences. **Note:** If you use Fish, or if you are on a Linux distribution like Fedora/Ubuntu that pre-configures this for GNOME Terminal, you might not need to add the OSC 7 scripts below because your system already does it automatically!
 
 ```bash
-# Zsh Integration (~/.zshrc)
-
-# BoxxyClaw Integration
-function ?() {
-    printf "\033]777;BoxxyClaw;%s\033\\" "$*"
-}
-alias '??'='?'
-
-# CWD Tracking (OSC 7) - Only add if your distro doesn't do it automatically
+# Zsh CWD Tracking (OSC 7) - (~/.zshrc)
+# Only add if your distro doesn't do it automatically
 function chpwd() {
   printf "\e]7;file://%s%s\a" "$HOST" "$PWD"
 }
@@ -26,43 +19,12 @@ chpwd
 ```
 
 ```bash
-# Fish Integration (~/.config/fish/config.fish)
-
-# BoxxyClaw Integration
-function ?
-    printf "\033]777;BoxxyClaw;%s\033\\" "$argv"
-end
-function ??
-    ? $argv
-end
-
-# Fish automatically handles OSC 7 CWD tracking natively, no extra script needed!
-```
-
-```bash
-#NuShell Integration (~/.config/nushell/config.nu)
-
-#BoxxyClaw Integration 
-def "?" [...rest: string] {
-    print -n $"\e]777;BoxxyClaw;($rest | str join ' ')\e\\"
-}
-
-alias "??" = ?
-```
-
-```bash
-# Bash Integration (~/.bashrc)
-
-# BoxxyClaw Integration
-function ?() {
-    printf "\033]777;BoxxyClaw;%s\033\\" "$*"
-}
-alias ??='?'
-
-# CWD Tracking (OSC 7) - Only add if your distro doesn't do it automatically
+# Bash CWD Tracking (OSC 7) - (~/.bashrc)
+# Only add if your distro doesn't do it automatically
 PROMPT_COMMAND=${PROMPT_COMMAND:+"$PROMPT_COMMAND; "}'printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"'
 ```
-You can now type `? help me to debug my audio not working` to message `boxxy-claw`
+
+You can now press `Ctrl+/` anywhere in the terminal to open the **Boxxy Message Bar** and ask Boxxy-Claw for help! (e.g. "help me to debug my audio not working")
 
 ---
 

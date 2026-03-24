@@ -2,6 +2,7 @@ use super::PaneInner;
 use crate::PaneOutput;
 use boxxy_vte::terminal::TerminalWidget;
 use gtk4 as gtk;
+use gtk4::prelude::ToVariant;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -137,35 +138,13 @@ pub(super) fn wire_terminal_events(
             });
         }
     });
-
-    let tx_query_clone = claw_sender.clone();
-    let inner_for_query = inner.clone();
-    let active_clone_for_query = is_claw_active.clone();
-    terminal.on_claw_query(move |query| {
-        if !active_clone_for_query.get() {
-            return;
-        }
-        let tx = tx_query_clone.clone();
-        let pane = inner_for_query.borrow().terminal.clone();
-        let cwd = inner_for_query
-            .borrow()
-            .working_dir
-            .clone()
-            .unwrap_or_default();
-        gtk::glib::spawn_future_local(async move {
-            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                let _ = tx
-                    .send(boxxy_claw::engine::ClawMessage::ClawQuery {
-                        query,
-                        snapshot,
-                        cwd,
-                    })
-                    .await;
-            }
-        });
+    let terminal_for_menu = terminal.clone();
+    terminal.on_context_menu(move |x, y| {
+        let app_menu_action = "win.show-app-menu-at".to_string();
+        let variant = (x, y, app_menu_action).to_variant();
+        let _ = terminal_for_menu.activate_action("win.show-app-menu-at", Some(&variant));
     });
 
-    // Auto-cancel pending proposals when the user types in the terminal
     let key_controller = gtk::EventControllerKey::new();
     key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
     let tx_cancel_typing = claw_sender.clone();

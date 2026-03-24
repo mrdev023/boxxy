@@ -507,9 +507,6 @@ pub trait Handler {
     /// OSC 133 N: Implicit termination
     fn osc_133_n(&mut self, _cl: Option<String>) {}
 
-    /// Custom OSC 777: BoxxyClaw
-    fn claw_query(&mut self, _query: String) {}
-
     /// OSC 9;4 Progress Bar
     fn set_progress(&mut self, _state: u8, _progress: u8) {}
 
@@ -1379,17 +1376,6 @@ where
                     return;
                 }
                 unhandled(params);
-            }
-
-            // Custom notifications (OSC 777)
-            b"777" => {
-                if params.len() >= 3 && params[1] == b"BoxxyClaw" {
-                    if let Ok(query) = str::from_utf8(params[2]) {
-                        self.handler.claw_query(query.to_string());
-                    }
-                } else {
-                    unhandled(params);
-                }
             }
 
             // Shell Integration (OSC 133)

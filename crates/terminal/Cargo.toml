@@ -14,6 +14,7 @@ boxxy-preferences = { path = "../preferences" }
 boxxy-app-menu = { path = "../app_menu" }
 boxxy-themes = { path = "../themes" }
 boxxy-ai-core = { path = "../ai_core" }
+boxxy-msgbar = { path = "../boxxy_msgbar" }
 boxxy-agent = { path = "../boxxy_agent" }
 boxxy-claw = { path = "../boxxy_claw" }
 boxxy-viewer = { path = "../viewer" }

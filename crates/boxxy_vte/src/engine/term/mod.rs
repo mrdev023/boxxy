@@ -2964,11 +2964,6 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn claw_query(&mut self, query: String) {
-        self.event_proxy.send_event(Event::ClawQuery(query));
-    }
-
-    #[inline]
     fn set_title(&mut self, title: Option<String>) {
         trace!("Setting title to '{title:?}'");
 

@@ -234,7 +234,7 @@ impl BoxxyAgent {
 
         let emitter = emitter.to_owned();
         let tracked_pids = self.tracked_pids.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
             let mut last_process_name = String::new();
@@ -271,7 +271,6 @@ impl BoxxyAgent {
 
         Ok(pid)
     }
-
 
     async fn get_cwd(&self, pid: u32) -> fdo::Result<String> {
         let link_path = format!("/proc/{}/cwd", pid);

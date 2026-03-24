@@ -43,7 +43,7 @@ pub struct TerminalOverlay {
 impl TerminalOverlay {
     pub fn new<
         F1: Fn(String) + 'static,
-        F2: Fn(String) + 'static,
+        F2: Fn((String, Vec<String>)) + 'static,
         F3: Fn(bool) + 'static,
         F4: Fn(crate::TerminalProposal) + 'static,
         F5: Fn(OverlayMode) + 'static,
@@ -309,7 +309,7 @@ impl TerminalOverlay {
         let do_reply = move || {
             let text = reply_entry_clone.text().to_string();
             if !text.is_empty() {
-                on_reply_clone(text);
+                on_reply_clone((text, vec![]));
                 reply_entry_clone.set_text("");
                 p_clone3.set_reveal_child(false);
             }

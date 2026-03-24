@@ -20,12 +20,14 @@ pub enum ClawMessage {
         query: String,
         snapshot: String,
         cwd: String,
+        image_attachments: Vec<String>, // Base64 encoded PNGs
     },
     /// The user sent a message from the UI (e.g. popover reply).
     UserMessage {
         message: String,
         snapshot: String,
         cwd: String,
+        image_attachments: Vec<String>,
     },
     /// The user clicked Approve or Reject on a file write proposal.
     FileWriteReply { approved: bool },

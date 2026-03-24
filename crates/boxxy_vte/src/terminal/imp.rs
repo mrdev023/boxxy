@@ -37,7 +37,6 @@ pub type Osc133ACallback = Box<dyn Fn() + 'static>;
 pub type Osc133BCallback = Box<dyn Fn() + 'static>;
 pub type Osc133CCallback = Box<dyn Fn() + 'static>;
 pub type Osc133DCallback = Box<dyn Fn(Option<i32>) + 'static>;
-pub type ClawQueryCallback = Box<dyn Fn(String) + 'static>;
 pub type ContextMenuCallback = Box<dyn Fn(f64, f64) + 'static>;
 
 pub struct TerminalWidget {
@@ -79,7 +78,6 @@ pub struct TerminalWidget {
     pub osc_133_b_callback: RefCell<Option<Osc133BCallback>>,
     pub osc_133_c_callback: RefCell<Option<Osc133CCallback>>,
     pub osc_133_d_callback: RefCell<Option<Osc133DCallback>>,
-    pub claw_query_callback: RefCell<Option<ClawQueryCallback>>,
     pub context_menu_callback: RefCell<Option<ContextMenuCallback>>,
     pub last_cwd: RefCell<Option<String>>,
     pub kitty_textures: RefCell<HashMap<u32, gtk4::gdk::Texture>>,
@@ -129,7 +127,6 @@ impl Default for TerminalWidget {
             osc_133_b_callback: RefCell::new(None),
             osc_133_c_callback: RefCell::new(None),
             osc_133_d_callback: RefCell::new(None),
-            claw_query_callback: RefCell::new(None),
             context_menu_callback: RefCell::new(None),
             last_cwd: RefCell::new(None),
             kitty_textures: RefCell::new(HashMap::new()),
@@ -360,7 +357,9 @@ impl ObjectImpl for TerminalWidget {
             obj,
             move |gesture, n_press, x, y| {
                 let imp = obj.imp();
-                obj.grab_focus();
+                if obj.is_focusable() {
+                    obj.grab_focus();
+                }
                 // Claim the sequence immediately so parent widgets (e.g. OverlaySplitView)
                 // don't also handle this click via their own GestureClick controllers.
                 gesture.set_state(gtk4::EventSequenceState::Claimed);
@@ -769,11 +768,6 @@ impl TerminalWidget {
                         Event::Osc133D(ec) => {
                             if let Some(f) = widget.imp().osc_133_d_callback.borrow().as_ref() {
                                 f(ec);
-                            }
-                        }
-                        Event::ClawQuery(q) => {
-                            if let Some(f) = widget.imp().claw_query_callback.borrow().as_ref() {
-                                f(q);
                             }
                         }
                         Event::ResetTitle => {

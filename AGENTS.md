@@ -71,7 +71,10 @@ Provides a structured library of high-level tools for Boxxy agents, completely d
 ### 9. `boxxy-preferences` (Library Crate)
 Settings management using an `AdwNavigationSplitView` architecture. UI is defined in `resources/ui/preferences.ui` and supports real-time search filtering.
 
-### 10. `boxxy-model-selection` (Library Crate)
+### 10. `boxxy-msgbar` (Library Crate)
+Provides the `MsgBarComponent`, an inline GTK input overlay for interacting with Boxxy-Claw. Triggered globally via `Ctrl+/`, it anchors a native text entry precisely over the active terminal cursor. It features a robust GTK-based autocompletion system (`AutocompleteController`) for `@agent` names and seamlessly inherits the active terminal theme's background and foreground colors.
+
+### 11. `boxxy-model-selection` (Library Crate)
 Data-driven model configuration UI. Uses a registry pattern to dynamically build selection dialogs and dropdowns based on registered `AiProvider` traits. Decouples AI capability discovery from the main application window.
 
 ## Distribution & Updates

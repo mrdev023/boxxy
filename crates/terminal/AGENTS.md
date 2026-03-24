@@ -22,6 +22,7 @@ The container component representing a single Tab.
 
 ## Key Features
 - **Dynamic Splits**: Supports infinite vertical and horizontal terminal splits.
+- **MsgBar Input**: Uses `boxxy_msgbar::MsgBarComponent` triggered by `Ctrl+/` to provide an inline, native GTK input directly over the active terminal cursor. This is the primary method for sending queries securely to the agent, providing rich autocompletion.
 - **Seamless Background Images**: A single background image spans the entire tab seamlessly across all transparent terminal splits. 
 - **Agent Integration**: Seamlessly routes terminal context (CWD, snapshots) and real-time foreground process changes (via D-Bus signals) to the Claw agent. Explicitly manages tracking lifecycle to ensure zero overhead when Claw is disabled.
 - **Modern Hyperlinks**: Native OSC 8 support with robust media previews.

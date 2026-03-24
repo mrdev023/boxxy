@@ -701,6 +701,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxxy-msgbar"
+version = "0.0.28"
+dependencies = [
+ "base64",
+ "boxxy-ai-core",
+ "boxxy-claw",
+ "boxxy-preferences",
+ "glib",
+ "gtk4",
+ "log",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "boxxy-preferences"
 version = "0.0.28"
 dependencies = [
@@ -747,6 +762,7 @@ dependencies = [
  "boxxy-ai-core",
  "boxxy-app-menu",
  "boxxy-claw",
+ "boxxy-msgbar",
  "boxxy-preferences",
  "boxxy-themes",
  "boxxy-viewer",

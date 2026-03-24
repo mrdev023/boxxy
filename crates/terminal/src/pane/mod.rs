@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::search_bar::SearchBarComponent;
+use boxxy_msgbar::MsgBarComponent;
 use boxxy_vte::terminal::TerminalWidget;
 
 use crate::is_flatpak;
@@ -38,6 +39,7 @@ pub struct TerminalPaneComponent {
     claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
     claw_message_list: gtk::ListBox,
     is_claw_active: Rc<Cell<bool>>,
+    msg_bar: Rc<MsgBarComponent>,
 }
 
 pub(super) struct PaneInner {
@@ -173,6 +175,45 @@ impl TerminalPaneComponent {
             callback.clone(),
             id.clone(),
         );
+        let msg_bar = {
+            let tx_msg = claw_sender.clone();
+            let inner_rc_for_msg = Rc::downgrade(&inner);
+            let inner_rc_for_cancel = Rc::downgrade(&inner);
+            Rc::new(MsgBarComponent::new(
+                move |(query, images)| {
+                    if let Some(inner_arc) = inner_rc_for_msg.upgrade() {
+                        let tx = tx_msg.clone();
+                        let pane = inner_arc.borrow().terminal.clone();
+                        let cwd = inner_arc.borrow().working_dir.clone().unwrap_or_default();
+
+                        pane.set_focusable(true);
+                        pane.grab_focus();
+
+                        gtk::glib::spawn_future_local(async move {
+                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::ClawQuery {
+                                        query,
+                                        snapshot,
+                                        cwd,
+                                        image_attachments: images,
+                                    })
+                                    .await;
+                            }
+                        });
+                    }
+                },
+                move || {
+                    if let Some(inner_arc) = inner_rc_for_cancel.upgrade() {
+                        let pane = inner_arc.borrow().terminal.clone();
+                        pane.set_focusable(true);
+                        pane.grab_focus();
+                    }
+                },
+            ))
+        };
+        widget.add_overlay(&msg_bar.widget);
+
         let (claw_popover, claw_indicator, pending_proactive_diagnosis) = claw::setup_claw(
             &widget,
             &inner,
@@ -184,13 +225,29 @@ impl TerminalPaneComponent {
             init.spawn_intent,
         );
 
-        // Focus toggle hotkey (Ctrl + `)
+        // Focus toggle hotkey (Ctrl + `) and MsgBar hotkey (Ctrl + /)
         let focus_toggle_handler = gtk::EventControllerKey::new();
         focus_toggle_handler.set_propagation_phase(gtk::PropagationPhase::Capture);
         let terminal_clone = terminal.clone();
         let popover_clone = claw_popover.clone();
+        let msg_bar_clone = msg_bar.clone();
         focus_toggle_handler.connect_key_pressed(move |_, keyval, _keycode, state| {
             let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+
+            if is_ctrl && keyval == gtk::gdk::Key::slash {
+                if let Some(rect) = terminal_clone.get_cursor_rect() {
+                    terminal_clone.set_focusable(false); // Prevent clicks from stealing focus
+                    msg_bar_clone.show_at_y(rect.y() as i32, rect.height() as i32);
+                    // Use a micro-delay to let GTK process the visibility change
+                    // before attempting to steal focus from the TerminalWidget.
+                    let entry_clone = msg_bar_clone.entry.clone();
+                    gtk::glib::spawn_future_local(async move {
+                        entry_clone.grab_focus();
+                    });
+                }
+                return gtk::glib::Propagation::Stop;
+            }
+
             let is_grave = keyval == gtk::gdk::Key::dead_grave || keyval == gtk::gdk::Key::grave;
 
             if is_ctrl && is_grave {
@@ -228,6 +285,7 @@ impl TerminalPaneComponent {
             claw_sender,
             claw_message_list,
             is_claw_active,
+            msg_bar,
         }
     }
 
@@ -587,6 +645,7 @@ impl TerminalPaneComponent {
                 settings.font_name, settings.font_size
             ));
             inner.terminal.set_font(Some(&font_desc));
+            self.msg_bar.apply_font(&font_desc);
         }
 
         if needs_padding {

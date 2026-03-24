@@ -259,6 +259,22 @@ fn generate_gtk_css(v: &PaletteVariant) -> String {
     font-weight: bold;
     border-color: transparent;
 }}
+
+.boxxy-msgbar {{
+    background-color: {surface};
+    color: {fg};
+}}
+
+.boxxy-msgbar entry {{
+    color: {fg};
+}}
+
+.autocomplete-popover contents {{
+    background-color: {surface};
+    color: {fg};
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}}
 "#
     )
 }

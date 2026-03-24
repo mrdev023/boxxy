@@ -30,9 +30,6 @@ pub enum Event {
     Osc133C,
     Osc133D(Option<i32>),
 
-    /// Custom OSC 777;BoxxyClaw query
-    ClawQuery(String),
-
     /// Progress bar update (OSC 9;4)
     ProgressChanged {
         state: u8,
@@ -106,7 +103,6 @@ impl Debug for Event {
             Event::ProgressChanged { state, progress } => {
                 write!(f, "ProgressChanged({state}, {progress})")
             }
-            Event::ClawQuery(query) => write!(f, "ClawQuery({query})"),
             Event::ResetColor => write!(f, "ResetColor"),
         }
     }

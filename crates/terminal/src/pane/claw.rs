@@ -34,6 +34,7 @@ pub(super) fn setup_claw(
                         message: intent,
                         snapshot,
                         cwd,
+                        image_attachments: vec![],
                     })
                     .await;
             }
@@ -61,7 +62,7 @@ pub(super) fn setup_claw(
                 inner.borrow().terminal.grab_focus();
             }
         },
-        move |reply| {
+        move |(reply, image_attachments)| {
             let tx = tx_user_reply.clone();
             let inner_opt = inner_clone_for_reply.upgrade();
             if let Some(inner) = inner_opt {
@@ -75,6 +76,7 @@ pub(super) fn setup_claw(
                                 message: reply,
                                 snapshot,
                                 cwd,
+                                image_attachments,
                             })
                             .await;
                     }

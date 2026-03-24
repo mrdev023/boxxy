@@ -58,6 +58,10 @@ pub const CLAW_TOGGLE_FOCUS: Keybinding = Keybinding {
     trigger: "<Ctrl>grave",
     action_name: "win.claw-focus",
 };
+pub const MESSAGE_BAR: Keybinding = Keybinding {
+    trigger: "<Ctrl>slash",
+    action_name: "win.message-bar", // Note: handled manually in pane/mod.rs
+};
 
 pub const SPLIT_DOWN: Keybinding = Keybinding {
     trigger: "<Ctrl><Shift>e",
@@ -121,7 +125,8 @@ pub fn get_shortcuts_by_category() -> Vec<ShortcutCategory> {
                 ("Close Tab", CLOSE_TAB),
                 ("Command Palette", COMMAND_PALETTE),
                 ("Toggle Sidebar", TOGGLE_SIDEBAR),
-                ("Focus Claw", CLAW_TOGGLE_FOCUS),
+                ("Ask Boxxy-Claw", MESSAGE_BAR),
+                ("Focus Sidebar", CLAW_TOGGLE_FOCUS),
                 ("Preferences", PREFERENCES),
             ],
         },
