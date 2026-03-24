@@ -4,7 +4,6 @@ members = [
     "crates/sidebar",
     "crates/ai_core",
     "crates/app",
-    "crates/app_menu",
     "crates/command_palette",
     "crates/keybindings",
     "crates/preferences",

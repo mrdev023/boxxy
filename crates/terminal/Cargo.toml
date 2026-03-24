@@ -11,7 +11,6 @@ gtk4.workspace = true
 libadwaita.workspace = true
 boxxy-vte = { path = "../boxxy_vte" }
 boxxy-preferences = { path = "../preferences" }
-boxxy-app-menu = { path = "../app_menu" }
 boxxy-themes = { path = "../themes" }
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-msgbar = { path = "../boxxy_msgbar" }

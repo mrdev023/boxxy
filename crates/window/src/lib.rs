@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod app_menu;
 pub mod boxxyclaw_indicator_popover;
 pub mod init;
 pub mod state;

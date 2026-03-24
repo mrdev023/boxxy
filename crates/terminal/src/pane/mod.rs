@@ -16,6 +16,7 @@ use crate::{PaneInit, PaneOutput};
 use crate::claw_indicator::ClawIndicator;
 use crate::overlay::{OverlayMode, TerminalOverlay};
 
+mod app_menu;
 mod badge;
 mod claw;
 mod events;

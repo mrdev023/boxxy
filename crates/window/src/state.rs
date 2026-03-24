@@ -1,4 +1,4 @@
-use boxxy_app_menu::AppMenuComponent;
+use crate::app_menu::AppMenuComponent;
 use boxxy_bookmarks::{sidebar::BookmarksSidebarComponent, tab::BookmarksTabComponent};
 use boxxy_claw::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;

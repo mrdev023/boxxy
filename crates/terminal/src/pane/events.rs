@@ -138,12 +138,6 @@ pub(super) fn wire_terminal_events(
             });
         }
     });
-    let terminal_for_menu = terminal.clone();
-    terminal.on_context_menu(move |x, y| {
-        let app_menu_action = "win.show-app-menu-at".to_string();
-        let variant = (x, y, app_menu_action).to_variant();
-        let _ = terminal_for_menu.activate_action("win.show-app-menu-at", Some(&variant));
-    });
 
     let key_controller = gtk::EventControllerKey::new();
     key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);

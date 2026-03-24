@@ -12,7 +12,6 @@ libadwaita.workspace = true
 boxxy-terminal = { path = "../terminal" }
 boxxy-preferences = { path = "../preferences" }
 boxxy-keybindings = { path = "../keybindings" }
-boxxy-app-menu = { path = "../app_menu" }
 boxxy-themes = { path = "../themes" }
 boxxy-sidebar = { path = "../sidebar" }
 boxxy-claw = { path = "../boxxy_claw" }

@@ -1,6 +1,6 @@
+use super::app_menu::{AppMenuComponent, AppMenuContext};
 use crate::PaneOutput;
 use crate::search_bar::SearchBarComponent;
-use boxxy_app_menu::{AppMenuComponent, AppMenuContext};
 use boxxy_vte::terminal::TerminalWidget;
 use gtk4 as gtk;
 use gtk4::prelude::*;

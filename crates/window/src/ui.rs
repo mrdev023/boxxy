@@ -7,7 +7,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use boxxy_app_menu::AppMenuComponent;
 use boxxy_bookmarks::manager::{BOOKMARKS_EVENT_BUS, BookmarksManager};
 use boxxy_bookmarks::sidebar::BookmarksSidebarComponent;
 use boxxy_claw::ClawSidebarComponent;
@@ -17,6 +16,7 @@ use boxxy_sidebar::AiSidebarComponent;
 use boxxy_themes::ThemeSelectorComponent;
 
 use crate::actions::setup_actions;
+use crate::app_menu::AppMenuComponent;
 use crate::init::AppInit;
 use crate::state::{AppInput, AppWindowInner};
 use crate::tab_menu::TabContextMenu;

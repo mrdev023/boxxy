@@ -100,7 +100,7 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
                 false
             };
 
-            let ctx = boxxy_app_menu::AppMenuContext {
+            let ctx = crate::app_menu::AppMenuContext {
                 is_maximized: inner.app_state.is_maximized,
                 path_to_copy: None,
                 has_selection,
