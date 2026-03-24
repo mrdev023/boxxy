@@ -25,6 +25,9 @@ pub trait Agent {
 
     #[zbus(signal)]
     async fn exited(&self, pid: u32, exit_code: i32) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn foreground_process_changed(&self, pid: u32, process_name: String) -> zbus::Result<()>;
 }
 
 #[proxy(
@@ -55,6 +58,48 @@ pub struct SpawnOptions {
 
 #[derive(Default)]
 pub struct BoxxyAgent;
+
+impl BoxxyAgent {
+    /// Internal helper to read the foreground process from /proc without &self.
+    fn get_foreground_process_internal(pid: u32) -> fdo::Result<String> {
+        let stat_path = format!("/proc/{}/stat", pid);
+        let stat_content = match std::fs::read_to_string(&stat_path) {
+            Ok(c) => c,
+            Err(_) => return Ok("".to_string()),
+        };
+
+        let rp_pos = stat_content.rfind(')').unwrap_or(0);
+        if rp_pos == 0 || rp_pos + 2 >= stat_content.len() {
+            return Ok("".to_string());
+        }
+
+        let rest = &stat_content[rp_pos + 2..];
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.len() < 6 {
+            return Ok("".to_string());
+        }
+
+        let pgrp: u32 = parts[2].parse().unwrap_or(0);
+        let tpgid: u32 = parts[5].parse().unwrap_or(0);
+
+        if tpgid == 0 || tpgid == pgrp {
+            return Ok("".to_string());
+        }
+
+        let tpgid_stat_path = format!("/proc/{}/stat", tpgid);
+        if let Ok(tpgid_stat) = std::fs::read_to_string(&tpgid_stat_path) {
+            let lp_pos = tpgid_stat.find('(');
+            let rp_pos = tpgid_stat.rfind(')');
+            if let (Some(lp), Some(rp)) = (lp_pos, rp_pos)
+                && rp > lp
+            {
+                return Ok(tpgid_stat[lp + 1..rp].to_string());
+            }
+        }
+
+        Ok("".to_string())
+    }
+}
 
 #[interface(name = "play.mii.Boxxy.Agent")]
 impl BoxxyAgent {
@@ -176,12 +221,29 @@ impl BoxxyAgent {
 
         let emitter = emitter.to_owned();
         tokio::spawn(async move {
-            let status = child.wait().await;
-            let exit_code = match status {
-                Ok(s) => s.code().unwrap_or(0),
-                Err(_) => -1,
-            };
-            let _ = BoxxyAgent::exited(&emitter, pid, exit_code).await;
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
+            let mut last_process_name = String::new();
+
+            loop {
+                tokio::select! {
+                    status = child.wait() => {
+                        let exit_code = match status {
+                            Ok(s) => s.code().unwrap_or(0),
+                            Err(_) => -1,
+                        };
+                        let _ = BoxxyAgent::exited(&emitter, pid, exit_code).await;
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        if let Ok(current_process) = Self::get_foreground_process_internal(pid) {
+                            if current_process != last_process_name {
+                                let _ = BoxxyAgent::foreground_process_changed(&emitter, pid, current_process.clone()).await;
+                                last_process_name = current_process;
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         Ok(pid)
@@ -196,45 +258,11 @@ impl BoxxyAgent {
     }
 
     async fn get_foreground_process(&self, pid: u32) -> fdo::Result<String> {
-        let stat_path = format!("/proc/{}/stat", pid);
-        let stat_content = match std::fs::read_to_string(&stat_path) {
-            Ok(c) => c,
-            Err(_) => return Ok("".to_string()),
-        };
-
-        let rp_pos = stat_content.rfind(')').unwrap_or(0);
-        if rp_pos == 0 || rp_pos + 2 >= stat_content.len() {
-            return Ok("".to_string());
-        }
-
-        let rest = &stat_content[rp_pos + 2..];
-        let parts: Vec<&str> = rest.split_whitespace().collect();
-        if parts.len() < 6 {
-            return Ok("".to_string());
-        }
-
-        let pgrp: u32 = parts[2].parse().unwrap_or(0);
-        let tpgid: u32 = parts[5].parse().unwrap_or(0);
-
-        if tpgid == 0 || tpgid == pgrp {
-            return Ok("".to_string());
-        }
-
-        let tpgid_stat_path = format!("/proc/{}/stat", tpgid);
-        if let Ok(tpgid_stat) = std::fs::read_to_string(&tpgid_stat_path) {
-            let lp_pos = tpgid_stat.find('(');
-            let rp_pos = tpgid_stat.rfind(')');
-            if let (Some(lp), Some(rp)) = (lp_pos, rp_pos)
-                && rp > lp
-            {
-                return Ok(tpgid_stat[lp + 1..rp].to_string());
-            }
-        }
-
-        Ok("".to_string())
+        Self::get_foreground_process_internal(pid)
     }
 
     async fn get_running_processes(&self, pid: u32) -> fdo::Result<Vec<(u32, String)>> {
+
         let mut all_procs = Vec::new();
         if let Ok(entries) = std::fs::read_dir("/proc") {
             for entry in entries.flatten() {
@@ -299,4 +327,11 @@ impl BoxxyAgent {
 
     #[zbus(signal)]
     async fn exited(emitter: &SignalEmitter<'_>, pid: u32, exit_code: i32) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    async fn foreground_process_changed(
+        emitter: &SignalEmitter<'_>,
+        pid: u32,
+        process_name: String,
+    ) -> zbus::Result<()>;
 }

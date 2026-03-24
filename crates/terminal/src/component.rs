@@ -364,6 +364,16 @@ impl TerminalComponent {
                     });
                 }
             }
+            PaneOutput::ForegroundProcessChanged(id, process_name) => {
+                let inner = self.inner.borrow();
+                if inner.active_pane_id == id {
+                    let term_id = inner.id.clone();
+                    let _ = TERMINAL_EVENT_BUS.send(TerminalEvent {
+                        id: term_id,
+                        kind: TerminalEventKind::ForegroundProcessChanged(process_name),
+                    });
+                }
+            }
         }
     }
 

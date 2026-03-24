@@ -52,6 +52,8 @@ pub enum ClawMessage {
         prompt: String,
         reply_tx: tokio::sync::oneshot::Sender<String>,
     },
+    /// The foreground process in the terminal changed.
+    ForegroundProcessChanged { process_name: String },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

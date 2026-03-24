@@ -49,7 +49,8 @@ pub fn handle_terminal_event(
             TerminalEventKind::Osc133A
             | TerminalEventKind::Osc133B
             | TerminalEventKind::Osc133C
-            | TerminalEventKind::Osc133D(_, _) => {}
+            | TerminalEventKind::Osc133D(_, _)
+            | TerminalEventKind::ForegroundProcessChanged(_) => {}
             TerminalEventKind::PaneFocused(_) => {
                 let widget = inner.tabs[pos].controller.widget();
                 let page = inner.tab_view.page(widget);

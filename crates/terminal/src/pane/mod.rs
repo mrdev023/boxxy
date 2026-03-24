@@ -318,6 +318,7 @@ impl TerminalPaneComponent {
     pub fn spawn(&self) {
         let inner_rc = self.inner.clone();
         let id = self.id();
+        let claw_sender = self.claw_sender.clone();
 
         glib::spawn_future_local(async move {
             let settings = inner_rc
@@ -396,6 +397,40 @@ impl TerminalPaneComponent {
                                                 ));
                                             }
                                             break;
+                                        }
+                                    }
+                                });
+                            }
+
+                            let _inner_weak_fg = Rc::downgrade(&inner_rc);
+                            let claw_tx = claw_sender.clone();
+                            if let Ok(mut stream) =
+                                agent.proxy().receive_foreground_process_changed().await
+                            {
+                                let id_for_fg = id.clone();
+                                glib::spawn_future_local(async move {
+                                    use futures_util::StreamExt;
+                                    while let Some(signal) = stream.next().await {
+                                        if let Ok(args) = signal.args()
+                                            && args.pid == pid
+                                        {
+                                            // Update AI Engine immediately
+                                            let _ = claw_tx
+                                                .send(
+                                                    boxxy_claw::engine::ClawMessage::ForegroundProcessChanged {
+                                                        process_name: args.process_name.clone(),
+                                                    },
+                                                )
+                                                .await;
+
+                                            // Notify UI for overlays/indicators
+                                            if let Some(inner) = _inner_weak_fg.upgrade() {
+                                                let cb = inner.borrow().callback.clone();
+                                                cb(PaneOutput::ForegroundProcessChanged(
+                                                    id_for_fg.clone(),
+                                                    args.process_name,
+                                                ));
+                                            }
                                         }
                                     }
                                 });

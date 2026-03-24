@@ -163,6 +163,14 @@ impl ClawSession {
                         *self.db.lock().await = Some(db);
                     }
                 }
+                ClawMessage::ForegroundProcessChanged { process_name } => {
+                    let status = if process_name.is_empty() {
+                        None
+                    } else {
+                        Some(format!("Running: {}", process_name))
+                    };
+                    workspace.set_pane_status(self.pane_id.clone(), status).await;
+                }
                 ClawMessage::CommandFinished {
                     exit_code,
                     snapshot,
