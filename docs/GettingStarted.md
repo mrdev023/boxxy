@@ -68,7 +68,7 @@ You can now type `? help me to debug my audio not working` to message `boxxy-cla
 
 ## Model Selection
 
-Boxxy currently supports [Gemini](https://aistudio.google.com/), [Claude](https://platform.claude.com/) and local Ollama connections, but more providers will come. However Boxxy for now is strongly tested and optimized for the Gemini family. From Preferences -> APIs, add your connection strings. Then, press `Ctrl+Shift+P` to open the Command Palette. Type "models" and in the Model Selection dialog select the model you want to use for both Claw, AI Chat and Memories.
+Boxxy currently supports [Gemini](https://aistudio.google.com/), [Claude](https://platform.claude.com/) and local [Ollama](https://ollama.com/) connections, but more providers will come. However Boxxy for now is strongly tested and optimized for the Gemini family. From Preferences -> APIs, add your connection strings. Then, press `Ctrl+Shift+P` to open the Command Palette. Type "models" and in the Model Selection dialog select the model you want to use for both Claw, AI Chat and Memories.
 
 Memories is an extra model that can match prompt queries to SQL FTS; Use a fast model like Gemini Flash Lite with "Minimal" thinking level.  
 
@@ -76,7 +76,7 @@ Memories is an extra model that can match prompt queries to SQL FTS; Use a fast 
 
 ## Enable Claw Mode
 
-By default all Boxxy windows start with Claw Mode Off. Enable Claw from the Claw icon on headerbar. Now, all Tabs and Split panes will use ClawAgents. Every pane starts its own agent. So, from pane (UUID1) you can ask the agent what pane (UUID2) agent does, and let them debate (that's a planned feature basically!)
+By default all Boxxy windows start with Claw Mode Off. Enable Claw from the Claw icon on headerbar. Now, all Tabs and Split panes will use ClawAgents. Every pane starts its own agent. So, from agent_a running in pane_a you can ask the  what agent_b does in pane_b, and let them debate (that's a planned feature basically!); or you can ask agent_a to tell agent_b to do something..
 
 ---
 
@@ -91,6 +91,10 @@ Lazy Mode is the default, and it will only create a response if you ask for it (
 Boxxy's goal is to provide a non-distracting experience directly in terminal view; We are not there  just yet 😪 You can disable Boxxy Popovers and only use BoxxyClaw in sidebar; That also provides a more verbose experience, so, sometimes you may want to use both!
 
 ---
+
+## Bookmarks
+
+Access Bookmarks via the Command Palette to create your own Shell or Python scripts. Boxxy automatically registers your saved bookmarks as quick-actions in the Command Palette for lightning-fast execution. Need dynamic inputs? You can define runtime variables using the `{{{my_var}}}` syntax and fill them out right when you invoke the script.
 
 ## Set Skills
 

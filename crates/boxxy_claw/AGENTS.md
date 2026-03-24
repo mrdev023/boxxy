@@ -36,4 +36,6 @@ The crate uses an **Actor Model** mixed with a **Shared-Everything State** strat
   - **Context Hygiene**: Includes LLM-powered Semantic Query Expansion, LRU Hygiene (decaying stale memories over 30 days), Project-Scoped Context, Token-Based Budgeting, and Bidirectional Markdown Sync (`MEMORY.md`) with a User Verification Loop.
 
 ## Directives
-- **Lazy Loading**: By default, BoxxyClaw (and its database/background tasks) MUST NOT run when the application starts. The AI engine should only be loaded into memory and spawned when the user explicitly requests to use the AI. This keeps the terminal as lightweight as possible.
+- **Lazy Loading & Lifecycle**: BoxxyClaw follows a strict two-stage initialization to keep the terminal lightweight:
+  1. **Identity Phase (`Initialize`):** When Claw mode is toggled ON, the session actor receives an `Initialize` message. It immediately generates a fresh agent name (e.g., "Capable Tragopan"), clears history, and announces its identity to the UI so badges can appear instantly.
+  2. **Resource Phase:** Heavy background resources (SQLite Database, Skill Loading, RAG) MUST NOT be loaded until the first actual user request (e.g., `? hello`). This ensures simply having Claw mode "On" doesn't consume excessive memory or CPU.

@@ -1,20 +1,17 @@
 Boxxy is largely developed with agents. The easiest way to start developing Boxxy is to clone the repository and ask your agent to read the AGENTS.md to get familiar with the project. 
 
-While we do our best to review the generated code, we certainly miss some spots. It would be awesome if you could find those and have them fixed!
-
 ---
 
 ## Committing
 
-Because Boxxy is early in development, we care to speed things up as much as possible. So internally we use a private "dev" branch that we work in a bunch of things. When the task is ready, we squeeze all commits to a single BIG, and push in "main". It is still easy to understand the commit changes with an Agent though.
+Because Boxxy is early in development, we care to speed things up as much as possible. So internally we use a private "dev" branch that we work in a bunch of things. When a task is ready, we squeeze all commits to a single BIG, and push in "main". It is still easy to understand the commit changes with an Agent though.
 
 ---
 
 ## Contributing
 
-While your code contributions are more than welcome, due to the super rapid development in downstream (at least for now), they would be almost always impossible to get merged as it is. So, we can only add a reference to a PR in our commits
+While your code contributions are more than welcome, due to the super rapid development in downstream (at least for now), they would be almost always impossible to get merged as it is. In general we prefer "agentic" style PRs; Promtps with codes examples
 
-However, your software engineering values more! So if you have a software design suggestion, we are LISTENING!
 
 ---
 

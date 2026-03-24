@@ -74,7 +74,7 @@ Boxxy has very little use in the wild yet, so it won't **really** be a surprise 
 ---
 
 ## Roadmap
- - **Boxxy Scripts.** Let Boxxy create and run scripts for completing tasks
+ - **Persistent Agents.** Resume previous sessions and agent interactions even after closing the terminal
  - **Voice.** Speech to Text, Text to Speech 
  - **Characters.** Add characters with voice cloning
  - **Boxxy Marketplace.** A repo that hosts community skills and characters
