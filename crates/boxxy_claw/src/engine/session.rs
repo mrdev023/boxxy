@@ -548,6 +548,13 @@ fn spawn_turn(
     let images_clone = image_attachments.clone();
 
     tokio::spawn(async move {
+        let _ = tx_ui
+            .send(ClawEngineEvent::AgentThinking {
+                agent_name: agent_name.clone(),
+                is_thinking: true,
+            })
+            .await;
+
         if is_new_task {
             if let Ok(mut lock) = state.try_lock() {
                 lock.history.clear();
@@ -699,13 +706,6 @@ fn spawn_turn(
 
         let history = state_lock.history.clone();
         drop(state_lock);
-
-        let _ = tx_ui
-            .send(ClawEngineEvent::AgentThinking {
-                agent_name: agent_name.clone(),
-                is_thinking: true,
-            })
-            .await;
 
         let mut user_msg = vec![rig::message::Message::User {
             content: rig::OneOrMany::one(rig::message::UserContent::text(full_prompt.clone())),
