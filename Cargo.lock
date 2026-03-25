@@ -555,6 +555,7 @@ dependencies = [
  "boxxy-model-selection",
  "rig-core",
  "serde",
+ "serde_json",
  "tokio",
 ]
 

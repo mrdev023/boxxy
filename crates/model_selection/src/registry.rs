@@ -1,4 +1,4 @@
-use crate::models::{AnthropicModel, GeminiModel, ModelProvider};
+use crate::models::{AnthropicModel, GeminiModel, ModelProvider, OpenAiModel};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
@@ -157,6 +157,74 @@ impl AiProvider for AnthropicProviderImpl {
     }
 }
 
+struct OpenAiProviderImpl;
+impl AiProvider for OpenAiProviderImpl {
+    fn name(&self) -> &'static str {
+        "OpenAI"
+    }
+    fn get_models(&self) -> Vec<String> {
+        OpenAiModel::all()
+            .into_iter()
+            .map(|m| m.to_string())
+            .collect()
+    }
+    fn supports_thinking(&self, _model_idx: u32) -> bool {
+        true
+    }
+    fn get_thinking_levels(&self, model_idx: u32) -> Vec<String> {
+        let am = OpenAiModel::all();
+        if let Some(m) = am.get(model_idx as usize) {
+            return m
+                .available_thinking_levels()
+                .into_iter()
+                .map(|l| l.to_string())
+                .collect();
+        }
+        vec![]
+    }
+    fn create_model_provider(
+        &self,
+        model_idx: u32,
+        _name: Option<String>,
+        thinking_idx: Option<u32>,
+    ) -> ModelProvider {
+        let am = OpenAiModel::all();
+        let model = am
+            .get(model_idx as usize)
+            .cloned()
+            .unwrap_or(OpenAiModel::Gpt5_4);
+        let levels = model.available_thinking_levels();
+        let thinking = thinking_idx
+            .and_then(|idx| levels.get(idx as usize))
+            .cloned();
+        ModelProvider::OpenAi(model, thinking)
+    }
+    fn sync_ui(
+        &self,
+        provider: &ModelProvider,
+        model_dropdown: &gtk::DropDown,
+        thinking_dropdown: &gtk::DropDown,
+        _model_list: &gtk::StringList,
+        thinking_list: &gtk::StringList,
+    ) {
+        if let ModelProvider::OpenAi(m, t) = provider {
+            let am = OpenAiModel::all();
+            if let Some(pos) = am.iter().position(|x| x == m) {
+                model_dropdown.set_selected(pos as u32);
+                thinking_list.splice(0, thinking_list.n_items(), &[]);
+                let levels = m.available_thinking_levels();
+                for l in &levels {
+                    thinking_list.append(&l.to_string());
+                }
+                if let Some(think) = t
+                    && let Some(t_pos) = levels.iter().position(|l| l == think) {
+                        thinking_dropdown.set_selected(t_pos as u32);
+                    }
+            }
+        }
+    }
+}
+
 struct OllamaProviderImpl;
 impl AiProvider for OllamaProviderImpl {
     fn name(&self) -> &'static str {
@@ -210,5 +278,6 @@ pub fn get_providers() -> Vec<Box<dyn AiProvider>> {
         Box::new(GeminiProviderImpl),
         Box::new(OllamaProviderImpl),
         Box::new(AnthropicProviderImpl),
+        Box::new(OpenAiProviderImpl),
     ]
 }

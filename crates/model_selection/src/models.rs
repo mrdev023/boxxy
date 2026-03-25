@@ -53,6 +53,8 @@ impl GeminiModel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThinkingLevel {
+    #[serde(rename = "none")]
+    None,
     #[serde(rename = "minimal")]
     Minimal,
     #[serde(rename = "low")]
@@ -61,15 +63,32 @@ pub enum ThinkingLevel {
     Medium,
     #[serde(rename = "high")]
     High,
+    #[serde(rename = "xhigh")]
+    XHigh,
 }
 
 impl fmt::Display for ThinkingLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ThinkingLevel::None => write!(f, "None"),
             ThinkingLevel::Minimal => write!(f, "Minimal"),
             ThinkingLevel::Low => write!(f, "Low"),
             ThinkingLevel::Medium => write!(f, "Medium"),
             ThinkingLevel::High => write!(f, "High"),
+            ThinkingLevel::XHigh => write!(f, "Extreme High"),
+        }
+    }
+}
+
+impl ThinkingLevel {
+    pub fn api_name(&self) -> &'static str {
+        match self {
+            ThinkingLevel::None => "none",
+            ThinkingLevel::Minimal => "minimal",
+            ThinkingLevel::Low => "low",
+            ThinkingLevel::Medium => "medium",
+            ThinkingLevel::High => "high",
+            ThinkingLevel::XHigh => "xhigh",
         }
     }
 }
@@ -104,11 +123,60 @@ impl AnthropicModel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OpenAiModel {
+    #[serde(rename = "gpt-5.4")]
+    Gpt5_4,
+    #[serde(rename = "gpt-5.4-mini")]
+    Gpt5_4Mini,
+    #[serde(rename = "gpt-5.4-nano")]
+    Gpt5_4Nano,
+}
+
+impl fmt::Display for OpenAiModel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpenAiModel::Gpt5_4 => write!(f, "GPT-5.4"),
+            OpenAiModel::Gpt5_4Mini => write!(f, "GPT-5.4 Mini"),
+            OpenAiModel::Gpt5_4Nano => write!(f, "GPT-5.4 Nano"),
+        }
+    }
+}
+
+impl OpenAiModel {
+    pub fn all() -> Vec<OpenAiModel> {
+        vec![
+            OpenAiModel::Gpt5_4,
+            OpenAiModel::Gpt5_4Mini,
+            OpenAiModel::Gpt5_4Nano,
+        ]
+    }
+
+    pub fn api_name(&self) -> &'static str {
+        match self {
+            OpenAiModel::Gpt5_4 => "gpt-5.4",
+            OpenAiModel::Gpt5_4Mini => "gpt-5.4-mini",
+            OpenAiModel::Gpt5_4Nano => "gpt-5.4-nano",
+        }
+    }
+
+    pub fn available_thinking_levels(&self) -> Vec<ThinkingLevel> {
+        vec![
+            ThinkingLevel::None,
+            ThinkingLevel::Low,
+            ThinkingLevel::Medium,
+            ThinkingLevel::High,
+            ThinkingLevel::XHigh,
+        ]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModelProvider {
     Gemini(GeminiModel, Option<ThinkingLevel>),
     Ollama(String),
     Anthropic(AnthropicModel),
+    OpenAi(OpenAiModel, Option<ThinkingLevel>),
 }
 
 impl ModelProvider {
@@ -117,6 +185,7 @@ impl ModelProvider {
             ModelProvider::Gemini(_, _) => "Gemini",
             ModelProvider::Ollama(_) => "Ollama",
             ModelProvider::Anthropic(_) => "Anthropic",
+            ModelProvider::OpenAi(_, _) => "OpenAI",
         }
     }
 }

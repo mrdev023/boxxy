@@ -19,6 +19,8 @@ use rig::completion::Chat;
 use rig::message::Message;
 use rig::providers::gemini;
 use rig::providers::ollama;
+use rig::providers::openai::responses_api::ResponsesCompletionModel;
+use serde_json::json;
 
 use boxxy_ai_core::AiCredentials;
 
@@ -26,6 +28,7 @@ pub enum ClawAgent {
     Gemini(Agent<gemini::CompletionModel>),
     Ollama(Agent<ollama::CompletionModel>),
     Anthropic(Agent<rig::providers::anthropic::completion::CompletionModel>),
+    OpenAi(Agent<ResponsesCompletionModel>),
     Error(String),
 }
 
@@ -39,6 +42,7 @@ impl ClawAgent {
             Self::Gemini(agent) => agent.chat(prompt, history).await,
             Self::Ollama(agent) => agent.chat(prompt, history).await,
             Self::Anthropic(agent) => agent.chat(prompt, history).await,
+            Self::OpenAi(agent) => agent.chat(prompt, history).await,
             Self::Error(e) => Err(rig::completion::PromptError::CompletionError(
                 rig::completion::CompletionError::ProviderError(e.clone()),
             )),
@@ -380,6 +384,113 @@ pub fn create_claw_agent(
             }
 
             ClawAgent::Anthropic(builder.build())
+        }
+        ModelProvider::OpenAi(model, thinking) => {
+            let key = creds.api_keys.get("OpenAI").cloned().unwrap_or_default();
+            let client = rig::providers::openai::Client::new(key.trim()).unwrap();
+            let openai_model = client.completion_model(model.api_name());
+
+            let mut builder = rig::agent::AgentBuilder::new(openai_model)
+                .preamble(system_prompt)
+                .default_max_turns(5)
+                .tool(SysShellTool {
+                    proxy: claw_proxy.clone(),
+                    current_dir: current_dir.to_string(),
+                })
+                .tool(crate::memories::MemoryStoreTool {
+                    db: db.clone(),
+                    current_dir: current_dir.to_string(),
+                })
+                .tool(TerminalCommandTool {
+                    tx_ui: tx_ui.clone(),
+                    state: state.clone(),
+                })
+                .tool(crate::engine::tools::scrollback::ReadScrollbackTool {
+                    tx_ui: tx_ui.clone(),
+                    state: state.clone(),
+                })
+                .tool(ActivateSkillTool)
+                .tool(ListActiveAgentsTool)
+                .tool(ReadPaneTool)
+                .tool(DelegateTaskTool {
+                    state: state.clone(),
+                })
+                .tool(SpawnAgentTool {
+                    tx_ui: tx_ui.clone(),
+                    state: state.clone(),
+                })
+                .tool(CloseAgentTool {
+                    tx_ui: tx_ui.clone(),
+                })
+                .tool(SendKeystrokesTool {
+                    tx_ui: tx_ui.clone(),
+                })
+                .tool(ListProcessesTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                })
+                .tool(SetGlobalIntentTool);
+
+            if let Some(level) = thinking {
+                builder = builder.additional_params(json!({
+                    "reasoning": { "effort": level.api_name() }
+                }));
+            }
+
+            // Conditional Core Toolbox tools
+            if settings.enable_file_tools {
+                builder = builder
+                    .tool(FileReadTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileWriteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(ListDirectoryTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                    })
+                    .tool(FileDeleteTool {
+                        proxy: claw_proxy.clone(),
+                        current_dir: current_dir.to_string(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            if settings.enable_system_tools {
+                builder = builder.tool(GetSystemInfoTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_dangerous_tools {
+                builder = builder.tool(KillProcessTool {
+                    proxy: claw_proxy.clone(),
+                    approval: approval_handler.clone(),
+                });
+            }
+
+            if settings.enable_web_tools {
+                builder = builder.tool(HttpFetchTool);
+            }
+
+            if settings.enable_clipboard_tools {
+                builder = builder
+                    .tool(GetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    })
+                    .tool(SetClipboardTool {
+                        proxy: claw_proxy.clone(),
+                        approval: approval_handler.clone(),
+                    });
+            }
+
+            ClawAgent::OpenAi(builder.build())
         }
     }
 }

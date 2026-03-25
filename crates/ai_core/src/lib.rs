@@ -2,6 +2,8 @@ use boxxy_model_selection::ModelProvider;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Prompt};
 use rig::message::Message;
+use rig::providers::openai::responses_api::ResponsesCompletionModel;
+use serde_json::json;
 
 pub mod utils;
 
@@ -11,6 +13,7 @@ pub enum BoxxyAgent {
     Gemini(rig::agent::Agent<rig::providers::gemini::CompletionModel>),
     Ollama(rig::agent::Agent<rig::providers::ollama::CompletionModel>),
     Anthropic(rig::agent::Agent<rig::providers::anthropic::completion::CompletionModel>),
+    OpenAi(rig::agent::Agent<ResponsesCompletionModel>),
     Error(String),
 }
 
@@ -24,6 +27,7 @@ impl BoxxyAgent {
             Self::Gemini(agent) => agent.chat(prompt, history).await,
             Self::Ollama(agent) => agent.chat(prompt, history).await,
             Self::Anthropic(agent) => agent.chat(prompt, history).await,
+            Self::OpenAi(agent) => agent.chat(prompt, history).await,
             Self::Error(e) => Err(rig::completion::PromptError::CompletionError(
                 rig::completion::CompletionError::ProviderError(e.clone()),
             )),
@@ -35,6 +39,7 @@ impl BoxxyAgent {
             Self::Gemini(agent) => agent.prompt(prompt).await,
             Self::Ollama(agent) => agent.prompt(prompt).await,
             Self::Anthropic(agent) => agent.prompt(prompt).await,
+            Self::OpenAi(agent) => agent.prompt(prompt).await,
             Self::Error(e) => Err(rig::completion::PromptError::CompletionError(
                 rig::completion::CompletionError::ProviderError(e.clone()),
             )),
@@ -105,6 +110,21 @@ pub fn create_agent(
                 .preamble(system_prompt)
                 .build();
             BoxxyAgent::Anthropic(agent)
+        }
+        ModelProvider::OpenAi(model, thinking) => {
+            let key = creds.api_keys.get("OpenAI").cloned().unwrap_or_default();
+            let client = rig::providers::openai::Client::new(key.trim()).unwrap();
+            let openai_model = client.completion_model(model.api_name());
+
+            let mut builder = rig::agent::AgentBuilder::new(openai_model).preamble(system_prompt);
+
+            if let Some(level) = thinking {
+                builder = builder.additional_params(json!({
+                    "reasoning": { "effort": level.api_name() }
+                }));
+            }
+
+            BoxxyAgent::OpenAi(builder.build())
         }
     }
 }
