@@ -131,10 +131,11 @@ pub async fn sync_markdown_to_db(db: Arc<Mutex<Option<Db>>>) -> anyhow::Result<(
                 let mut project_path = "global".to_string();
 
                 if line_content.starts_with('[')
-                    && let Some(end_idx) = line_content.find(']') {
-                        project_path = line_content[1..end_idx].trim().to_string();
-                        line_content = line_content[end_idx + 1..].trim();
-                    }
+                    && let Some(end_idx) = line_content.find(']')
+                {
+                    project_path = line_content[1..end_idx].trim().to_string();
+                    line_content = line_content[end_idx + 1..].trim();
+                }
 
                 let parts: Vec<&str> = line_content.splitn(2, ':').collect();
                 if parts.len() == 2 {

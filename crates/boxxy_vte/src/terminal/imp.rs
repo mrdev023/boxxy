@@ -430,18 +430,19 @@ impl ObjectImpl for TerminalWidget {
 
                     if gesture.current_button() == 1 {
                         if n_press == 1
-                            && let Some(seq) = state.calculate_navigation_sequence(point) {
-                                // Clear any existing selection so there's no lingering highlight.
-                                backend.set_selection(None);
-                                backend
-                                    .notifier
-                                    .0
-                                    .send(crate::engine::event_loop::Msg::Input(
-                                        std::borrow::Cow::Owned(seq.into_bytes()),
-                                    ))
-                                    .ok();
-                                return; // Don't start a selection — navigation is taking the click.
-                            }
+                            && let Some(seq) = state.calculate_navigation_sequence(point)
+                        {
+                            // Clear any existing selection so there's no lingering highlight.
+                            backend.set_selection(None);
+                            backend
+                                .notifier
+                                .0
+                                .send(crate::engine::event_loop::Msg::Input(
+                                    std::borrow::Cow::Owned(seq.into_bytes()),
+                                ))
+                                .ok();
+                            return; // Don't start a selection — navigation is taking the click.
+                        }
                         imp.mouse_pressed.set(true);
                         let st = match n_press {
                             1 => SelectionType::Simple,
@@ -799,14 +800,13 @@ impl TerminalWidget {
                             let widget_weak = widget.downgrade();
                             glib::spawn_future_local(async move {
                                 if let Ok(Some(text)) = cb.read_text_future().await
-                                    && let Some(widget) = widget_weak.upgrade() {
-                                        let response = formatter(&text);
-                                        if let Some(backend) =
-                                            widget.imp().backend.borrow().as_ref()
-                                        {
-                                            backend.write_to_pty(response.into_bytes());
-                                        }
+                                    && let Some(widget) = widget_weak.upgrade()
+                                {
+                                    let response = formatter(&text);
+                                    if let Some(backend) = widget.imp().backend.borrow().as_ref() {
+                                        backend.write_to_pty(response.into_bytes());
                                     }
+                                }
                             });
                         }
                         Event::ColorRequest(index, formatter) => {
@@ -937,10 +937,10 @@ impl TerminalWidget {
             if let Ok(Some(text)) = cb.read_text_future().await
                 && !text.is_empty()
                 && let Some(w) = ow.upgrade()
-                    && let Some(b) = w.imp().backend.borrow().as_ref()
-                {
-                    b.paste(text.to_string());
-                }
+                && let Some(b) = w.imp().backend.borrow().as_ref()
+            {
+                b.paste(text.to_string());
+            }
         });
     }
     pub(crate) fn search(&self, dir: crate::engine::index::Direction) {
@@ -1584,30 +1584,34 @@ impl WidgetImpl for TerminalWidget {
                     }
                     if let Some(cell_uri) =
                         state.cell(point).hyperlink().map(|h| h.uri().to_string())
-                        && hovered_uri.as_deref() == Some(cell_uri.as_str()) {
-                            snapshot.append_color(
-                                &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
-                                &gtk4::graphene::Rect::new(
-                                    col as f32 * char_width,
-                                    row as f32 * char_height + char_height - 1.5,
-                                    char_width,
-                                    1.5,
-                                ),
-                            );
-                        }
+                        && hovered_uri.as_deref() == Some(cell_uri.as_str())
+                    {
+                        snapshot.append_color(
+                            &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
+                            &gtk4::graphene::Rect::new(
+                                col as f32 * char_width,
+                                row as f32 * char_height + char_height - 1.5,
+                                char_width,
+                                1.5,
+                            ),
+                        );
+                    }
 
                     if let Some((r, start_c, end_c)) = self.hovered_regex_match.get()
-                        && r == row as usize && col >= start_c && col < end_c {
-                            snapshot.append_color(
-                                &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
-                                &gtk4::graphene::Rect::new(
-                                    col as f32 * char_width,
-                                    row as f32 * char_height + char_height - 1.5,
-                                    char_width,
-                                    1.5,
-                                ),
-                            );
-                        }
+                        && r == row as usize
+                        && col >= start_c
+                        && col < end_c
+                    {
+                        snapshot.append_color(
+                            &gtk4::gdk::RGBA::new(0.35, 0.75, 1.0, 1.0),
+                            &gtk4::graphene::Rect::new(
+                                col as f32 * char_width,
+                                row as f32 * char_height + char_height - 1.5,
+                                char_width,
+                                1.5,
+                            ),
+                        );
+                    }
                 }
             }
             if self.show_grid.get() {

@@ -75,9 +75,10 @@ impl SkillRegistry {
                         && matches!(
                             event.kind,
                             EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-                        ) {
-                            let _ = tx.send(());
-                        }
+                        )
+                    {
+                        let _ = tx.send(());
+                    }
                 });
 
                 match w {

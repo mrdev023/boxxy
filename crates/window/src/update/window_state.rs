@@ -182,7 +182,6 @@ pub fn sidebar_visible_changed(inner: &mut AppWindowInner, visible: bool) {
 }
 
 pub fn sidebar_page_changed(inner: &mut AppWindowInner, name: String) {
-    
     inner.app_state.active_sidebar_page = name;
     inner.app_state.save();
 }
@@ -229,7 +228,8 @@ pub fn show_ai_chat(inner: &mut AppWindowInner) {
     {
         split.set_show_sidebar(true);
     }
-    inner.view_stack.set_visible_child_name("ai_chat");
+    inner.view_stack.set_visible_child_name("assistant");
+    inner.ai_chat.grab_focus();
 }
 
 pub fn show_claw_sidebar(inner: &mut AppWindowInner) {

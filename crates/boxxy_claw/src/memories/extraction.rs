@@ -26,35 +26,36 @@ pub async fn extract_implicit_memory(
 
     if let Ok(response) = agent.prompt(&prompt).await
         && let Ok(json) = serde_json::from_str::<serde_json::Value>(&response)
-            && let Some(facts) = json.get("facts").and_then(|f| f.as_array())
-                && !facts.is_empty() {
-                    let db_guard = db.lock().await;
-                    if let Some(db_val) = db_guard.as_ref() {
-                        let store = Store::new(db_val.pool());
-                        for fact in facts {
-                            if let (Some(key), Some(content)) = (
-                                fact.get("key").and_then(|k| k.as_str()),
-                                fact.get("content").and_then(|c| c.as_str()),
-                            ) {
-                                // Implicitly extracted facts are NOT verified and NOT pinned
-                                let _ = store
-                                    .add_memory(
-                                        key,
-                                        Some(&project_path),
-                                        content,
-                                        Some("extracted"),
-                                        false,
-                                        false,
-                                    )
-                                    .await;
-                                info!(
-                                    "Background Observer extracted Fact for project {}: {} -> {}",
-                                    project_path, key, content
-                                );
-                            }
-                        }
-                        drop(db_guard);
-                        let _ = crate::memories::db::sync_memories_to_markdown(db.clone()).await;
-                    }
+        && let Some(facts) = json.get("facts").and_then(|f| f.as_array())
+        && !facts.is_empty()
+    {
+        let db_guard = db.lock().await;
+        if let Some(db_val) = db_guard.as_ref() {
+            let store = Store::new(db_val.pool());
+            for fact in facts {
+                if let (Some(key), Some(content)) = (
+                    fact.get("key").and_then(|k| k.as_str()),
+                    fact.get("content").and_then(|c| c.as_str()),
+                ) {
+                    // Implicitly extracted facts are NOT verified and NOT pinned
+                    let _ = store
+                        .add_memory(
+                            key,
+                            Some(&project_path),
+                            content,
+                            Some("extracted"),
+                            false,
+                            false,
+                        )
+                        .await;
+                    info!(
+                        "Background Observer extracted Fact for project {}: {} -> {}",
+                        project_path, key, content
+                    );
                 }
+            }
+            drop(db_guard);
+            let _ = crate::memories::db::sync_memories_to_markdown(db.clone()).await;
+        }
+    }
 }

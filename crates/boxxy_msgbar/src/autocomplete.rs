@@ -60,7 +60,7 @@ pub struct AutocompleteController {
 }
 
 impl AutocompleteController {
-    #[must_use] 
+    #[must_use]
     pub fn new(
         entry: &gtk::Entry,
         providers: Vec<Box<dyn CompletionProvider>>,
@@ -115,11 +115,12 @@ impl AutocompleteController {
                 for provider in &c_clone.providers {
                     let trigger = provider.trigger_char();
                     if let Some(idx) = text_before.rfind(trigger)
-                        && (idx == 0 || text_before.as_bytes()[idx - 1] == b' ') {
-                            let query = &text_before[idx + 1..];
-                            found_trigger = Some((provider, idx, query));
-                            break;
-                        }
+                        && (idx == 0 || text_before.as_bytes()[idx - 1] == b' ')
+                    {
+                        let query = &text_before[idx + 1..];
+                        found_trigger = Some((provider, idx, query));
+                        break;
+                    }
                 }
             }
 

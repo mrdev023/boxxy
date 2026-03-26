@@ -182,14 +182,14 @@ impl Updater {
         for entry in entries {
             if let Ok(entry) = entry
                 && entry.file_type()?.is_dir()
-                    && entry
-                        .file_name()
-                        .to_string_lossy()
-                        .starts_with("boxxy-terminal")
-                {
-                    inner_folder = Some(entry.path());
-                    break;
-                }
+                && entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("boxxy-terminal")
+            {
+                inner_folder = Some(entry.path());
+                break;
+            }
         }
 
         let inner_folder = inner_folder.context("Could not find extracted content folder")?;

@@ -116,15 +116,16 @@ pub fn setup_appearance_page(
             move |res| {
                 if let Ok(file) = res
                     && let Some(path) = file.path()
-                        && let Some(new_path) = boxxy_themes::copy_background_image(&path) {
-                            let mut s = s_rc.borrow_mut();
-                            s.background_image_path = Some(new_path);
-                            s.save();
-                            let s_clone = s.clone();
-                            drop(s);
-                            cb(s_clone);
-                            update_subtitle();
-                        }
+                    && let Some(new_path) = boxxy_themes::copy_background_image(&path)
+                {
+                    let mut s = s_rc.borrow_mut();
+                    s.background_image_path = Some(new_path);
+                    s.save();
+                    let s_clone = s.clone();
+                    drop(s);
+                    cb(s_clone);
+                    update_subtitle();
+                }
             },
         );
     });

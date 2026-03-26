@@ -88,50 +88,55 @@ pub async fn retrieve_memories(
 
         // 0. Always inject Pinned Memories first
         if let Ok(pinned_memories) = store.get_pinned_memories(Some(project_path)).await
-            && !pinned_memories.is_empty() {
-                result.push_str("\n--- PINNED FACTS (CRITICAL) ---\n");
-                for mem in pinned_memories {
-                    let line = format!("- {}: {}\n", mem.key, mem.content);
-                    result.push_str(&line);
-                    current_budget_chars += line.len();
-                }
+            && !pinned_memories.is_empty()
+        {
+            result.push_str("\n--- PINNED FACTS (CRITICAL) ---\n");
+            for mem in pinned_memories {
+                let line = format!("- {}: {}\n", mem.key, mem.content);
+                result.push_str(&line);
+                current_budget_chars += line.len();
             }
+        }
 
         // 1. Search Long-term Memories (Facts)
         // We pull more records initially (e.g., 20) and then filter by budget
         if let Ok(memories) = store
             .search_memories(&fts_query, Some(project_path), 20)
             .await
-            && !memories.is_empty() && current_budget_chars < max_budget_chars {
-                result.push_str("\n--- RELEVANT PREFERENCES & FACTS ---\n");
-                for mem in memories {
-                    let line = format!("- {}: {}\n", mem.key, mem.content);
-                    if current_budget_chars + line.len() > max_budget_chars {
-                        break;
-                    }
-                    result.push_str(&line);
-                    current_budget_chars += line.len();
+            && !memories.is_empty()
+            && current_budget_chars < max_budget_chars
+        {
+            result.push_str("\n--- RELEVANT PREFERENCES & FACTS ---\n");
+            for mem in memories {
+                let line = format!("- {}: {}\n", mem.key, mem.content);
+                if current_budget_chars + line.len() > max_budget_chars {
+                    break;
                 }
+                result.push_str(&line);
+                current_budget_chars += line.len();
             }
+        }
 
         // 2. Search Past Interactions (Summaries)
         if let Ok(interactions) = store
             .search_interactions(&fts_query, Some(project_path), 20)
             .await
-            && !interactions.is_empty() && current_budget_chars < max_budget_chars {
-                result.push_str(
-                    "\n--- RELEVANT PAST INTERACTIONS ---\n\
+            && !interactions.is_empty()
+            && current_budget_chars < max_budget_chars
+        {
+            result.push_str(
+                "\n--- RELEVANT PAST INTERACTIONS ---\n\
                 Below are relevant experiences or facts you've encountered in previous sessions:\n",
-                );
-                for interaction in interactions {
-                    let line = format!("- {}\n", interaction.content);
-                    if current_budget_chars + line.len() > max_budget_chars {
-                        break;
-                    }
-                    result.push_str(&line);
-                    current_budget_chars += line.len();
+            );
+            for interaction in interactions {
+                let line = format!("- {}\n", interaction.content);
+                if current_budget_chars + line.len() > max_budget_chars {
+                    break;
                 }
+                result.push_str(&line);
+                current_budget_chars += line.len();
             }
+        }
 
         if !result.is_empty() {
             result.push('\n');
@@ -170,16 +175,17 @@ pub async fn summarize_and_store(
     );
 
     if let Ok(summary) = agent.prompt(&summarizer_prompt).await
-        && let Some(db) = db.as_ref() {
-            let store = boxxy_db::store::Store::new(db.pool());
-            // Store in interactions table (episodic memory)
-            let _ = store
-                .add_interaction("global", Some(project_path), summary.trim(), None, None)
-                .await;
-            debug!(
-                "Stored new interaction summary for project {}: {}",
-                project_path,
-                summary.trim()
-            );
-        }
+        && let Some(db) = db.as_ref()
+    {
+        let store = boxxy_db::store::Store::new(db.pool());
+        // Store in interactions table (episodic memory)
+        let _ = store
+            .add_interaction("global", Some(project_path), summary.trim(), None, None)
+            .await;
+        debug!(
+            "Stored new interaction summary for project {}: {}",
+            project_path,
+            summary.trim()
+        );
+    }
 }

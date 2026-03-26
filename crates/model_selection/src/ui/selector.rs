@@ -410,7 +410,7 @@ impl SingleModelSelector {
                             }
                             inner.model_dropdown.set_selected(0);
                             inner.updating = false;
-                            
+
                             let cb = inner.on_change_callback.clone();
                             drop(inner);
                             if let Some(cb) = cb {
@@ -513,7 +513,11 @@ impl SingleModelSelector {
                     let mut already_set = false;
                     if let ModelProvider::Ollama(ref target_m) = provider {
                         for i in 0..inner.model_list.n_items() {
-                            if let Some(item) = inner.model_list.item(i).and_then(|o| o.downcast::<gtk::StringObject>().ok()) {
+                            if let Some(item) = inner
+                                .model_list
+                                .item(i)
+                                .and_then(|o| o.downcast::<gtk::StringObject>().ok())
+                            {
                                 if item.string().as_str() == target_m {
                                     inner.model_dropdown.set_selected(i);
                                     already_set = true;

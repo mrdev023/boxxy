@@ -260,24 +260,26 @@ impl TerminalPaneComponent {
 
             let is_grave = keyval == gtk::gdk::Key::dead_grave || keyval == gtk::gdk::Key::grave;
 
-            if is_ctrl && is_grave
+            if is_ctrl
+                && is_grave
                 && popover_clone.is_visible()
-                    && let Some(root) = popover_clone.widget().root() {
-                        let is_popover_focused = if let Some(focus) = root.focus() {
-                            let focus_widget = focus.downcast_ref::<gtk::Widget>().unwrap();
-                            focus_widget == popover_clone.widget().upcast_ref::<gtk::Widget>()
-                                || focus_widget.is_ancestor(popover_clone.widget())
-                        } else {
-                            false
-                        };
+                && let Some(root) = popover_clone.widget().root()
+            {
+                let is_popover_focused = if let Some(focus) = root.focus() {
+                    let focus_widget = focus.downcast_ref::<gtk::Widget>().unwrap();
+                    focus_widget == popover_clone.widget().upcast_ref::<gtk::Widget>()
+                        || focus_widget.is_ancestor(popover_clone.widget())
+                } else {
+                    false
+                };
 
-                        if is_popover_focused {
-                            terminal_clone.grab_focus();
-                        } else {
-                            popover_clone.grab_reply_focus();
-                        }
-                        return gtk::glib::Propagation::Stop;
-                    }
+                if is_popover_focused {
+                    terminal_clone.grab_focus();
+                } else {
+                    popover_clone.grab_reply_focus();
+                }
+                return gtk::glib::Propagation::Stop;
+            }
             gtk::glib::Propagation::Proceed
         });
         widget.add_controller(focus_toggle_handler);
@@ -551,7 +553,11 @@ impl TerminalPaneComponent {
     }
 
     pub fn grab_focus(&self) {
-        self.inner.borrow().terminal.grab_focus();
+        if self.msg_bar.is_active.get() {
+            self.msg_bar.entry.grab_focus();
+        } else {
+            self.inner.borrow().terminal.grab_focus();
+        }
     }
 
     pub fn resize(&self) {}

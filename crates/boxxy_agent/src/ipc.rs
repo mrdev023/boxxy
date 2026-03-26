@@ -175,12 +175,13 @@ impl BoxxyAgent {
         // HOME, USER, LOGNAME, and SHELL set correctly before sourcing its own
         // startup files (e.g. ~/.config/fish/config.fish, ~/.bashrc, etc.).
         if options.env.is_empty()
-            && let Ok(Some(user)) = User::from_uid(getuid()) {
-                cmd.env("HOME", user.dir.to_string_lossy().as_ref());
-                cmd.env("USER", &user.name);
-                cmd.env("LOGNAME", &user.name);
-                cmd.env("SHELL", user.shell.to_string_lossy().as_ref());
-            }
+            && let Ok(Some(user)) = User::from_uid(getuid())
+        {
+            cmd.env("HOME", user.dir.to_string_lossy().as_ref());
+            cmd.env("USER", &user.name);
+            cmd.env("LOGNAME", &user.name);
+            cmd.env("SHELL", user.shell.to_string_lossy().as_ref());
+        }
 
         for (key, value) in options.env {
             cmd.env(key, value);
@@ -287,34 +288,36 @@ impl BoxxyAgent {
         if let Ok(entries) = std::fs::read_dir("/proc") {
             for entry in entries.flatten() {
                 if let Ok(file_name) = entry.file_name().into_string()
-                    && let Ok(p) = file_name.parse::<u32>() {
-                        let stat_path = format!("/proc/{}/stat", p);
-                        if let Ok(stat_content) = std::fs::read_to_string(&stat_path) {
-                            let lp_pos = stat_content.find('(');
-                            let rp_pos = stat_content.rfind(')');
-                            if let (Some(lp), Some(rp)) = (lp_pos, rp_pos)
-                                && rp > lp {
-                                    let name = stat_content[lp + 1..rp].to_string();
-                                    let rest = &stat_content[rp + 2..];
-                                    let parts: Vec<&str> = rest.split_whitespace().collect();
-                                    if parts.len() > 1
-                                        && let Ok(ppid) = parts[1].parse::<u32>() {
-                                            let cmdline_path = format!("/proc/{}/cmdline", p);
-                                            let full_name =
-                                                if let Ok(cmdline) = std::fs::read(&cmdline_path) {
-                                                    let cmd = String::from_utf8_lossy(&cmdline)
-                                                        .replace('\0', " ")
-                                                        .trim()
-                                                        .to_string();
-                                                    if cmd.is_empty() { name } else { cmd }
-                                                } else {
-                                                    name
-                                                };
-                                            all_procs.push((p, ppid, full_name));
-                                        }
-                                }
+                    && let Ok(p) = file_name.parse::<u32>()
+                {
+                    let stat_path = format!("/proc/{}/stat", p);
+                    if let Ok(stat_content) = std::fs::read_to_string(&stat_path) {
+                        let lp_pos = stat_content.find('(');
+                        let rp_pos = stat_content.rfind(')');
+                        if let (Some(lp), Some(rp)) = (lp_pos, rp_pos)
+                            && rp > lp
+                        {
+                            let name = stat_content[lp + 1..rp].to_string();
+                            let rest = &stat_content[rp + 2..];
+                            let parts: Vec<&str> = rest.split_whitespace().collect();
+                            if parts.len() > 1
+                                && let Ok(ppid) = parts[1].parse::<u32>()
+                            {
+                                let cmdline_path = format!("/proc/{}/cmdline", p);
+                                let full_name = if let Ok(cmdline) = std::fs::read(&cmdline_path) {
+                                    let cmd = String::from_utf8_lossy(&cmdline)
+                                        .replace('\0', " ")
+                                        .trim()
+                                        .to_string();
+                                    if cmd.is_empty() { name } else { cmd }
+                                } else {
+                                    name
+                                };
+                                all_procs.push((p, ppid, full_name));
+                            }
                         }
                     }
+                }
             }
         }
 

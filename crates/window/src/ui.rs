@@ -36,7 +36,8 @@ impl AppWindow {
                     &provider,
                     gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
                 );
-                gtk::IconTheme::for_display(&display).add_resource_path("/dev/boxxy/BoxxyTerminal/icons");
+                gtk::IconTheme::for_display(&display)
+                    .add_resource_path("/dev/boxxy/BoxxyTerminal/icons");
             }
         });
 

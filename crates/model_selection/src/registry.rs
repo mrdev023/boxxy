@@ -108,9 +108,10 @@ impl AiProvider for GeminiProviderImpl {
                     thinking_list.append(&l.to_string());
                 }
                 if let Some(think) = t
-                    && let Some(t_pos) = levels.iter().position(|l| l == think) {
-                        thinking_dropdown.set_selected(t_pos as u32);
-                    }
+                    && let Some(t_pos) = levels.iter().position(|l| l == think)
+                {
+                    thinking_dropdown.set_selected(t_pos as u32);
+                }
             }
         }
     }
@@ -217,9 +218,10 @@ impl AiProvider for OpenAiProviderImpl {
                     thinking_list.append(&l.to_string());
                 }
                 if let Some(think) = t
-                    && let Some(t_pos) = levels.iter().position(|l| l == think) {
-                        thinking_dropdown.set_selected(t_pos as u32);
-                    }
+                    && let Some(t_pos) = levels.iter().position(|l| l == think)
+                {
+                    thinking_dropdown.set_selected(t_pos as u32);
+                }
             }
         }
     }
@@ -258,10 +260,11 @@ impl AiProvider for OllamaProviderImpl {
                 if let Some(item) = model_list
                     .item(i)
                     .and_then(|o| o.downcast::<gtk::StringObject>().ok())
-                    && item.string().as_str() == m {
-                        found_pos = Some(i);
-                        break;
-                    }
+                    && item.string().as_str() == m
+                {
+                    found_pos = Some(i);
+                    break;
+                }
             }
             if let Some(pos) = found_pos {
                 model_dropdown.set_selected(pos);

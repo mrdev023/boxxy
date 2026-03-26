@@ -286,9 +286,10 @@ impl RenderState {
                         target_col = first;
                     }
                 } else if let Some(last) = last_prompt
-                    && target_col <= last {
-                        target_col = last + 1;
-                    }
+                    && target_col <= last
+                {
+                    target_col = last + 1;
+                }
                 let last_cmd = line_cells
                     .iter()
                     .rposition(|c| c.flags.contains(Flags::SEMANTIC_CMD));

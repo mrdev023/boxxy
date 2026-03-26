@@ -215,13 +215,13 @@ impl TabContextMenu {
                 #[allow(deprecated)]
                 if let Some((tab_x, tab_y)) = tb_clone.translate_coordinates(tab, x, y)
                     && tab_x >= 0.0
-                        && tab_x < tab.width() as f64
-                        && tab_y >= 0.0
-                        && tab_y < tab.height() as f64
-                    {
-                        clicked_index = Some(i);
-                        break;
-                    }
+                    && tab_x < tab.width() as f64
+                    && tab_y >= 0.0
+                    && tab_y < tab.height() as f64
+                {
+                    clicked_index = Some(i);
+                    break;
+                }
             }
 
             let idx = if let Some(i) = clicked_index {

@@ -148,12 +148,13 @@ impl BookmarksSidebarComponent {
         let c = self.clone();
         drop_target.connect_drop(move |_, value, _, _| {
             if let Ok(source_id_str) = value.get::<String>()
-                && let Ok(source_id) = Uuid::parse_str(&source_id_str) {
-                    if source_id != target_id {
-                        c.reorder_bookmarks(source_id, target_id);
-                    }
-                    return true;
+                && let Ok(source_id) = Uuid::parse_str(&source_id_str)
+            {
+                if source_id != target_id {
+                    c.reorder_bookmarks(source_id, target_id);
                 }
+                return true;
+            }
             false
         });
         row.add_controller(drop_target);
