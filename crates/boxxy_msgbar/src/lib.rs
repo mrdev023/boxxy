@@ -1,10 +1,16 @@
 pub mod autocomplete;
+pub mod history;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use history::{HistoryItem, MsgHistory};
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Attachment {
     pub id: String,
     pub label: String,
@@ -18,6 +24,7 @@ pub struct MsgBarComponent {
     pub is_active: Rc<Cell<bool>>,
     pub tags_box: gtk::Box,
     pub attachments: Rc<RefCell<Vec<Attachment>>>,
+    pub history: Rc<RefCell<history::MsgHistory>>,
     _autocomplete: Rc<autocomplete::AutocompleteController>,
 }
 
@@ -57,6 +64,8 @@ impl MsgBarComponent {
         let is_active = Rc::new(Cell::new(false));
         let attachments = Rc::new(RefCell::new(Vec::<Attachment>::new()));
 
+        let history = Rc::new(RefCell::new(MsgHistory::new()));
+
         let providers: Vec<Box<dyn autocomplete::CompletionProvider>> =
             vec![Box::new(autocomplete::AgentCompletionProvider)];
 
@@ -66,6 +75,7 @@ impl MsgBarComponent {
         let c_widget = widget.clone();
         let c_attachments = attachments.clone();
         let c_tags_box = tags_box.clone();
+        let c_history = history.clone();
 
         let on_submit_rc = Rc::new(on_submit);
         let on_cancel_rc = Rc::new(on_cancel);
@@ -73,7 +83,8 @@ impl MsgBarComponent {
         let c_submit = on_submit_rc;
 
         entry.connect_activate(move |e| {
-            let mut text = e.text().to_string();
+            let original_text = e.text().to_string();
+            let mut text = original_text.clone();
             let mut images = Vec::new();
 
             // Append attachments to the prompt
@@ -95,6 +106,7 @@ impl MsgBarComponent {
             }
 
             if !text.trim().is_empty() || !images.is_empty() {
+                c_history.borrow_mut().push(original_text, atts.clone());
                 c_submit((text, images));
                 e.set_text("");
             }
@@ -119,9 +131,29 @@ impl MsgBarComponent {
         let k_cancel = on_cancel_rc;
         let k_attachments = attachments.clone();
         let k_tags_box = tags_box.clone();
+        let k_history = history.clone();
 
         key_ctrl.connect_key_pressed(move |_, key, _, state| {
             let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+
+            if key == gtk::gdk::Key::Up {
+                let current_text = k_entry.text().to_string();
+                let current_atts = k_attachments.borrow().clone();
+                if let Some(item) = k_history
+                    .borrow_mut()
+                    .navigate_up(current_text, current_atts)
+                {
+                    Self::load_history_item(&k_entry, &k_attachments, &k_tags_box, item);
+                }
+                return glib::Propagation::Stop;
+            }
+
+            if key == gtk::gdk::Key::Down {
+                if let Some(item) = k_history.borrow_mut().navigate_down() {
+                    Self::load_history_item(&k_entry, &k_attachments, &k_tags_box, item);
+                }
+                return glib::Propagation::Stop;
+            }
 
             if is_ctrl && (key == gtk::gdk::Key::v || key == gtk::gdk::Key::V) {
                 let clipboard = gtk::gdk::Display::default().unwrap().clipboard();
@@ -178,6 +210,7 @@ impl MsgBarComponent {
                 k_active.set(false);
                 k_widget.set_visible(false);
                 k_entry.set_text("");
+                k_history.borrow_mut().reset();
                 // Clear attachments on cancel
                 k_attachments.borrow_mut().clear();
                 while let Some(child) = k_tags_box.first_child() {
@@ -197,6 +230,7 @@ impl MsgBarComponent {
             is_active,
             tags_box,
             attachments,
+            history,
             _autocomplete: autocomplete,
         }
     }
@@ -216,6 +250,7 @@ impl MsgBarComponent {
         self.widget.set_visible(false);
         self.is_active.set(false);
         self.entry.set_text("");
+        self.history.borrow_mut().reset();
     }
 
     pub fn apply_font(&self, font_desc: &gtk::pango::FontDescription) {
@@ -224,6 +259,31 @@ impl MsgBarComponent {
         let attrs = gtk::pango::AttrList::new();
         attrs.insert(gtk::pango::AttrFontDesc::new(font_desc));
         self.entry.set_attributes(&attrs);
+    }
+
+    fn load_history_item(
+        entry: &gtk::Entry,
+        attachments: &Rc<RefCell<Vec<Attachment>>>,
+        tags_box: &gtk::Box,
+        item: HistoryItem,
+    ) {
+        entry.set_text(&item.text);
+        entry.set_position(-1);
+
+        attachments.borrow_mut().clear();
+        while let Some(child) = tags_box.first_child() {
+            tags_box.remove(&child);
+        }
+
+        for att in item.attachments {
+            Self::add_attachment_static(
+                attachments,
+                tags_box,
+                att.label,
+                att.content,
+                att.is_image,
+            );
+        }
     }
 
     fn add_attachment_static(

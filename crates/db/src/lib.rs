@@ -159,6 +159,13 @@ impl Db {
               INSERT INTO skills_fts(rowid, name, description, triggers) VALUES (new.name, new.name, new.description, new.triggers);
             END;
 
+            CREATE TABLE IF NOT EXISTS msgbar_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                attachments TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             DROP TRIGGER IF EXISTS skills_ad;
             CREATE TRIGGER skills_ad AFTER DELETE ON skills BEGIN
               INSERT INTO skills_fts(skills_fts, rowid, name, description, triggers) VALUES('delete', old.name, old.name, old.description, old.triggers);

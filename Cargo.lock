@@ -699,10 +699,13 @@ dependencies = [
  "base64",
  "boxxy-ai-core",
  "boxxy-claw",
+ "boxxy-db",
  "boxxy-preferences",
  "glib",
  "gtk4",
  "log",
+ "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]

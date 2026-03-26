@@ -1,4 +1,4 @@
-use crate::models::{Interaction, Memory, Session, SkillRecord};
+use crate::models::{Interaction, Memory, MsgBarHistory, Session, SkillRecord};
 use anyhow::Result;
 use sqlx::SqlitePool;
 
@@ -10,6 +10,65 @@ impl<'a> Store<'a> {
     #[must_use]
     pub const fn new(pool: &'a SqlitePool) -> Self {
         Self { pool }
+    }
+
+    // --- Message Bar History ---
+
+    pub async fn insert_msgbar_history(&self, text: &str, attachments_json: &str) -> Result<i64> {
+        let result = sqlx::query(
+            r#"
+            INSERT INTO msgbar_history (text, attachments)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(text)
+        .bind(attachments_json)
+        .execute(self.pool)
+        .await?;
+
+        Ok(result.last_insert_rowid())
+    }
+
+    pub async fn get_recent_msgbar_history(&self, limit: i64) -> Result<Vec<MsgBarHistory>> {
+        let records = sqlx::query_as::<_, MsgBarHistory>(
+            r#"
+            SELECT * FROM (
+                SELECT id, text, attachments, created_at
+                FROM msgbar_history
+                ORDER BY id DESC
+                LIMIT ?
+            ) ORDER BY id ASC
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(records)
+    }
+
+    pub async fn prune_msgbar_history(&self, threshold: i64, target: i64) -> Result<()> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM msgbar_history")
+            .fetch_one(self.pool)
+            .await?;
+
+        if count >= threshold {
+            let to_delete = count - target;
+            sqlx::query(
+                r#"
+                DELETE FROM msgbar_history 
+                WHERE id IN (
+                    SELECT id FROM msgbar_history 
+                    ORDER BY id ASC 
+                    LIMIT ?
+                )
+                "#,
+            )
+            .bind(to_delete)
+            .execute(self.pool)
+            .await?;
+        }
+        Ok(())
     }
 
     // --- Sessions ---

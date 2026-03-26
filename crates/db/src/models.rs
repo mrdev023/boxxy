@@ -51,6 +51,14 @@ pub struct SkillRecord {
     pub updated_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MsgBarHistory {
+    pub id: i64,
+    pub text: String,
+    pub attachments: String, // Stored as a JSON string
+    pub created_at: Option<String>,
+}
+
 // Helper methods for embeddings (used in interactions)
 impl Interaction {
     #[must_use]
