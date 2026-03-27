@@ -24,7 +24,7 @@ impl ClawIndicator {
         revealer.set_halign(gtk::Align::End);
         revealer.set_valign(gtk::Align::Start); // Top right
         revealer.set_margin_top(8);
-        revealer.set_margin_end(16);
+        revealer.set_margin_end(8);
 
         let frame = gtk::Frame::new(None);
         frame.add_css_class("claw-indicator");

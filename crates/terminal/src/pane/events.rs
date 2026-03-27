@@ -2,6 +2,7 @@ use super::PaneInner;
 use crate::PaneOutput;
 use boxxy_vte::terminal::TerminalWidget;
 use gtk4 as gtk;
+use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -137,36 +138,4 @@ pub(super) fn wire_terminal_events(
             });
         }
     });
-
-    let key_controller = gtk::EventControllerKey::new();
-    key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let tx_cancel_typing = claw_sender.clone();
-    key_controller.connect_key_pressed(move |_, keyval, _, state| {
-        // Only trigger cancel on non-modifier keys or Enter/Backspace
-        let is_modifier = state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-            || state.contains(gtk::gdk::ModifierType::ALT_MASK);
-        if !is_modifier {
-            let key_lower = keyval.to_lower();
-            let is_printable =
-                key_lower >= gtk::gdk::Key::space && key_lower <= gtk::gdk::Key::asciitilde;
-            if is_printable || keyval == gtk::gdk::Key::Return || keyval == gtk::gdk::Key::BackSpace
-            {
-                let tx = tx_cancel_typing.clone();
-                gtk::glib::spawn_future_local(async move {
-                    let _ = tx
-                        .send(boxxy_claw::engine::ClawMessage::CancelPending)
-                        .await;
-                });
-            }
-        }
-        gtk::glib::Propagation::Proceed
-    });
-
-    use gtk4::prelude::Cast;
-    use gtk4::prelude::EventControllerExt;
-    use gtk4::prelude::WidgetExt;
-
-    terminal
-        .upcast_ref::<gtk::Widget>()
-        .add_controller(key_controller);
 }

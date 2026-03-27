@@ -47,14 +47,21 @@ impl TerminalOverlay {
         F3: Fn(bool) + 'static,
         F4: Fn(crate::TerminalProposal) + 'static,
         F5: Fn(OverlayMode) + 'static,
+        F6: Fn(bool) + 'static,
     >(
         on_accept: F1,
         on_reply: F2,
         on_file_reply: F3,
         on_add_to_sidebar: F4,
         on_cancel: F5,
+        on_visibility_changed: F6,
     ) -> Self {
         let revealer = gtk::Revealer::new();
+        
+        let on_vis_rc = Rc::new(on_visibility_changed);
+        revealer.connect_reveal_child_notify(move |rev| {
+            on_vis_rc(rev.reveals_child());
+        });
         revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
         revealer.set_halign(gtk::Align::Center);
         revealer.set_valign(gtk::Align::Center);
@@ -428,12 +435,16 @@ impl TerminalOverlay {
         }
 
         self.revealer.set_reveal_child(true);
-        if mode == OverlayMode::Claw {
-            self.reply_entry.grab_focus();
+        if self.ok_btn.is_visible() {
+            self.ok_btn.grab_focus();
+        } else if self.accept_btn.is_visible() {
+            self.accept_btn.grab_focus();
+        } else if self.approve_file_btn.is_visible() {
+            self.approve_file_btn.grab_focus();
         } else if self.template_box.is_visible() {
             self.template_entry.grab_focus();
-        } else {
-            self.accept_btn.grab_focus();
+        } else if mode == OverlayMode::Claw {
+            self.reply_entry.grab_focus();
         }
     }
 

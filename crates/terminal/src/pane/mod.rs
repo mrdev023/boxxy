@@ -326,7 +326,6 @@ impl TerminalPaneComponent {
         let focus_toggle_handler = gtk::EventControllerKey::new();
         focus_toggle_handler.set_propagation_phase(gtk::PropagationPhase::Capture);
         let terminal_clone = terminal.clone();
-        let popover_clone = claw_popover.clone();
         let msg_bar_clone = msg_bar.clone();
         let is_claw_active_for_focus = is_claw_active.clone();
         let is_proactive_for_focus = is_proactive.clone();
@@ -351,28 +350,6 @@ impl TerminalPaneComponent {
                 return gtk::glib::Propagation::Stop;
             }
 
-            let is_grave = keyval == gtk::gdk::Key::dead_grave || keyval == gtk::gdk::Key::grave;
-
-            if is_ctrl
-                && is_grave
-                && popover_clone.is_visible()
-                && let Some(root) = popover_clone.widget().root()
-            {
-                let is_popover_focused = if let Some(focus) = root.focus() {
-                    let focus_widget = focus.downcast_ref::<gtk::Widget>().unwrap();
-                    focus_widget == popover_clone.widget().upcast_ref::<gtk::Widget>()
-                        || focus_widget.is_ancestor(popover_clone.widget())
-                } else {
-                    false
-                };
-
-                if is_popover_focused {
-                    terminal_clone.grab_focus();
-                } else {
-                    popover_clone.grab_reply_focus();
-                }
-                return gtk::glib::Propagation::Stop;
-            }
             gtk::glib::Propagation::Proceed
         });
         widget.add_controller(focus_toggle_handler);

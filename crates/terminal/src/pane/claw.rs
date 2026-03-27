@@ -115,6 +115,14 @@ pub(super) fn setup_claw(
                 }
             }
         },
+        {
+            let inner_clone_for_vis = Rc::downgrade(inner);
+            move |visible| {
+                if let Some(inner) = inner_clone_for_vis.upgrade() {
+                    inner.borrow().terminal.set_focusable(!visible);
+                }
+            }
+        },
     );
     *claw_popover_self_ref.borrow_mut() = Some(claw_popover.clone());
     widget.add_overlay(claw_popover.widget());

@@ -54,10 +54,6 @@ pub const PASTE: Keybinding = Keybinding {
     trigger: "<Ctrl><Shift>v",
     action_name: "win.paste",
 };
-pub const CLAW_TOGGLE_FOCUS: Keybinding = Keybinding {
-    trigger: "<Ctrl>grave",
-    action_name: "win.claw-focus",
-};
 pub const MESSAGE_BAR: Keybinding = Keybinding {
     trigger: "<Ctrl>slash",
     action_name: "win.message-bar", // Note: handled manually in pane/mod.rs
@@ -126,7 +122,6 @@ pub fn get_shortcuts_by_category() -> Vec<ShortcutCategory> {
                 ("Command Palette", COMMAND_PALETTE),
                 ("Toggle Sidebar", TOGGLE_SIDEBAR),
                 ("Ask Boxxy-Claw", MESSAGE_BAR),
-                ("Focus Sidebar", CLAW_TOGGLE_FOCUS),
                 ("Preferences", PREFERENCES),
             ],
         },
