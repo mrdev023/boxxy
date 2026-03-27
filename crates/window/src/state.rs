@@ -88,8 +88,10 @@ pub enum AppInput {
     ShowBookmarksSidebar,
     ExecuteBookmark(String, String, String), // Name, Filename, Script
     ExecuteInNewTab(String, String, String), // Name, Filename, Script
-    SetClawActive(bool),
-    SetClawProactive(bool),
+    SetClawActive(bool, Option<String>),
+    SetClawActiveGlobal(bool),
+    SetClawProactive(bool, Option<String>),
+    SetClawProactiveGlobal(bool),
     ModelSelection,
     ThemeSelected(Box<boxxy_themes::ParsedPaletteStatic>),
     CommandPalette,
@@ -153,8 +155,6 @@ pub struct AppWindowInner {
     pub current_settings: Settings,
     pub app_state: AppState,
     pub bell_indicator: gtk::Image,
-    pub claw_indicator: gtk::Button,
-    pub claw_popover: crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover,
     pub claw_active: bool,
     pub claw_proactive: bool,
     pub toast_overlay: adw::ToastOverlay,

@@ -25,13 +25,24 @@ pub struct MsgBarComponent {
     pub tags_box: gtk::Box,
     pub attachments: Rc<RefCell<Vec<Attachment>>>,
     pub history: Rc<RefCell<history::MsgHistory>>,
+    pub claw_toggle: gtk::Button,
+    pub proactive_toggle: gtk::Button,
+    pub claw_state: Rc<Cell<bool>>,
+    pub proactive_state: Rc<Cell<bool>>,
     _autocomplete: Rc<autocomplete::AutocompleteController>,
 }
 
 impl MsgBarComponent {
-    pub fn new<F: Fn((String, Vec<String>)) + 'static, C: Fn() + 'static>(
+    pub fn new<
+        F: Fn((String, Vec<String>)) + 'static,
+        C: Fn() + 'static,
+        T1: Fn(bool) + 'static,
+        T2: Fn(bool) + 'static,
+    >(
         on_submit: F,
         on_cancel: C,
+        on_claw_toggle: T1,
+        on_proactive_toggle: T2,
     ) -> Self {
         let widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         widget.set_halign(gtk::Align::Fill);
@@ -44,12 +55,45 @@ impl MsgBarComponent {
 
         let icon = gtk::Image::from_icon_name("boxxyclaw");
         icon.add_css_class("accent");
-        icon.set_margin_start(8); // slightly more margin
-        icon.set_margin_end(4);
-        widget.append(&icon);
 
-        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        tags_box.set_valign(gtk::Align::Center);
+        let claw_toggle = gtk::Button::builder()
+            .child(&icon)
+            .css_classes(["flat", "image-button"])
+            .tooltip_text("Toggle Claw for this pane")
+            .margin_start(4)
+            .margin_end(0)
+            .valign(gtk::Align::Center)
+            .build();
+
+        let claw_state = Rc::new(Cell::new(false));
+        let claw_state_clone = claw_state.clone();
+        claw_toggle.connect_clicked(move |_| {
+            let next = !claw_state_clone.get();
+            on_claw_toggle(next);
+        });
+
+        widget.append(&claw_toggle);
+
+        let proactive_img = gtk::Image::from_icon_name("boxxy-walking2-symbolic");
+        let proactive_toggle = gtk::Button::builder()
+            .child(&proactive_img)
+            .css_classes(["flat", "image-button"])
+            .tooltip_text("Lazy Diagnosis Mode")
+            .margin_start(0)
+            .margin_end(0)
+            .valign(gtk::Align::Center)
+            .build();
+
+        let proactive_state = Rc::new(Cell::new(false));
+        let proactive_state_clone = proactive_state.clone();
+        proactive_toggle.connect_clicked(move |_| {
+            let next = !proactive_state_clone.get();
+            on_proactive_toggle(next);
+        });
+
+        widget.append(&proactive_toggle);
+
+        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);        tags_box.set_valign(gtk::Align::Center);
         widget.append(&tags_box);
 
         let entry = gtk::Entry::builder()
@@ -59,7 +103,6 @@ impl MsgBarComponent {
             .build();
 
         entry.add_css_class("monospace");
-        entry.add_css_class("caption");
         widget.append(&entry);
 
         let is_active = Rc::new(Cell::new(false));
@@ -238,6 +281,10 @@ impl MsgBarComponent {
             tags_box,
             attachments,
             history,
+            claw_toggle,
+            proactive_toggle,
+            claw_state,
+            proactive_state,
             _autocomplete: autocomplete_ctrl,
         }
     }
@@ -258,6 +305,30 @@ impl MsgBarComponent {
         self.is_active.set(false);
         self.entry.set_text("");
         self.history.borrow_mut().reset();
+    }
+
+    pub fn update_ui(&self, active: bool, proactive: bool) {
+        self.claw_state.set(active);
+        self.proactive_state.set(proactive);
+
+        if active {
+            self.claw_toggle.remove_css_class("claw-indicator-inactive");
+        } else {
+            self.claw_toggle.add_css_class("claw-indicator-inactive");
+        }
+
+        if proactive {
+            self.proactive_toggle
+                .set_icon_name("boxxy-running-symbolic");
+            self.proactive_toggle
+                .set_tooltip_text(Some("Proactive Diagnosis Mode"));
+            self.proactive_toggle.add_css_class("accent");
+        } else {
+            self.proactive_toggle
+                .set_icon_name("boxxy-walking2-symbolic");
+            self.proactive_toggle.set_tooltip_text(Some("Lazy Diagnosis Mode"));
+            self.proactive_toggle.remove_css_class("accent");
+        }
     }
 
     pub fn apply_font(&self, font_desc: &gtk::pango::FontDescription) {

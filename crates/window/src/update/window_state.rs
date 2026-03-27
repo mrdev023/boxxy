@@ -146,9 +146,6 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
     // from global settings here. Those are window-local states that can be toggled independently per window.
 
     inner
-        .claw_popover
-        .update_ui(inner.claw_active, inner.claw_proactive);
-    inner
         .claw
         .update_ui(inner.claw_active, inner.claw_proactive);
 

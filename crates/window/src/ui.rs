@@ -99,10 +99,10 @@ impl AppWindow {
         let tx_claw_proactive = tx.clone();
         let claw = ClawSidebarComponent::new(
             move |active| {
-                let _ = tx_claw_active.send_blocking(AppInput::SetClawActive(active));
+                let _ = tx_claw_active.send_blocking(AppInput::SetClawActive(active, None));
             },
             move |proactive| {
-                let _ = tx_claw_proactive.send_blocking(AppInput::SetClawProactive(proactive));
+                let _ = tx_claw_proactive.send_blocking(AppInput::SetClawProactive(proactive, None));
             },
         );
 
@@ -244,15 +244,12 @@ impl AppWindow {
             &current_settings,
         );
         split_view.set_sidebar(Some(&sidebar_toolbar));
-
         let (
             content_toolbar,
             content_header,
             bell_indicator,
             menu_btn,
             tab_bar,
-            claw_indicator,
-            claw_popover,
         ) = Self::build_content_area(&tx, &tab_view, &current_settings);
 
         let overlay = gtk::Overlay::new();
@@ -315,7 +312,6 @@ impl AppWindow {
         let initial_claw_proactive = current_settings.claw_auto_diagnosis_mode
             == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive;
 
-        claw_popover.update_ui(initial_claw_active, initial_claw_proactive);
         claw.update_ui(initial_claw_active, initial_claw_proactive);
 
         let inner = AppWindowInner {
@@ -342,8 +338,6 @@ impl AppWindow {
             current_settings,
             app_state,
             bell_indicator,
-            claw_indicator,
-            claw_popover,
             claw_active: initial_claw_active,
             claw_proactive: initial_claw_proactive,
             toast_overlay,
@@ -601,8 +595,6 @@ impl AppWindow {
         gtk::Image,
         gtk::Button,
         adw::TabBar,
-        gtk::Button,
-        crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover,
     ) {
         tab_view.add_css_class("terminal-tab-view");
 
@@ -642,51 +634,6 @@ impl AppWindow {
         });
         content_header.pack_end(&menu_btn);
 
-        let claw_img = gtk::Image::builder()
-            .icon_name("boxxyclaw")
-            .pixel_size(20)
-            .build();
-
-        let claw_indicator = if current_settings.claw_on_by_default {
-            gtk::Button::builder()
-                .child(&claw_img)
-                .tooltip_text("Claw Agent Options (Enabled)")
-                .css_classes(["flat", "image-button"])
-                .build()
-        } else {
-            gtk::Button::builder()
-                .child(&claw_img)
-                .tooltip_text("Claw Agent Options (Disabled)")
-                .css_classes(["flat", "claw-indicator-inactive", "image-button"])
-                .build()
-        };
-
-        let tx_enable = tx.clone();
-        let tx_proactive = tx.clone();
-
-        let claw_popover = crate::boxxyclaw_indicator_popover::BoxxyclawIndicatorPopover::new(
-            move |enabled| {
-                let _ = tx_enable.send_blocking(AppInput::SetClawActive(enabled));
-            },
-            move |proactive| {
-                let _ = tx_proactive.send_blocking(AppInput::SetClawProactive(proactive));
-            },
-        );
-
-        let pop_clone = claw_popover.popover().clone();
-        let btn_clone = claw_indicator.clone();
-        claw_indicator.connect_clicked(move |_| {
-            pop_clone.set_parent(&btn_clone);
-            pop_clone.popup();
-        });
-
-        let tx_focus = tx.clone();
-        claw_popover.popover().connect_closed(move |_| {
-            let _ = tx_focus.send_blocking(AppInput::GrabFocus);
-        });
-
-        content_header.pack_end(&claw_indicator);
-
         let bell_indicator = gtk::Image::builder()
             .icon_name("boxxy-visual-bell-symbolic")
             .visible(false)
@@ -711,8 +658,6 @@ impl AppWindow {
             bell_indicator,
             menu_btn,
             tab_bar,
-            claw_indicator,
-            claw_popover,
         )
     }
 }

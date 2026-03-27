@@ -42,7 +42,6 @@ pub struct TerminalInner {
     pub current_settings: Option<Settings>,
     pub current_palette: Option<Palette>,
     pub working_dir: Option<String>,
-    pub is_claw_active: bool,
 }
 
 impl std::fmt::Debug for TerminalComponent {
@@ -131,7 +130,6 @@ impl TerminalComponent {
             current_settings: None,
             current_palette: None,
             working_dir: init.working_dir,
-            is_claw_active: false,
         }));
 
         let comp = Self {
@@ -384,6 +382,16 @@ impl TerminalComponent {
                     });
                 }
             }
+            PaneOutput::ClawStateChanged(id, active, proactive) => {
+                let inner = self.inner.borrow();
+                if inner.active_pane_id == id {
+                    let term_id = inner.id.clone();
+                    let _ = TERMINAL_EVENT_BUS.send(TerminalEvent {
+                        id: term_id,
+                        kind: TerminalEventKind::ClawStateChanged(active, proactive),
+                    });
+                }
+            }
         }
     }
 
@@ -540,16 +548,57 @@ impl TerminalComponent {
         }
     }
 
+    pub fn active_pane_id(&self) -> String {
+        self.inner.borrow().active_pane_id.clone()
+    }
+
+    pub fn set_claw_active_for_pane(&self, pane_id: &str, active: bool) -> bool {
+        let inner = self.inner.borrow();
+        if let Some(pane_data) = inner.panes.get(pane_id) {
+            pane_data.controller.set_claw_active(active);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn update_diagnosis_mode_for_pane(
+        &self,
+        pane_id: &str,
+        mode: &boxxy_preferences::config::ClawAutoDiagnosisMode,
+    ) -> bool {
+        let inner = self.inner.borrow();
+        if let Some(pane_data) = inner.panes.get(pane_id) {
+            pane_data.controller.update_diagnosis_mode(mode);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn set_claw_active(&self, active: bool) {
-        let mut inner = self.inner.borrow_mut();
-        inner.is_claw_active = active;
+        let inner = self.inner.borrow_mut();
         for pane_data in inner.panes.values() {
             pane_data.controller.set_claw_active(active);
         }
     }
 
     pub fn is_claw_active(&self) -> bool {
-        self.inner.borrow().is_claw_active
+        let inner = self.inner.borrow();
+        if let Some(pane_data) = inner.panes.get(&inner.active_pane_id) {
+            pane_data.controller.is_claw_active()
+        } else {
+            false
+        }
+    }
+
+    pub fn is_proactive(&self) -> bool {
+        let inner = self.inner.borrow();
+        if let Some(pane_data) = inner.panes.get(&inner.active_pane_id) {
+            pane_data.controller.is_proactive()
+        } else {
+            false
+        }
     }
 
     pub fn update_diagnosis_mode(&self, mode: &boxxy_preferences::config::ClawAutoDiagnosisMode) {
@@ -715,8 +764,14 @@ impl TerminalComponent {
 
         if let Some(ref settings) = inner.current_settings {
             new_controller.update_settings(settings.clone(), inner.current_palette);
+            new_controller.set_claw_active(settings.claw_on_by_default);
+            let mode = if settings.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+            } else {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+            };
+            new_controller.update_diagnosis_mode(&mode);
         }
-        new_controller.set_claw_active(inner.is_claw_active);
         new_controller.spawn();
 
         let new_wrapper = gtk::Box::new(gtk::Orientation::Vertical, 0);

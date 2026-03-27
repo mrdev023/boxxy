@@ -101,9 +101,9 @@ pub fn new_tab_with_intent(inner: &mut AppWindowInner, intent: Option<String>) {
         .map(|p| if is_dark { p.dark } else { p.light });
 
     controller.update_settings(inner.current_settings.clone(), palette);
-    controller.set_claw_active(inner.claw.is_active());
+    controller.set_claw_active(inner.current_settings.claw_on_by_default);
 
-    let mode = if inner.claw_proactive {
+    let mode = if inner.current_settings.claw_auto_diagnosis_mode == boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive {
         boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
     } else {
         boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
@@ -282,20 +282,11 @@ pub fn adopt_orphan_tabs(inner: &mut AppWindowInner) {
             tc.controller
                 .update_settings(inner.current_settings.clone(), palette);
 
-            if tc.controller.is_claw_active() && !inner.claw_active {
-                let _ = inner
-                    .tx
-                    .send_blocking(crate::state::AppInput::SetClawActive(true));
+            if tc.controller.is_claw_active() {
+                page.set_icon(Some(&gio::ThemedIcon::new("boxxyclaw")));
             } else {
-                tc.controller.set_claw_active(inner.claw_active);
+                page.set_icon(None::<&gio::Icon>);
             }
-
-            let mode = if inner.claw_proactive {
-                boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
-            } else {
-                boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
-            };
-            tc.controller.update_diagnosis_mode(&mode);
 
             tc.controller.grab_focus();
             inner.tabs.push(tc);
@@ -333,20 +324,13 @@ pub fn tab_page_attached(inner: &mut AppWindowInner, key: usize) {
         tc.controller
             .update_settings(inner.current_settings.clone(), palette);
 
-        if tc.controller.is_claw_active() && !inner.claw_active {
-            let _ = inner
-                .tx
-                .send_blocking(crate::state::AppInput::SetClawActive(true));
+        let widget = tc.controller.widget();
+        let page = inner.tab_view.page(widget);
+        if tc.controller.is_claw_active() {
+            page.set_icon(Some(&gio::ThemedIcon::new("boxxyclaw")));
         } else {
-            tc.controller.set_claw_active(inner.claw_active);
+            page.set_icon(None::<&gio::Icon>);
         }
-
-        let mode = if inner.claw_proactive {
-            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
-        } else {
-            boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
-        };
-        tc.controller.update_diagnosis_mode(&mode);
 
         tc.controller.grab_focus();
         inner.tabs.push(tc);
@@ -395,6 +379,21 @@ pub fn focus_active_terminal(inner: &mut AppWindowInner) {
         {
             let tc = &inner.tabs[pos];
             tc.controller.grab_focus();
+            
+            // Sync Claw UI state
+            let tab_is_claw_active = tc.controller.is_claw_active();
+            inner.claw_active = tab_is_claw_active;
+            if tab_is_claw_active {
+                page.set_icon(Some(&gio::ThemedIcon::new("boxxyclaw")));
+            } else {
+                page.set_icon(None::<&gio::Icon>);
+            }
+
+            let tab_is_proactive = tc.controller.is_proactive();
+            inner.claw_proactive = tab_is_proactive;
+
+            inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
+            
             inner
                 .claw
                 .set_history_widget(&tc.controller.claw_history_widget());

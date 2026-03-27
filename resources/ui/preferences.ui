@@ -434,6 +434,12 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="AdwSwitchRow" id="proactive_by_default_switch">
+                                    <property name="title" translatable="yes">Proactive Mode by Default</property>
+                                    <property name="subtitle" translatable="yes">Start BoxxyClaw in proactive mode for background analysis.</property>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="AdwSwitchRow" id="hide_agent_badge_switch">
                                     <property name="title" translatable="yes">Hide Agent Badge</property>
                                     <property name="subtitle" translatable="yes">Hide the agent identity badge in the top right corner.</property>

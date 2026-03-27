@@ -34,6 +34,7 @@ pub enum TerminalEventKind {
     PaneFocused(String),
     ForegroundProcessChanged(String),
     Notification(String),
+    ClawStateChanged(bool, bool),
 }
 
 #[derive(Debug, Clone)]
@@ -58,4 +59,5 @@ pub enum PaneOutput {
     FocusClawSidebar(String),
     ForegroundProcessChanged(String, String), // id, process_name
     Notification(String, String),             // id, message
+    ClawStateChanged(String, bool, bool),     // id, is_active, is_proactive
 }

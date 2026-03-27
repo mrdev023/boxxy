@@ -4,6 +4,7 @@ pub mod tabs;
 pub mod window_state;
 
 use gtk4::prelude::*;
+use gtk4::gio;
 use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -254,41 +255,123 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
                 }
             }
         }
-        AppInput::SetClawActive(active) => {
-            inner.claw_active = active;
-            if active {
-                inner
-                    .claw_indicator
-                    .remove_css_class("claw-indicator-inactive");
-                inner
-                    .claw_indicator
-                    .set_tooltip_text(Some("Claw Agent Options (Enabled)"));
+        AppInput::SetClawActive(active, pane_id) => {
+            let id = if let Some(id) = pane_id {
+                Some(id)
             } else {
-                inner
-                    .claw_indicator
-                    .add_css_class("claw-indicator-inactive");
-                inner
-                    .claw_indicator
-                    .set_tooltip_text(Some("Claw Agent Options (Disabled)"));
-            }
-            inner
-                .claw_popover
-                .update_ui(inner.claw_active, inner.claw_proactive);
-            inner
-                .claw
-                .update_ui(inner.claw_active, inner.claw_proactive);
-            for tab in &inner.tabs {
-                tab.controller.set_claw_active(active);
+                // Get active pane ID from selected tab
+                if let Some(page) = inner.tab_view.selected_page() {
+                    let child = page.child();
+                    if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
+                        Some(inner.tabs[pos].controller.active_pane_id())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some(id) = id {
+                let mut found = false;
+                for tab in &inner.tabs {
+                    if tab.controller.set_claw_active_for_pane(&id, active) {
+                        found = true;
+                        break;
+                    }
+                }
+                
+                // If we updated the active pane, update the UI
+                if found {
+                    if let Some(page) = inner.tab_view.selected_page() {
+                        let child = page.child();
+                        if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
+                            if inner.tabs[pos].controller.active_pane_id() == id {
+                                inner.claw_active = active;
+                                if active {
+                                    page.set_icon(Some(&gtk4::gio::ThemedIcon::new("boxxyclaw")));
+                                } else {
+                                    page.set_icon(None::<&gio::Icon>);
+                                }
+                                inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // If no pane identified (e.g. no tabs open), just update the window state
+                inner.claw_active = active;
+                inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
             }
         }
-        AppInput::SetClawProactive(proactive) => {
+        AppInput::SetClawActiveGlobal(active) => {
+            inner.claw_active = active;
+            inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
+            
+            for tab in &inner.tabs {
+                tab.controller.set_claw_active(active);
+                
+                let widget = tab.controller.widget();
+                let page = inner.tab_view.page(widget);
+                if active {
+                    page.set_icon(Some(&gtk4::gio::ThemedIcon::new("boxxyclaw")));
+                } else {
+                    page.set_icon(None::<&gio::Icon>);
+                }
+            }
+        }
+        AppInput::SetClawProactive(proactive, pane_id) => {
+            let mode = if proactive {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+            } else {
+                boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+            };
+
+            let id = if let Some(id) = pane_id {
+                Some(id)
+            } else {
+                // Get active pane ID from selected tab
+                if let Some(page) = inner.tab_view.selected_page() {
+                    let child = page.child();
+                    if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
+                        Some(inner.tabs[pos].controller.active_pane_id())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some(id) = id {
+                let mut found = false;
+                for tab in &inner.tabs {
+                    if tab.controller.update_diagnosis_mode_for_pane(&id, &mode) {
+                        found = true;
+                        break;
+                    }
+                }
+                
+                // If we updated the active pane, update the UI
+                if found {
+                    if let Some(page) = inner.tab_view.selected_page() {
+                        let child = page.child();
+                        if let Some(pos) = inner.tabs.iter().position(|c| c.controller.widget() == &child) {
+                            if inner.tabs[pos].controller.active_pane_id() == id {
+                                inner.claw_proactive = proactive;
+                                inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
+                            }
+                        }
+                    }
+                }
+            } else {
+                inner.claw_proactive = proactive;
+                inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
+            }
+        }
+        AppInput::SetClawProactiveGlobal(proactive) => {
             inner.claw_proactive = proactive;
-            inner
-                .claw_popover
-                .update_ui(inner.claw_active, inner.claw_proactive);
-            inner
-                .claw
-                .update_ui(inner.claw_active, inner.claw_proactive);
+            inner.claw.update_ui(inner.claw_active, inner.claw_proactive);
             let mode = if proactive {
                 boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
             } else {
@@ -299,7 +382,6 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
             }
 
             // Save settings for persistence (default for new windows)
-            // Note: cross-window sync is disabled in `settings_changed` to allow per-window modes.
             let mut settings = boxxy_preferences::Settings::load();
             settings.claw_auto_diagnosis_mode = mode;
             settings.save();

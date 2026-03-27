@@ -58,8 +58,8 @@ impl fmt::Display for ImagePreviewTrigger {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ClawAutoDiagnosisMode {
-    #[default]
     Proactive,
+    #[default]
     Lazy,
 }
 
@@ -174,7 +174,7 @@ impl Default for Settings {
             claw_model: None,
             memory_model: None,
             invert_scroll: true,
-            claw_auto_diagnosis_mode: ClawAutoDiagnosisMode::Proactive,
+            claw_auto_diagnosis_mode: ClawAutoDiagnosisMode::Lazy,
             hide_agent_badge: false,
             claw_on_by_default: false,
             enable_file_tools: true,

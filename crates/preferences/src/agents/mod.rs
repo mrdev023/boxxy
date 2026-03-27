@@ -12,6 +12,8 @@ pub fn setup_agents_page(
 ) -> Box<dyn Fn(&str) -> bool> {
     let claw_on_by_default_switch: adw::SwitchRow =
         builder.object("claw_on_by_default_switch").unwrap();
+    let proactive_by_default_switch: adw::SwitchRow =
+        builder.object("proactive_by_default_switch").unwrap();
     let hide_agent_badge_switch: adw::SwitchRow =
         builder.object("hide_agent_badge_switch").unwrap();
     let enable_file_tools_switch: adw::SwitchRow =
@@ -30,6 +32,9 @@ pub fn setup_agents_page(
 
     // Initialize values
     claw_on_by_default_switch.set_active(settings_rc.borrow().claw_on_by_default);
+    proactive_by_default_switch.set_active(
+        settings_rc.borrow().claw_auto_diagnosis_mode == crate::config::ClawAutoDiagnosisMode::Proactive
+    );
     hide_agent_badge_switch.set_active(settings_rc.borrow().hide_agent_badge);
     enable_file_tools_switch.set_active(settings_rc.borrow().enable_file_tools);
     enable_system_tools_switch.set_active(settings_rc.borrow().enable_system_tools);
@@ -44,6 +49,22 @@ pub fn setup_agents_page(
         let mut s = s_rc.borrow_mut();
         if s.claw_on_by_default != row.is_active() {
             s.claw_on_by_default = row.is_active();
+            s.save();
+            cb(s.clone());
+        }
+    });
+
+    let s_rc = settings_rc.clone();
+    let cb = on_change.clone();
+    proactive_by_default_switch.connect_active_notify(move |row| {
+        let mut s = s_rc.borrow_mut();
+        let target_mode = if row.is_active() {
+            crate::config::ClawAutoDiagnosisMode::Proactive
+        } else {
+            crate::config::ClawAutoDiagnosisMode::Lazy
+        };
+        if s.claw_auto_diagnosis_mode != target_mode {
+            s.claw_auto_diagnosis_mode = target_mode;
             s.save();
             cb(s.clone());
         }
@@ -116,6 +137,7 @@ pub fn setup_agents_page(
     });
 
     let claw_on_by_default_switch_clone = claw_on_by_default_switch.clone();
+    let proactive_by_default_switch_clone = proactive_by_default_switch.clone();
     let hide_agent_badge_switch_clone = hide_agent_badge_switch.clone();
     let enable_file_tools_switch_clone = enable_file_tools_switch.clone();
     let enable_system_tools_switch_clone = enable_system_tools_switch.clone();
@@ -133,6 +155,10 @@ pub fn setup_agents_page(
         let ag1 = match_row(
             claw_on_by_default_switch_clone.upcast_ref(),
             "boxxyclaw on by default start automatically new terminal",
+        );
+        let ag_proactive = match_row(
+            proactive_by_default_switch_clone.upcast_ref(),
+            "proactive mode by default start boxxyclaw background analysis lazy",
         );
         let ag2 = match_row(
             hide_agent_badge_switch_clone.upcast_ref(),
@@ -159,7 +185,7 @@ pub fn setup_agents_page(
             "enable clipboard tools read write copy paste",
         );
 
-        group_agent_general.set_visible(ag1 || ag2);
+        group_agent_general.set_visible(ag1 || ag_proactive || ag2);
         group_agent_toolbox.set_visible(ag3 || ag4 || ag5 || ag6 || ag7);
 
         group_agent_general.is_visible() || group_agent_toolbox.is_visible()

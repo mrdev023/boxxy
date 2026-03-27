@@ -40,6 +40,7 @@ pub struct TerminalPaneComponent {
     claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
     claw_message_list: gtk::ListBox,
     is_claw_active: Rc<Cell<bool>>,
+    is_proactive: Rc<Cell<bool>>,
     msg_bar: Rc<MsgBarComponent>,
     pub total_tokens: Rc<Cell<u64>>,
 }
@@ -58,6 +59,7 @@ pub(super) struct PaneInner {
     pub(super) n_rows: i64,
     pub(super) pid: Option<u32>,
     pub(super) agent_badge: AgentBadge,
+    pub(super) msg_bar: Rc<MsgBarComponent>,
     pub(super) callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
 }
 
@@ -99,25 +101,153 @@ impl TerminalPaneComponent {
         let claw_message_list = boxxy_claw::ui::create_claw_message_list();
 
         let is_claw_active = Rc::new(Cell::new(false));
+        let is_proactive = Rc::new(Cell::new(false));
         let agent_badge = AgentBadge::new(&widget);
         let total_tokens = Rc::new(Cell::new(0));
 
-        let inner = Rc::new(RefCell::new(PaneInner {
-            terminal: terminal.clone(),
-            scrolled_window: scrolled_window.clone(),
-            _provider: provider,
-            working_dir: init.working_dir,
-            id: id.clone(),
-            current_settings: None,
-            hide_scrollbars: false,
-            is_dimmed: false,
-            size_dismiss_source: None,
-            n_columns: 0,
-            n_rows: 0,
-            pid: None,
-            agent_badge: agent_badge.clone(),
-            callback: callback.clone(),
-        }));
+        let (msg_bar, inner) = {
+            let tx_msg = claw_sender.clone();
+            let tx_claw_toggle = claw_sender.clone();
+            let tx_proactive_toggle = claw_sender.clone();
+            let cb_msg = callback.clone();
+            let id_msg = id.clone();
+            let cb_toggle = callback.clone();
+            let id_toggle = id.clone();
+            let cb_proactive = callback.clone();
+            let id_proactive = id.clone();
+
+            // We need a weak ref for the msg_bar callbacks, but inner isn't created yet.
+            // We'll use a RefCell<Option<Weak<RefCell<PaneInner>>>> that we fill later.
+            let inner_weak_ref: Rc<RefCell<Option<std::rc::Weak<RefCell<PaneInner>>>>> = Rc::new(RefCell::new(None));
+            let inner_weak_for_msg = inner_weak_ref.clone();
+            let inner_weak_for_cancel = inner_weak_ref.clone();
+            let inner_weak_for_active = inner_weak_ref.clone();
+            let inner_weak_for_proactive = inner_weak_ref.clone();
+
+            let is_claw_active_for_msg = is_claw_active.clone();
+            let is_proactive_for_msg = is_proactive.clone();
+
+            let is_claw_active_for_active = is_claw_active.clone();
+            let is_proactive_for_active = is_proactive.clone();
+
+            let is_claw_active_for_proactive = is_claw_active.clone();
+            let is_proactive_for_proactive = is_proactive.clone();
+
+            let msg_bar = Rc::new(MsgBarComponent::new(
+                move |(query, images)| {
+                    if let Some(inner_arc) = inner_weak_for_msg.borrow().as_ref().and_then(|w| w.upgrade()) {
+                        let pane = inner_arc.borrow().terminal.clone();
+                        pane.set_focusable(true);
+                        pane.grab_focus();
+
+                        if !is_claw_active_for_msg.get() {
+                            is_claw_active_for_msg.set(true);
+                            inner_arc.borrow().agent_badge.set_visible(true);
+                            inner_arc.borrow().msg_bar.update_ui(true, is_proactive_for_msg.get());
+                            cb_msg(PaneOutput::ClawStateChanged(id_msg.clone(), true, is_proactive_for_msg.get()));
+                            let tx = tx_msg.clone();
+                            glib::spawn_future_local(async move {
+                                let _ = tx.send(boxxy_claw::engine::ClawMessage::Initialize).await;
+                            });
+                        }
+
+                        let tx = tx_msg.clone();
+                        let cwd = inner_arc.borrow().working_dir.clone().unwrap_or_default();
+
+                        gtk::glib::spawn_future_local(async move {
+                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
+                                if query.starts_with("/resume ") {
+                                    let session_id = query["/resume ".len()..].trim().to_string();
+                                    if !session_id.is_empty() {
+                                        let _ = tx
+                                            .send(boxxy_claw::engine::ClawMessage::ResumeSession {
+                                                session_id,
+                                            })
+                                            .await;
+                                        return;
+                                    }
+                                }
+
+                                let _ = tx
+                                    .send(boxxy_claw::engine::ClawMessage::ClawQuery {
+                                        query,
+                                        snapshot,
+                                        cwd,
+                                        image_attachments: images,
+                                    })
+                                    .await;
+                            }
+                        });
+                    }
+                },
+                move || {
+                    if let Some(inner_arc) = inner_weak_for_cancel.borrow().as_ref().and_then(|w| w.upgrade()) {
+                        let pane = inner_arc.borrow().terminal.clone();
+                        pane.set_focusable(true);
+                        pane.grab_focus();
+                    }
+                },
+                move |active| {
+                    if is_claw_active_for_active.get() != active {
+                        is_claw_active_for_active.set(active);
+                        if let Some(inner_arc) = inner_weak_for_active.borrow().as_ref().and_then(|w| w.upgrade()) {
+                            inner_arc.borrow().msg_bar.update_ui(active, is_proactive_for_active.get());
+                            inner_arc.borrow().agent_badge.set_visible(active);
+                        }
+                        cb_toggle(PaneOutput::ClawStateChanged(id_toggle.clone(), active, is_proactive_for_active.get()));
+                        let tx = tx_claw_toggle.clone();
+                        if active {
+                            glib::spawn_future_local(async move {
+                                let _ = tx.send(boxxy_claw::engine::ClawMessage::Initialize).await;
+                            });
+                        } else {
+                            glib::spawn_future_local(async move {
+                                let _ = tx.send(boxxy_claw::engine::ClawMessage::Deactivate).await;
+                            });
+                        }
+                    }
+                },
+                move |proactive| {
+                    if is_proactive_for_proactive.get() != proactive {
+                        is_proactive_for_proactive.set(proactive);
+                        if let Some(inner_arc) = inner_weak_for_proactive.borrow().as_ref().and_then(|w| w.upgrade()) {
+                            inner_arc.borrow().msg_bar.update_ui(is_claw_active_for_proactive.get(), proactive);
+                        }
+                        cb_proactive(PaneOutput::ClawStateChanged(id_proactive.clone(), is_claw_active_for_proactive.get(), proactive));
+                        let tx = tx_proactive_toggle.clone();
+                        let mode = if proactive {
+                            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+                        } else {
+                            boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy
+                        };
+                        glib::spawn_future_local(async move {
+                            let _ = tx.send(boxxy_claw::engine::ClawMessage::UpdateDiagnosisMode(mode)).await;
+                        });
+                    }
+                },
+            ));
+
+            let inner = Rc::new(RefCell::new(PaneInner {
+                terminal: terminal.clone(),
+                scrolled_window,
+                _provider: provider,
+                working_dir: init.working_dir,
+                id: id.clone(),
+                current_settings: None,
+                hide_scrollbars: false,
+                is_dimmed: false,
+                size_dismiss_source: None,
+                n_columns: 0,
+                n_rows: 0,
+                pid: None,
+                agent_badge: agent_badge.clone(),
+                msg_bar: msg_bar.clone(),
+                callback: callback.clone(),
+            }));
+
+            *inner_weak_ref.borrow_mut() = Some(Rc::downgrade(&inner));
+            (msg_bar, inner)
+        };
 
         gestures::setup_gestures(&terminal, &search_bar_rc, callback.clone(), id.clone());
         preview::setup_preview(&terminal, &inner);
@@ -178,60 +308,6 @@ impl TerminalPaneComponent {
             callback.clone(),
             id.clone(),
         );
-        let msg_bar = {
-            let tx_msg = claw_sender.clone();
-            let inner_rc_for_msg = Rc::downgrade(&inner);
-            let inner_rc_for_cancel = Rc::downgrade(&inner);
-            let is_claw_active_for_msg = is_claw_active.clone();
-            Rc::new(MsgBarComponent::new(
-                move |(query, images)| {
-                    if let Some(inner_arc) = inner_rc_for_msg.upgrade() {
-                        let pane = inner_arc.borrow().terminal.clone();
-                        pane.set_focusable(true);
-                        pane.grab_focus();
-
-                        if !is_claw_active_for_msg.get() {
-                            return;
-                        }
-
-                        let tx = tx_msg.clone();
-                        let cwd = inner_arc.borrow().working_dir.clone().unwrap_or_default();
-
-                        gtk::glib::spawn_future_local(async move {
-                            if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
-                                if query.starts_with("/resume ") {
-                                    let session_id = query["/resume ".len()..].trim().to_string();
-                                    if !session_id.is_empty() {
-                                        let _ = tx
-                                            .send(boxxy_claw::engine::ClawMessage::ResumeSession {
-                                                session_id,
-                                            })
-                                            .await;
-                                        return;
-                                    }
-                                }
-
-                                let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::ClawQuery {
-                                        query,
-                                        snapshot,
-                                        cwd,
-                                        image_attachments: images,
-                                    })
-                                    .await;
-                            }
-                        });
-                    }
-                },
-                move || {
-                    if let Some(inner_arc) = inner_rc_for_cancel.upgrade() {
-                        let pane = inner_arc.borrow().terminal.clone();
-                        pane.set_focusable(true);
-                        pane.grab_focus();
-                    }
-                },
-            ))
-        };
         widget.add_overlay(&msg_bar.widget);
 
         let (claw_popover, claw_indicator, pending_proactive_diagnosis) = claw::setup_claw(
@@ -253,15 +329,17 @@ impl TerminalPaneComponent {
         let popover_clone = claw_popover.clone();
         let msg_bar_clone = msg_bar.clone();
         let is_claw_active_for_focus = is_claw_active.clone();
+        let is_proactive_for_focus = is_proactive.clone();
         focus_toggle_handler.connect_key_pressed(move |_, keyval, _keycode, state| {
             let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
 
             if is_ctrl && keyval == gtk::gdk::Key::slash {
-                if !is_claw_active_for_focus.get() {
-                    return gtk::glib::Propagation::Proceed;
-                }
                 if let Some(rect) = terminal_clone.get_cursor_rect() {
                     terminal_clone.set_focusable(false); // Prevent clicks from stealing focus
+                    
+                    // Sync the MsgBar state with current pane status
+                    msg_bar_clone.update_ui(is_claw_active_for_focus.get(), is_proactive_for_focus.get());
+                    
                     msg_bar_clone.show_at_y(rect.y() as i32, rect.height() as i32);
                     // Use a micro-delay to let GTK process the visibility change
                     // before attempting to steal focus from the TerminalWidget.
@@ -310,6 +388,7 @@ impl TerminalPaneComponent {
             claw_sender,
             claw_message_list,
             is_claw_active,
+            is_proactive,
             msg_bar,
             total_tokens,
         }
@@ -582,6 +661,14 @@ impl TerminalPaneComponent {
 
     pub fn resize(&self) {}
 
+    pub fn is_claw_active(&self) -> bool {
+        self.is_claw_active.get()
+    }
+
+    pub fn is_proactive(&self) -> bool {
+        self.is_proactive.get()
+    }
+
     pub fn set_claw_active(&self, active: bool) {
         if self.is_claw_active.get() == active {
             return;
@@ -600,6 +687,9 @@ impl TerminalPaneComponent {
         // Update badge visibility
         self.agent_badge.set_visible(active);
 
+        // Sync MsgBar toggle state
+        self.msg_bar.update_ui(active, self.is_proactive.get());
+
         // If turning ON, tell the session to Initialize
         let tx = self.claw_sender.clone();
         if active {
@@ -614,6 +704,13 @@ impl TerminalPaneComponent {
     }
 
     pub fn update_diagnosis_mode(&self, mode: &boxxy_preferences::config::ClawAutoDiagnosisMode) {
+        let proactive = matches!(
+            mode,
+            boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
+        );
+        self.is_proactive.set(proactive);
+        self.msg_bar.update_ui(self.is_claw_active.get(), proactive);
+
         let _ = self
             .claw_sender
             .send_blocking(boxxy_claw::engine::ClawMessage::UpdateDiagnosisMode(*mode));

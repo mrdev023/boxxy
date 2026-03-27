@@ -41,5 +41,5 @@ The crate uses an **Actor Model** mixed with a **Shared-Everything State** strat
 
 ## Directives
 - **Lazy Loading & Lifecycle**: BoxxyClaw follows a strict two-stage initialization to keep the terminal lightweight:
-  1. **Identity Phase (`Initialize`):** When Claw mode is toggled ON, the session actor receives an `Initialize` message. It immediately generates a fresh agent name (e.g., "Capable Tragopan"), clears history, and announces its identity to the UI so badges can appear instantly.
-  2. **Resource Phase:** Heavy background resources (SQLite Database, Skill Loading, RAG) MUST NOT be loaded until the first actual user request (e.g., `? hello`). This ensures simply having Claw mode "On" doesn't consume excessive memory or CPU.
+  1. **Identity Phase (`Initialize`):** When Claw mode is toggled ON for a specific pane, the session actor receives an `Initialize` message. It immediately generates a fresh agent name (e.g., "Capable Tragopan"), clears history, and announces its identity to the UI so badges can appear instantly.
+  2. **Resource Phase:** Heavy background resources (SQLite Database, Skill Loading, RAG) MUST NOT be loaded until the first actual user request (e.g., `? hello`). This ensures simply toggling Claw mode "On" for a pane doesn't consume excessive memory or CPU until the agent is utilized.
