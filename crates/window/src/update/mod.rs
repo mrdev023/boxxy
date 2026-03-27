@@ -6,6 +6,7 @@ pub mod window_state;
 use gtk4::prelude::*;
 use gtk4::gio;
 use libadwaita as adw;
+use libadwaita::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -436,26 +437,113 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         AppInput::PushNotification(ready) => {
             inner.notifications.push(ready.clone());
 
-            // Only show the old pill for actual app updates
-            if ready.level == crate::widgets::notification::NotificationLevel::Update {
-                inner.notification_pill.set_notification(ready.clone());
-            }
-
             let toast = adw::Toast::new(&ready.message);
-            toast.set_timeout(5);
+            
+            if ready.level == crate::widgets::notification::NotificationLevel::Update {
+                toast.set_timeout(0); // Permanent until dismissed
+                toast.set_button_label(Some("Details"));
+                
+                let tx = inner.tx.clone();
+                let notification = ready.clone();
+                let toast_overlay = inner.toast_overlay.clone();
+                toast.connect_button_clicked(move |_| {
+                    let dialog = adw::AlertDialog::builder()
+                        .heading(&notification.title)
+                        .body(&notification.message)
+                        .build();
+
+                    let details_grid = gtk4::Grid::new();
+                    details_grid.set_column_spacing(12);
+                    details_grid.set_row_spacing(6);
+
+                    let mut row = 0;
+                    for (key, value) in &notification.details {
+                        if key == "Url" || key == "ChecksumUrl" {
+                            continue;
+                        }
+                        let key_label = gtk4::Label::builder()
+                            .label(key)
+                            .halign(gtk4::Align::Start)
+                            .css_classes(["dim-label"])
+                            .build();
+                        let value_label = gtk4::Label::builder()
+                            .label(value)
+                            .halign(gtk4::Align::Start)
+                            .build();
+
+                        details_grid.attach(&key_label, 0, row, 1, 1);
+                        details_grid.attach(&value_label, 1, row, 1, 1);
+                        row += 1;
+                    }
+                    dialog.set_extra_child(Some(&details_grid));
+
+                    for action in &notification.actions {
+                        dialog.add_response(&action.action_name, &action.label);
+                        if action.is_primary {
+                            dialog.set_response_appearance(
+                                &action.action_name,
+                                adw::ResponseAppearance::Suggested,
+                            );
+                        }
+                    }
+
+                    let url = notification
+                        .details
+                        .iter()
+                        .find(|(k, _)| k == "Url")
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default();
+                    let date = notification
+                        .details
+                        .iter()
+                        .find(|(k, _)| k == "Date")
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default();
+                    let checksum_url = notification
+                        .details
+                        .iter()
+                        .find(|(k, _)| k == "ChecksumUrl")
+                        .map(|(_, v)| v.clone());
+                    let id = notification.id.clone();
+                    let tx_dialog = tx.clone();
+
+                    if let Some(root) = toast_overlay.root().and_downcast::<gtk4::Window>() {
+                        dialog.choose(
+                            Some(&root),
+                            gtk4::gio::Cancellable::NONE,
+                            move |response| {
+                                if response == "win.start-download" {
+                                    let _ = tx_dialog.send_blocking(
+                                        crate::state::AppInput::StartUpdateDownload(
+                                            url.clone(),
+                                            date.clone(),
+                                            checksum_url.clone(),
+                                        ),
+                                    );
+                                    let _ = tx_dialog.send_blocking(
+                                        crate::state::AppInput::DismissNotification(id.clone()),
+                                    );
+                                } else if response == "win.apply-update" {
+                                    let _ = tx_dialog.send_blocking(
+                                        crate::state::AppInput::ApplyUpdateAndRestart,
+                                    );
+                                } else if response == "win.dismiss-notification" {
+                                    let _ = tx_dialog.send_blocking(
+                                        crate::state::AppInput::DismissNotification(id.clone()),
+                                    );
+                                }
+                            },
+                        );
+                    }
+                });
+            } else {
+                toast.set_timeout(5);
+            }
+            
             inner.toast_overlay.add_toast(toast);
         }
         AppInput::DismissNotification(id) => {
             inner.notifications.retain(|n| n.id != id);
-            if let Some(current) = inner.notification_pill.get_notification()
-                && current.id == id
-            {
-                inner.notification_pill.clear();
-                // Show next notification if any
-                if let Some(next) = inner.notifications.first() {
-                    inner.notification_pill.set_notification(next.clone());
-                }
-            }
         }
         AppInput::StartUpdateDownload(url, date, checksum_url) => {
             let tx_download = inner.tx.clone();
@@ -476,12 +564,16 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
             // Show the "Update Ready" notification
             let ready = crate::widgets::notification::Notification::new_update_ready("nightly");
             inner.notifications.push(ready.clone());
-            inner.notification_pill.set_notification(ready.clone());
 
             let toast = adw::Toast::new(&ready.message);
             toast.set_timeout(0); // Permanent until dismissed
             toast.set_button_label(Some("Restart"));
-            toast.set_action_name(Some("win.apply-update"));
+            
+            let tx = inner.tx.clone();
+            toast.connect_button_clicked(move |_| {
+                let _ = tx.send_blocking(AppInput::ApplyUpdateAndRestart);
+            });
+            
             inner.toast_overlay.add_toast(toast);
         }
         AppInput::ApplyUpdateAndRestart => {

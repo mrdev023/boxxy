@@ -255,31 +255,11 @@ impl AppWindow {
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&content_toolbar));
 
-        let notification_pill = crate::widgets::notification_pill::BoxxyNotificationPill::new();
-        notification_pill.set_visible(false);
-        overlay.add_overlay(&notification_pill);
-
         let toast_overlay = adw::ToastOverlay::new();
         toast_overlay.set_child(Some(&split_view));
 
         split_view.set_content(Some(&overlay));
         window.set_content(Some(&toast_overlay));
-
-        let tx_pill = tx.clone();
-        let pill_clone = notification_pill.clone();
-        notification_pill.connect_clicked(move |_| {
-            if let Some(notification) = pill_clone.get_notification() {
-                let popover = gtk::Popover::new();
-                popover.set_position(gtk::PositionType::Top);
-                let details = crate::widgets::notification_details::BoxxyNotificationDetails::new(
-                    &notification,
-                    tx_pill.clone(),
-                );
-                popover.set_child(Some(&details));
-                popover.set_parent(&pill_clone);
-                popover.popup();
-            }
-        });
 
         let tx_focus2 = tx.clone();
         let tab_view_for_focus = tab_view.clone();
@@ -341,7 +321,6 @@ impl AppWindow {
             claw_active: initial_claw_active,
             claw_proactive: initial_claw_proactive,
             toast_overlay,
-            notification_pill,
             notifications: Vec::new(),
             initial_working_dir: init.working_dir.clone(),
             force_close,
