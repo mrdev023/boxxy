@@ -26,10 +26,13 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
         let agent = boxxy_terminal::get_agent().await;
         let mut running_apps = Vec::new();
         for pid in pids {
-            if let Ok(mut procs) = agent.get_running_processes(pid).await {
+            log::debug!("handle_close_request: Querying running processes for PID {}", pid);
+            if let Ok(Ok(mut procs)) = tokio::time::timeout(std::time::Duration::from_millis(500), agent.get_running_processes(pid)).await {
                 // Ignore the shell process itself if it's the only thing running,
                 // but since we get descendants, the shell itself isn't included.
                 running_apps.append(&mut procs);
+            } else {
+                log::warn!("handle_close_request: Timeout or error querying processes for PID {}", pid);
             }
         }
 

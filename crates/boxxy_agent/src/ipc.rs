@@ -323,8 +323,12 @@ impl BoxxyAgent {
 
         let mut descendants = Vec::new();
         let mut to_visit = vec![pid];
+        let mut visited = std::collections::HashSet::new();
 
         while let Some(current) = to_visit.pop() {
+            if !visited.insert(current) {
+                continue;
+            }
             for (p, ppid, name) in &all_procs {
                 if *ppid == current {
                     descendants.push((*p, name.clone()));

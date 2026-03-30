@@ -316,15 +316,31 @@ where
 
                     read_guard = async_pty_reader.readable() => {
                         let mut guard = read_guard.unwrap();
-                        if let Err(err) = self.pty_read(&mut state, &mut buf, pipe.as_mut()) {
-                            #[cfg(target_os = "linux")]
-                            if err.raw_os_error() == Some(libc::EIO) {
-                                // PTY closed
+                        match self.pty_read(&mut state, &mut buf, pipe.as_mut()) {
+                            Ok(false) => {
+                                // EOF Reached
                                 guard.clear_ready();
-                                continue;
+                                self.event_proxy.send_event(Event::Exit);
+                                self.terminal.exit();
+                                self.render_state.store(Arc::new(RenderState::new(&self.terminal)));
+                                self.event_proxy.send_event(Event::Wakeup);
+                                break 'event_loop;
                             }
-                            error!("Error reading from PTY in event loop: {err}");
-                            break 'event_loop;
+                            Err(err) => {
+                                #[cfg(target_os = "linux")]
+                                if err.raw_os_error() == Some(libc::EIO) {
+                                    // PTY closed (child exited)
+                                    guard.clear_ready();
+                                    self.event_proxy.send_event(Event::Exit);
+                                    self.terminal.exit();
+                                    self.render_state.store(Arc::new(RenderState::new(&self.terminal)));
+                                    self.event_proxy.send_event(Event::Wakeup);
+                                    break 'event_loop;
+                                }
+                                error!("Error reading from PTY in event loop: {err}");
+                                break 'event_loop;
+                            }
+                            _ => {}
                         }
                         guard.clear_ready();
                     }
@@ -370,17 +386,21 @@ where
         state: &mut State,
         buf: &mut [u8],
         mut writer: Option<&mut X>,
-    ) -> io::Result<()>
+    ) -> io::Result<bool>
     where
         X: Write,
     {
         let mut unprocessed = 0;
         let mut processed = 0;
+        let mut eof = false;
 
         loop {
             // Read from the PTY.
             match self.pty.reader().read(&mut buf[unprocessed..]) {
-                Ok(0) if unprocessed == 0 => break,
+                Ok(0) if unprocessed == 0 => {
+                    eof = true;
+                    break;
+                }
                 Ok(got) => unprocessed += got,
                 Err(err) => match err.kind() {
                     ErrorKind::Interrupted | ErrorKind::WouldBlock => {
@@ -414,7 +434,7 @@ where
             self.event_proxy.send_event(Event::Wakeup);
         }
 
-        Ok(())
+        Ok(!eof)
     }
 
     #[inline]

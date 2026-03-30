@@ -248,6 +248,9 @@ impl TerminalComponent {
             }
             PaneOutput::Exited(id, code) => {
                 let mut inner = self.inner.borrow_mut();
+                if !inner.panes.contains_key(&id) {
+                    return;
+                }
                 if inner.panes.len() == 1 {
                     let term_id = inner.id.clone();
                     let _ = TERMINAL_EVENT_BUS.send(TerminalEvent {

@@ -783,6 +783,11 @@ impl TerminalWidget {
                                 f(code.code().unwrap_or(0));
                             }
                         }
+                        Event::Exit => {
+                            if let Some(f) = widget.imp().exit_callback.borrow().as_ref() {
+                                f(0);
+                            }
+                        }
                         Event::ClipboardStore(ty, text) => {
                             let cb = if ty == crate::engine::term::ClipboardType::Selection {
                                 widget.display().primary_clipboard()
