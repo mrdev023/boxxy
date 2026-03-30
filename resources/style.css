@@ -314,7 +314,12 @@ tabbox separator {
 }
 
 .claw-widget .suggested-action {
-    border-radius: 12px;
+}
+
+.claw-widget button:focus,
+.claw-widget entry:focus-within {
+    outline: 2px solid alpha(currentColor, 0.4);
+    outline-offset: 0px;
 }
 
 .claw-widget .heading {

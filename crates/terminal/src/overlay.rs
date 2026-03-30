@@ -338,12 +338,17 @@ impl TerminalOverlay {
         let reply_entry_clone = reply_entry.clone();
         let on_reply = std::rc::Rc::new(on_reply);
         let on_reply_clone = on_reply.clone();
+        let cb_cancel_reply = on_cancel_rc.clone();
+        let cm_clone_reply = current_mode.clone();
 
         let do_reply = move || {
             let text = reply_entry_clone.text().to_string();
             if !text.is_empty() {
                 on_reply_clone((text, vec![]));
                 reply_entry_clone.set_text("");
+                p_clone3.set_reveal_child(false);
+            } else {
+                cb_cancel_reply(*cm_clone_reply.borrow());
                 p_clone3.set_reveal_child(false);
             }
         };
@@ -497,17 +502,28 @@ impl TerminalOverlay {
         }
 
         self.revealer.set_reveal_child(true);
-        if self.ok_btn.is_visible() {
-            self.ok_btn.grab_focus();
-        } else if self.accept_btn.is_visible() {
-            self.accept_btn.grab_focus();
-        } else if self.approve_file_btn.is_visible() {
-            self.approve_file_btn.grab_focus();
-        } else if self.template_box.is_visible() {
-            self.template_entry.grab_focus();
-        } else if mode == OverlayMode::Claw {
-            self.reply_entry.grab_focus();
-        }
+
+        let ok_btn = self.ok_btn.clone();
+        let accept_btn = self.accept_btn.clone();
+        let approve_file_btn = self.approve_file_btn.clone();
+        let template_box = self.template_box.clone();
+        let template_entry = self.template_entry.clone();
+        let reply_entry = self.reply_entry.clone();
+
+        gtk4::glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            if ok_btn.is_visible() {
+                ok_btn.grab_focus();
+            } else if accept_btn.is_visible() {
+                accept_btn.grab_focus();
+            } else if approve_file_btn.is_visible() {
+                approve_file_btn.grab_focus();
+            } else if template_box.is_visible() {
+                template_entry.grab_focus();
+            } else if mode == OverlayMode::Claw {
+                reply_entry.grab_focus();
+            }
+            gtk4::glib::ControlFlow::Break
+        });
     }
 
     pub fn hide(&self) {
