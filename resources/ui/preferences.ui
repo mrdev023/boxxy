@@ -5,7 +5,9 @@
     <property name="content-width">850</property>
     <property name="content-height">600</property>
     <property name="child">
-      <object class="AdwNavigationSplitView" id="split_view">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwNavigationSplitView" id="split_view">
         <property name="sidebar">
           <object class="AdwNavigationPage">
             <property name="title" translatable="yes">Categories</property>
@@ -692,5 +694,7 @@
         </property>
       </object>
     </property>
+  </object>
+  </property>
   </object>
 </interface>

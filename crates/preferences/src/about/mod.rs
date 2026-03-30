@@ -2,7 +2,10 @@ use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 
-pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> bool> {
+pub fn populate_about_page(
+    page: &adw::PreferencesPage,
+    toast_overlay: &adw::ToastOverlay,
+) -> Box<dyn Fn(&str) -> bool> {
     let mut elements = Vec::new();
 
     // App Logo and Name
@@ -34,32 +37,44 @@ pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> b
     let group = adw::PreferencesGroup::builder().build();
     let mut rows = Vec::new();
 
-    let ext_icon0 = gtk::Image::from_icon_name("boxxy-external-link-symbolic");
+    // Version row with Copy button (Using baked-in env vars)
+    let version_str = format!("{} {}", env!("CARGO_PKG_VERSION"), env!("GIT_HASH"));
+
+    let copy_icon = gtk::Image::from_icon_name("boxxy-edit-copy-symbolic");
     let version_row = adw::ActionRow::builder()
         .title("Version")
-        .subtitle(env!("CARGO_PKG_VERSION"))
+        .subtitle(&version_str)
         .activatable(true)
         .build();
-    version_row.add_suffix(&ext_icon0);
+    version_row.add_suffix(&copy_icon);
     rows.push(version_row.clone());
 
-    version_row.connect_activated(move |_| {
-        let uri = "https://github.com/miifrommera/boxxy/releases";
-        let _ = gtk::gio::AppInfo::launch_default_for_uri(uri, None::<&gtk::gio::AppLaunchContext>);
+    let toast_overlay_clone = toast_overlay.clone();
+    let version_str_clone = version_str.clone();
+    version_row.connect_activated(move |row| {
+        let display = row.display();
+        let clipboard = display.clipboard();
+        clipboard.set_text(&version_str_clone);
+
+        let toast = adw::Toast::new("Version copied to clipboard");
+        toast_overlay_clone.add_toast(toast);
     });
 
+    // Developer
     let dev_row = adw::ActionRow::builder()
         .title("Developer")
         .subtitle("Mii")
         .build();
     rows.push(dev_row.clone());
 
+    // License
     let license_row = adw::ActionRow::builder()
         .title("License")
         .subtitle(env!("CARGO_PKG_LICENSE"))
         .build();
     rows.push(license_row.clone());
 
+    // Website
     let ext_icon1 = gtk::Image::from_icon_name("boxxy-external-link-symbolic");
     let site_row = adw::ActionRow::builder()
         .title("Website")
@@ -76,6 +91,24 @@ pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> b
             gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
     });
 
+    // Releases Row
+    let ext_icon_releases = gtk::Image::from_icon_name("boxxy-external-link-symbolic");
+    let releases_row = adw::ActionRow::builder()
+        .title("Releases")
+        .subtitle("https://github.com/miifrommera/boxxy/releases")
+        .activatable(true)
+        .build();
+    releases_row.add_suffix(&ext_icon_releases);
+    rows.push(releases_row.clone());
+
+    let releases_row_clone = releases_row.clone();
+    releases_row.connect_activated(move |_| {
+        let uri = releases_row_clone.subtitle().unwrap().to_string();
+        let _ =
+            gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
+    });
+
+    // Issues
     let ext_icon2 = gtk::Image::from_icon_name("boxxy-external-link-symbolic");
     let issues_row = adw::ActionRow::builder()
         .title("Report an Issue")
@@ -96,6 +129,7 @@ pub fn populate_about_page(page: &adw::PreferencesPage) -> Box<dyn Fn(&str) -> b
     group.add(&dev_row);
     group.add(&license_row);
     group.add(&site_row);
+    group.add(&releases_row);
     group.add(&issues_row);
 
     page.add(&group);

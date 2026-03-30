@@ -135,7 +135,8 @@ impl PreferencesComponent {
             Rc::new(on_reload_engine),
         );
         let shortcuts_filter = crate::shortcuts::populate_shortcuts_page(&page_shortcuts);
-        let about_filter = crate::about::populate_about_page(&page_about);
+        let toast_overlay: adw::ToastOverlay = builder.object("toast_overlay").unwrap();
+        let about_filter = crate::about::populate_about_page(&page_about, &toast_overlay);
 
         let theme_row = appearance_widgets.theme_row;
         let chat_width_spin = appearance_widgets.chat_width_spin;
