@@ -207,7 +207,7 @@ pub fn handle_terminal_event(
                         if has_pending {
                             // Replace claw with colored timer composite in the indicator slot
                             page.set_indicator_icon(Some(&gtk4::gio::ThemedIcon::new(
-                                "boxxyclaw-timer",
+                                "boxxy-timer-symbolic",
                             )));
                             page.set_indicator_activatable(false);
                         } else {

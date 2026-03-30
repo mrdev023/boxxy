@@ -51,6 +51,9 @@ fn main() {
     <file compressed="true" alias="icons/boxxy-user-trash-symbolic.svg">icons/boxxy-user-trash-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-window-close-symbolic.svg">icons/boxxy-window-close-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-open-menu-symbolic.svg">icons/boxxy-open-menu-symbolic.svg</file>
+    <file compressed="true" alias="icons/boxxy-brain-symbolic.svg">icons/boxxy-brain-symbolic.svg</file>
+    <file compressed="true" alias="icons/boxxy-window-new-symbolic.svg">icons/boxxy-window-new-symbolic.svg</file>
+    <file compressed="true" alias="icons/boxxy-chat-none-symbolic.svg">icons/boxxy-chat-none-symbolic.svg</file>
     <file compressed="true" alias="prompts/ai_chat.md">prompts/ai_chat.md</file>
     <file compressed="true" alias="prompts/claw.md">prompts/claw.md</file>
     <file compressed="true" alias="prompts/bookmark_generator.md">prompts/bookmark_generator.md</file>
