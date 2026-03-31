@@ -80,6 +80,7 @@ pub struct TerminalWidget {
     pub osc_133_d_callback: RefCell<Option<Osc133DCallback>>,
     pub context_menu_callback: RefCell<Option<ContextMenuCallback>>,
     pub last_cwd: RefCell<Option<String>>,
+    pub im_context: RefCell<gtk4::IMContext>,
     pub kitty_textures: RefCell<HashMap<u32, gtk4::gdk::Texture>>,
     pub is_dimmed: Cell<bool>,
     pub cached_search_regex: RefCell<Option<(String, bool, regex::Regex)>>,
@@ -129,6 +130,7 @@ impl Default for TerminalWidget {
             osc_133_d_callback: RefCell::new(None),
             context_menu_callback: RefCell::new(None),
             last_cwd: RefCell::new(None),
+            im_context: RefCell::new(gtk4::IMMulticontext::new().upcast::<gtk4::IMContext>()),
             kitty_textures: RefCell::new(HashMap::new()),
             is_dimmed: Cell::new(false),
             cached_search_regex: RefCell::new(None),
@@ -208,13 +210,54 @@ impl ObjectImpl for TerminalWidget {
         obj.set_focusable(true);
         obj.set_can_focus(true);
 
+        // ── Input Method Setup ───────────────────────────────────────────────
+        let im_context = self.im_context.borrow();
+        im_context.set_client_widget(Some(&*obj));
+
+        im_context.connect_commit(glib::clone!(
+            #[weak]
+            obj,
+            move |_, text| {
+                if let Some(backend) = obj.imp().backend.borrow().as_ref() {
+                    if !backend.is_alt_screen() {
+                        backend.scroll_display(Scroll::Bottom);
+                    }
+                    backend.write_to_pty(text.as_bytes().to_vec());
+                }
+            }
+        ));
+
+        im_context.connect_preedit_changed(glib::clone!(
+            #[weak]
+            obj,
+            move |_| {
+                // For a terminal, we don't usually render the preedit string
+                // inline ourselves, we let the IM handle its own popup.
+                // But we must at least update the cursor location.
+                let imp = obj.imp();
+                if let Some(rect) = obj.get_cursor_rect() {
+                    let im = imp.im_context.borrow();
+                    let g_rect = gtk4::gdk::Rectangle::new(
+                        rect.x() as i32,
+                        rect.y() as i32,
+                        rect.width() as i32,
+                        rect.height() as i32,
+                    );
+                    im.set_cursor_location(&g_rect);
+                }
+            }
+        ));
+
         obj.connect_has_focus_notify(move |widget| {
+            let imp = widget.imp();
+            let im = imp.im_context.borrow();
             if widget.has_focus() {
                 widget.start_cursor_blink();
+                im.focus_in();
             } else {
                 widget.stop_cursor_blink();
-                let imp = widget.imp();
                 imp.cursor_visible.set(true);
+                im.focus_out();
                 widget.queue_draw();
             }
         });
@@ -225,9 +268,14 @@ impl ObjectImpl for TerminalWidget {
             obj,
             #[upgrade_or]
             glib::Propagation::Proceed,
-            move |_, key, _keycode, modifier| {
+            move |ctrl, key, _keycode, modifier| {
                 let imp = obj.imp();
                 obj.start_cursor_blink();
+
+                // Let the IM context have first dibs on the key event (dead keys etc.)
+                if imp.im_context.borrow().filter_keypress(&ctrl.current_event().unwrap()) {
+                    return glib::Propagation::Stop;
+                }
 
                 if key == gtk4::gdk::Key::V
                     && modifier.contains(
@@ -272,6 +320,10 @@ impl ObjectImpl for TerminalWidget {
                     if let Some(bytes) =
                         crate::terminal::input::translate_key(key, modifier, is_app_cursor)
                     {
+                        // Special key handled (Ctrl+C, Up, Tab, etc.)
+                        // Reset IM context so we don't have partial dead key state.
+                        imp.im_context.borrow().reset();
+
                         if !backend.is_alt_screen() {
                             backend.scroll_display(Scroll::Bottom);
                         }
@@ -280,6 +332,14 @@ impl ObjectImpl for TerminalWidget {
                     }
                 }
                 glib::Propagation::Proceed
+            }
+        ));
+        key_ctrl.connect_key_released(glib::clone!(
+            #[weak]
+            obj,
+            move |ctrl, _key, _keycode, _modifier| {
+                let imp = obj.imp();
+                imp.im_context.borrow().filter_keypress(&ctrl.current_event().unwrap());
             }
         ));
         obj.add_controller(key_ctrl);
@@ -1688,5 +1748,15 @@ impl WidgetImpl for TerminalWidget {
             snapshot.restore();
             draw_kitty_images(false);
         }
+    }
+
+    fn realize(&self) {
+        self.parent_realize();
+        self.im_context.borrow().set_client_widget(Some(&*self.obj()));
+    }
+
+    fn unrealize(&self) {
+        self.im_context.borrow().set_client_widget(None::<&gtk4::Widget>);
+        self.parent_unrealize();
     }
 }
