@@ -74,6 +74,7 @@ impl Tool for GetSystemInfoTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         match self.proxy.get_system_info().await {
             Ok(info_json) => {
                 let output: GetSystemInfoOutput =
@@ -137,6 +138,7 @@ impl Tool for ListProcessesTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         match self.proxy.list_processes().await {
             Ok(processes) => {
                 let output = ListProcessesOutput {
@@ -215,6 +217,7 @@ impl Tool for KillProcessTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         self.approval.set_thinking(false).await;
         let approved = self
             .approval

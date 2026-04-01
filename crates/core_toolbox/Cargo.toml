@@ -12,6 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 rig-core.workspace = true
 boxxy-agent = { path = "../boxxy_agent" }
+boxxy-telemetry = { path = "../telemetry" }
 log = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }

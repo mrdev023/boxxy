@@ -46,6 +46,7 @@ impl Tool for HttpFetchTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let client = reqwest::Client::builder()
             .user_agent("Boxxy-Claw/0.1.0")
             .timeout(std::time::Duration::from_secs(10))

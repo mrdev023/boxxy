@@ -19,6 +19,21 @@ fn main() {
     boxxy_preferences::Settings::init();
     boxxy_preferences::AppState::init();
 
+    // Initialize Telemetry
+    tokio::spawn(async {
+        boxxy_telemetry::init().await;
+
+        // Track app.launch
+        use sysinfo::System;
+        let os = System::name().unwrap_or_else(|| "Unknown".to_string());
+        let arch = System::cpu_arch();
+        let version = env!("CARGO_PKG_VERSION");
+        let pkg_type = if std::env::var("FLATPAK_ID").is_ok() { "flatpak" } else { "native" };
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".to_string());
+
+        boxxy_telemetry::track_launch(&os, &arch, pkg_type, version, &shell).await;
+    });
+
     // Ensure all default files are generated immediately on first run
     // in the background, without blocking the UI thread.
     tokio::spawn(async {
@@ -81,6 +96,11 @@ fn main() {
 
     app.connect_shutdown(|_| {
         boxxy_bookmarks::manager::BookmarksManager::clean_runs_dir();
+        
+        // Flush Telemetry
+        utils::runtime().block_on(async {
+            boxxy_telemetry::shutdown().await;
+        });
     });
 
     let exit_code = app.run();

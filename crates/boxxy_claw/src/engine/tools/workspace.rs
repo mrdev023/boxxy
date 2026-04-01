@@ -47,6 +47,7 @@ impl Tool for SpawnAgentTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let my_name = {
             let state = self.state.lock().await;
             state.agent_name.clone()
@@ -124,6 +125,7 @@ impl Tool for CloseAgentTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         if let Err(e) = self
             .tx_ui
             .send(ClawEngineEvent::RequestCloseAgent {
@@ -186,6 +188,7 @@ impl Tool for ReadPaneTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
         if let Some(pane_id) = workspace.resolve_pane_id_by_name(&args.agent_name).await {
             match workspace.get_pane_snapshot(pane_id).await {
@@ -252,6 +255,7 @@ impl Tool for DelegateTaskTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
 
         let my_name = {
@@ -346,6 +350,7 @@ impl Tool for SendKeystrokesTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         log::debug!(
             "SendKeystrokesTool called with target '{}' and keys: {:?}",
             args.agent_name,
@@ -420,6 +425,7 @@ impl Tool for SendCommandToPaneTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
 
         if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
@@ -546,6 +552,7 @@ impl Tool for SetGlobalIntentTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
         workspace.set_global_intent(args.intent.clone()).await;
         Ok(format!("Global workspace intent updated: {}", args.intent))

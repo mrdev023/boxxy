@@ -8,3 +8,4 @@ releases
 flatpak/cargo-sources.json
 .env
 .env.*
+supabase/

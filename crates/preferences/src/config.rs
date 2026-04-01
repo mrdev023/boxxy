@@ -161,6 +161,8 @@ pub struct Settings {
     pub claw_popover_width: i32,
     pub claw_popover_max_height: i32,
     pub claw_msgbar_shortcut: String,
+    pub enable_telemetry: bool,
+    pub install_id: Option<String>,
 }
 
 impl Default for Settings {
@@ -209,6 +211,8 @@ impl Default for Settings {
             claw_popover_width: CLAW_WIDTH_BOUNDS.default,
             claw_popover_max_height: CLAW_HEIGHT_BOUNDS.default,
             claw_msgbar_shortcut: "<Ctrl>slash".to_string(),
+            enable_telemetry: true, // ON by default during Preview
+            install_id: None,
         }
     }
 }
@@ -320,6 +324,13 @@ Providing this context allows Boxxy-Claw to tailor its commands and diagnostics 
                     Err(e) => log::error!("Failed to load settings: {}", e),
                 }
             }
+
+            // Generate install_id if missing
+            if settings.install_id.is_none() {
+                settings.install_id = Some(uuid::Uuid::new_v4().to_string());
+                settings.save();
+            }
+
             RwLock::new(settings)
         });
     }

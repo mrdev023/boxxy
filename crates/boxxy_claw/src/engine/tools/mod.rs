@@ -269,6 +269,7 @@ impl Tool for SysShellTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let command = if self.current_dir.is_empty() {
             args.command
         } else {

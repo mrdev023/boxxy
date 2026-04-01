@@ -19,3 +19,4 @@ tokio.workspace = true
 log.workspace = true
 boxxy-keybindings.workspace = true
 boxxy-model-selection = { path = "../model_selection" }
+uuid.workspace = true

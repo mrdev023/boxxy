@@ -52,6 +52,7 @@ impl Tool for ReadScrollbackTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         let agent_name = {

@@ -349,6 +349,9 @@ impl ClawSession {
 
                                         workspace.update_pane_tasks(self.pane_id.clone(), tasks_clone).await;
 
+                                        let session_type = if self.pinned { "pinned" } else { "normal" };
+                                        boxxy_telemetry::track_session_resume(session_type).await;
+
                                         self.send_ui(ClawEngineEvent::SystemMessage {
                                                 text: "Session resumed.".to_string(),
                                             })

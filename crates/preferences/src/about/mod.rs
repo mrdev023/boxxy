@@ -1,6 +1,7 @@
 use adw::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
+use gtk::glib;
 
 pub fn populate_about_page(
     page: &adw::PreferencesPage,
@@ -134,6 +135,53 @@ pub fn populate_about_page(
 
     page.add(&group);
     elements.push((group, rows));
+
+    // Telemetry Group
+    let telemetry_group = adw::PreferencesGroup::builder()
+        .title("Telemetry")
+        .description("Help us improve Boxxy Terminal by sharing anonymous usage statistics.")
+        .build();
+    let mut telemetry_rows = Vec::new();
+
+    let telemetry_switch = gtk::Switch::builder()
+        .valign(gtk::Align::Center)
+        .active(crate::config::Settings::load().enable_telemetry)
+        .build();
+
+    let telemetry_row = adw::ActionRow::builder()
+        .title("Anonymous Usage Data")
+        .subtitle("During the Preview Phase, telemetry helps us identify performance issues and improve AI accuracy. No PII, paths, or prompt text are ever collected. (Requires restart)")
+        .build();
+    telemetry_row.add_suffix(&telemetry_switch);
+    telemetry_rows.push(telemetry_row.clone());
+
+    telemetry_switch.connect_state_set(move |_, state| {
+        let mut settings = crate::config::Settings::load();
+        settings.enable_telemetry = state;
+        settings.save();
+        glib::Propagation::Proceed
+    });
+
+    let view_stats_row = adw::ActionRow::builder()
+        .title("View Live Statistics")
+        .subtitle("https://boxxy.dev/telemetry")
+        .activatable(true)
+        .build();
+    let ext_icon3 = gtk::Image::from_icon_name("boxxy-external-link-symbolic");
+    view_stats_row.add_suffix(&ext_icon3);
+    telemetry_rows.push(view_stats_row.clone());
+
+    view_stats_row.connect_activated(move |_| {
+        let _ = gtk::gio::AppInfo::launch_default_for_uri(
+            "https://boxxy.dev/telemetry",
+            None::<&gtk::gio::AppLaunchContext>,
+        );
+    });
+
+    telemetry_group.add(&telemetry_row);
+    telemetry_group.add(&view_stats_row);
+    page.add(&telemetry_group);
+    elements.push((telemetry_group, telemetry_rows));
 
     Box::new(move |query: &str| {
         let mut page_visible = false;

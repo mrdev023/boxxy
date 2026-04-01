@@ -39,43 +39,42 @@ impl ClawAgent {
         history: Vec<Message>,
     ) -> Result<(String, Option<rig::completion::Usage>), rig::completion::PromptError> {
         use rig::completion::Prompt;
+        let start = std::time::Instant::now();
 
-        match self {
-            Self::Gemini(agent) => {
-                let res = agent
-                    .prompt(prompt)
-                    .with_history(history.clone())
-                    .extended_details()
-                    .await?;
-                Ok((res.output.clone(), Some(res.usage)))
-            }
-            Self::Ollama(agent) => {
-                let res = agent
-                    .prompt(prompt)
-                    .with_history(history.clone())
-                    .extended_details()
-                    .await?;
-                Ok((res.output.clone(), Some(res.usage)))
-            }
-            Self::Anthropic(agent) => {
-                let res = agent
-                    .prompt(prompt)
-                    .with_history(history.clone())
-                    .extended_details()
-                    .await?;
-                Ok((res.output.clone(), Some(res.usage)))
-            }
-            Self::OpenAi(agent) => {
-                let res = agent
-                    .prompt(prompt)
-                    .with_history(history.clone())
-                    .extended_details()
-                    .await?;
-                Ok((res.output.clone(), Some(res.usage)))
-            }
-            Self::Error(e) => Err(rig::completion::PromptError::CompletionError(
+        let res_result = match self {
+            Self::Gemini(agent) => agent.prompt(prompt).with_history(history.clone()).extended_details().await,
+            Self::Ollama(agent) => agent.prompt(prompt).with_history(history.clone()).extended_details().await,
+            Self::Anthropic(agent) => agent.prompt(prompt).with_history(history.clone()).extended_details().await,
+            Self::OpenAi(agent) => agent.prompt(prompt).with_history(history.clone()).extended_details().await,
+            Self::Error(e) => return Err(rig::completion::PromptError::CompletionError(
                 rig::completion::CompletionError::ProviderError(e.clone()),
             )),
+        };
+
+        match res_result {
+            Ok(res) => {
+                let duration = start.elapsed();
+                let model_name = match self {
+                    Self::Gemini(_) => "gemini",
+                    Self::Ollama(_) => "ollama",
+                    Self::Anthropic(_) => "anthropic",
+                    Self::OpenAi(_) => "openai",
+                    _ => "unknown",
+                };
+
+                // Track Invocations
+                boxxy_telemetry::track_ai_invocation(model_name, model_name).await;
+                
+                // Track Latency
+                boxxy_telemetry::track_ai_latency(model_name, model_name, duration.as_millis() as u64).await;
+
+                // Track Tokens
+                boxxy_telemetry::track_ai_tokens(model_name, "input", res.usage.input_tokens as u64).await;
+                boxxy_telemetry::track_ai_tokens(model_name, "output", res.usage.output_tokens as u64).await;
+
+                Ok((res.output.clone(), Some(res.usage)))
+            }
+            Err(e) => Err(e),
         }
     }
 }

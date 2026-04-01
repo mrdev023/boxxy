@@ -50,6 +50,7 @@ impl Tool for ScheduleTaskTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let task_type = match args.task_type.as_str() {
             "notification" => TaskType::Notification,
             "command" => TaskType::Command,
@@ -132,6 +133,7 @@ impl Tool for ListTasksTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let tasks = {
             let state = self.state.lock().await;
             state.pending_tasks.clone()
@@ -178,6 +180,7 @@ impl Tool for CancelTaskTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let id = Uuid::parse_str(&args.task_id)
             .map_err(|e| std::io::Error::other(format!("Invalid UUID: {e}")))?;
 

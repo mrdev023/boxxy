@@ -58,6 +58,7 @@ impl Tool for FileReadTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let path = resolve_path(&self.current_dir, &args.path);
         let start_line = args.start_line.unwrap_or(0);
         let end_line = args.end_line.unwrap_or(0);
@@ -116,6 +117,7 @@ impl Tool for ListDirectoryTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let path = args.path.unwrap_or_else(|| ".".to_string());
         let full_path = resolve_path(&self.current_dir, &path);
 
@@ -180,6 +182,7 @@ impl Tool for FileWriteTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let path = resolve_path(&self.current_dir, &args.path);
 
         self.approval.set_thinking(false).await;
@@ -251,6 +254,7 @@ impl Tool for FileDeleteTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
         let path = resolve_path(&self.current_dir, &args.path);
 
         self.approval.set_thinking(false).await;
