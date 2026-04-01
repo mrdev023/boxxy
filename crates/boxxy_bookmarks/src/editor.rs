@@ -128,22 +128,12 @@ impl BookmarkEditor {
                 })
             };
             let shortcut = gtk::Shortcut::builder()
-                .trigger(&gtk::ShortcutTrigger::parse_string("<Control>plus").unwrap())
-                .action(&action)
-                .build();
-            zoom_controller.add_shortcut(shortcut);
-
-            let action = {
-                let update_font = update_font.clone();
-                let current_font_size = current_font_size.clone();
-                gtk::CallbackAction::new(move |_, _| {
-                    *current_font_size.borrow_mut() += 1.0;
-                    update_font();
-                    gtk::glib::Propagation::Stop
-                })
-            };
-            let shortcut = gtk::Shortcut::builder()
-                .trigger(&gtk::ShortcutTrigger::parse_string("<Control>equal").unwrap())
+                .trigger(
+                    &gtk::ShortcutTrigger::parse_string(
+                        "<Control>plus|<Control>equal|<Control>KP_Add|<Control><Shift>plus|<Control><Shift>equal",
+                    )
+                    .unwrap(),
+                )
                 .action(&action)
                 .build();
             zoom_controller.add_shortcut(shortcut);
@@ -165,7 +155,12 @@ impl BookmarkEditor {
                 })
             };
             let shortcut = gtk::Shortcut::builder()
-                .trigger(&gtk::ShortcutTrigger::parse_string("<Control>minus").unwrap())
+                .trigger(
+                    &gtk::ShortcutTrigger::parse_string(
+                        "<Control>minus|<Control>KP_Subtract|<Control>underscore|<Control><Shift>minus",
+                    )
+                    .unwrap(),
+                )
                 .action(&action)
                 .build();
             zoom_controller.add_shortcut(shortcut);
@@ -184,7 +179,7 @@ impl BookmarkEditor {
                 })
             };
             let shortcut = gtk::Shortcut::builder()
-                .trigger(&gtk::ShortcutTrigger::parse_string("<Control>0").unwrap())
+                .trigger(&gtk::ShortcutTrigger::parse_string("<Control>0|<Control>KP_0").unwrap())
                 .action(&action)
                 .build();
             zoom_controller.add_shortcut(shortcut);

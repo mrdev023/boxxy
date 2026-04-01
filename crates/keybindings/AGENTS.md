@@ -22,3 +22,16 @@ Predefined `Keybinding` instances:
 - `ZOOM_OUT`
 - `COPY`
 - `PASTE`
+
+## International Keyboard Layouts
+To ensure shortcuts (like Zoom In/Out) work across diverse keyboard layouts (e.g., AZERTY, QWERTZ, Brazilian ABNT2) without manual scancode sniffing, we rely on GTK's native layout-aware accelerator parsing. 
+
+When binding shortcuts via `set_accels_for_action` or `ShortcutTrigger::parse_string` (using `|`), we provide an array/list of **logical fallback keysyms**. 
+
+For example, `Zoom In` is bound to:
+- `<Ctrl>plus` (The semantic intent)
+- `<Ctrl>equal` (US QWERTY fallback, as `+` requires `Shift`)
+- `<Ctrl>KP_Add` (Universal Numpad)
+- `<Ctrl><Shift>plus` (AZERTY fallback where `+` requires `Shift`)
+
+This casts a wider net, allowing GTK to resolve the intended action based on the user's active keyboard map.

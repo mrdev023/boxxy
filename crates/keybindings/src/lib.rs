@@ -160,9 +160,26 @@ pub fn bind_shortcuts(app: &libadwaita::Application) {
     app.set_accels_for_action(CLOSE_TAB.action_name, &[CLOSE_TAB.trigger]);
     app.set_accels_for_action(TOGGLE_SIDEBAR.action_name, &[TOGGLE_SIDEBAR.trigger]);
     app.set_accels_for_action(PREFERENCES.action_name, &[PREFERENCES.trigger]);
-    app.set_accels_for_action(ZOOM_IN.action_name, &[ZOOM_IN.trigger, "<Ctrl>equal"]);
-    app.set_accels_for_action(ZOOM_OUT.action_name, &[ZOOM_OUT.trigger]);
-    app.set_accels_for_action(RESET_ZOOM.action_name, &[RESET_ZOOM.trigger]);
+    app.set_accels_for_action(
+        ZOOM_IN.action_name,
+        &[
+            ZOOM_IN.trigger,
+            "<Ctrl>equal",
+            "<Ctrl>KP_Add",
+            "<Ctrl><Shift>plus",
+            "<Ctrl><Shift>equal",
+        ],
+    );
+    app.set_accels_for_action(
+        ZOOM_OUT.action_name,
+        &[
+            ZOOM_OUT.trigger,
+            "<Ctrl>KP_Subtract",
+            "<Ctrl>underscore",
+            "<Ctrl><Shift>minus",
+        ],
+    );
+    app.set_accels_for_action(RESET_ZOOM.action_name, &[RESET_ZOOM.trigger, "<Ctrl>KP_0"]);
     app.set_accels_for_action(SEARCH.action_name, &[SEARCH.trigger]);
     app.set_accels_for_action(COMMAND_PALETTE.action_name, &[COMMAND_PALETTE.trigger]);
     app.set_accels_for_action(COPY.action_name, &[COPY.trigger]);
