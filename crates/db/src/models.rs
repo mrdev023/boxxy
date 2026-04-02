@@ -65,7 +65,7 @@ pub struct SkillRecord {
 pub struct MsgBarHistory {
     pub id: i64,
     pub text: String,
-    pub attachments: String, // Stored as a JSON string
+    pub attachments_json: String, // Stored as a JSON string
     pub created_at: Option<String>,
 }
 

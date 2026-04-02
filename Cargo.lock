@@ -703,6 +703,7 @@ dependencies = [
  "boxxy-preferences",
  "glib",
  "gtk4",
+ "lazy_static",
  "log",
  "serde",
  "serde_json",

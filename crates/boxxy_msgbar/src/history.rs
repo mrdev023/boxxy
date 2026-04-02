@@ -1,8 +1,15 @@
 use crate::Attachment;
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 const MAX_HISTORY_ITEMS: i64 = 100;
 const MAX_RICH_ATTACHMENTS: usize = 20;
+
+lazy_static! {
+    static ref GLOBAL_HISTORY: Arc<Mutex<Vec<HistoryItem>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref HISTORY_LOADED: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+}
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct HistoryItem {
@@ -11,10 +18,8 @@ pub struct HistoryItem {
 }
 
 pub struct MsgHistory {
-    items: Vec<HistoryItem>,
     draft: HistoryItem,
     idx: Option<usize>,
-    loaded: bool,
 }
 
 impl Default for MsgHistory {
@@ -26,22 +31,21 @@ impl Default for MsgHistory {
 impl MsgHistory {
     #[must_use]
     pub fn new() -> Self {
+        Self::ensure_loaded();
         Self {
-            items: Vec::new(),
             draft: HistoryItem::default(),
             idx: None,
-            loaded: false,
         }
     }
 
-    fn ensure_loaded(&mut self) {
-        if self.loaded {
+    fn ensure_loaded() {
+        let mut loaded = HISTORY_LOADED.lock().unwrap();
+        if *loaded {
             return;
         }
-        self.loaded = true;
+        *loaded = true;
 
-        let items_rc = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let items_clone = items_rc.clone();
+        let items_rc = GLOBAL_HISTORY.clone();
 
         let () = boxxy_ai_core::utils::runtime().block_on(async move {
             if let Ok(db) = boxxy_db::Db::new().await {
@@ -50,43 +54,42 @@ impl MsgHistory {
                     let mut items = Vec::new();
                     for record in records {
                         let attachments: Vec<Attachment> =
-                            serde_json::from_str(&record.attachments).unwrap_or_default();
+                            serde_json::from_str(&record.attachments_json).unwrap_or_default();
                         items.push(HistoryItem {
                             text: record.text,
                             attachments,
                         });
                     }
-                    *items_clone.lock().unwrap() = items;
+                    *items_rc.lock().unwrap() = items;
                 }
             }
         });
-
-        if let Ok(items) = items_rc.lock() {
-            self.items = items.clone();
-        }
     }
 
     pub fn push(&mut self, text: String, attachments: Vec<Attachment>) {
-        self.ensure_loaded();
-
         if !text.is_empty() || !attachments.is_empty() {
-            self.items.push(HistoryItem {
+            let item = HistoryItem {
                 text: text.clone(),
                 attachments: attachments.clone(),
-            });
+            };
 
-            // In-memory pruning
-            if self.items.len() > MAX_HISTORY_ITEMS as usize {
-                let overflow = self.items.len() - MAX_HISTORY_ITEMS as usize;
-                self.items.drain(0..overflow);
-            }
+            {
+                let mut items = GLOBAL_HISTORY.lock().unwrap();
+                items.push(item);
 
-            if self.items.len() > MAX_RICH_ATTACHMENTS {
-                let cutoff_idx = self.items.len() - MAX_RICH_ATTACHMENTS;
-                for i in 0..cutoff_idx {
-                    for att in &mut self.items[i].attachments {
-                        if att.is_image && att.content.len() > 1024 {
-                            att.content = "[Image data pruned for performance]".to_string();
+                // In-memory pruning
+                if items.len() > MAX_HISTORY_ITEMS as usize {
+                    let overflow = items.len() - MAX_HISTORY_ITEMS as usize;
+                    items.drain(0..overflow);
+                }
+
+                if items.len() > MAX_RICH_ATTACHMENTS {
+                    let cutoff_idx = items.len() - MAX_RICH_ATTACHMENTS;
+                    for i in 0..cutoff_idx {
+                        for att in &mut items[i].attachments {
+                            if att.is_image && att.content.len() > 1024 {
+                                att.content = "[Image data pruned for performance]".to_string();
+                            }
                         }
                     }
                 }
@@ -100,10 +103,6 @@ impl MsgHistory {
     }
 
     fn save_to_db(&self, text: String, attachments: Vec<Attachment>) {
-        // Strip heavy attachments for the DB record if this makes us go over our rich memory threshold globally
-        // (For simplicity here, we just save the attachments as is, since SQLite can handle megabytes trivially.
-        // We just pruned them in RAM).
-
         boxxy_ai_core::utils::runtime().spawn(async move {
             if let Ok(db) = boxxy_db::Db::new().await {
                 let store = boxxy_db::store::Store::new(db.pool());
@@ -126,9 +125,8 @@ impl MsgHistory {
         current_text: String,
         current_atts: Vec<Attachment>,
     ) -> Option<HistoryItem> {
-        self.ensure_loaded();
-
-        if self.items.is_empty() {
+        let items = GLOBAL_HISTORY.lock().unwrap();
+        if items.is_empty() {
             return None;
         }
 
@@ -138,7 +136,7 @@ impl MsgHistory {
                 text: current_text,
                 attachments: current_atts,
             };
-            self.idx = Some(self.items.len().saturating_sub(1));
+            self.idx = Some(items.len().saturating_sub(1));
         } else {
             let current_idx = self.idx.unwrap();
             if current_idx > 0 {
@@ -146,16 +144,15 @@ impl MsgHistory {
             }
         }
 
-        self.idx.map(|i| self.items[i].clone())
+        self.idx.map(|i| items[i].clone())
     }
 
     pub fn navigate_down(&mut self) -> Option<HistoryItem> {
-        self.ensure_loaded();
-
+        let items = GLOBAL_HISTORY.lock().unwrap();
         if let Some(current_idx) = self.idx {
-            if current_idx + 1 < self.items.len() {
+            if current_idx + 1 < items.len() {
                 self.idx = Some(current_idx + 1);
-                Some(self.items[current_idx + 1].clone())
+                Some(items[current_idx + 1].clone())
             } else {
                 // Reached the bottom, return the draft and reset index
                 self.idx = None;

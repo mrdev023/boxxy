@@ -22,3 +22,4 @@ base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 boxxy-core-widgets.workspace = true
+lazy_static.workspace = true

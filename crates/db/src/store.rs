@@ -17,7 +17,7 @@ impl<'a> Store<'a> {
     pub async fn insert_msgbar_history(&self, text: &str, attachments_json: &str) -> Result<i64> {
         let result = sqlx::query(
             r"
-            INSERT INTO msgbar_history (text, attachments)
+            INSERT INTO msgbar_history (text, attachments_json)
             VALUES (?, ?)
             ",
         )
@@ -33,7 +33,7 @@ impl<'a> Store<'a> {
         let records = sqlx::query_as::<_, MsgBarHistory>(
             r"
             SELECT * FROM (
-                SELECT id, text, attachments, created_at
+                SELECT id, text, attachments_json, created_at
                 FROM msgbar_history
                 ORDER BY id DESC
                 LIMIT ?
