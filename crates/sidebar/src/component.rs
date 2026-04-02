@@ -137,7 +137,7 @@ impl AiSidebarComponent {
         let selection_model = gtk::NoSelection::new(Some(list_store.clone()));
         let list_view = gtk::ListView::new(Some(selection_model), Some(factory));
         list_view.set_show_separators(false);
-        list_view.add_css_class("chat-history");
+        list_view.add_css_class("virtual-history");
 
         scroll_window.set_child(Some(&list_view));
         widget.append(&scroll_window);

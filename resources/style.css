@@ -5,13 +5,11 @@ tab > box {
 
 tab image.icon {
     /* Push everything else to the right */
-    margin-right: auto;
 }
 
 tab label.title {
     /* Try to keep the title centered or just left-aligned after the auto margin */
     margin-left: 0;
-    margin-right: auto;
 }
 
 headerbar {
@@ -115,8 +113,7 @@ tabbar tab.tab-slate:selected { background-image: linear-gradient(0deg, alpha(#6
 }
 
 /* Virtualized List History - ensures ListView doesn't have a solid background */
-.chat-history,
-.boxed-list {
+.virtual-history {
     background-color: transparent;
 }
 

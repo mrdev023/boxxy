@@ -534,7 +534,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gtk::gio::ListStore) {
     let selection_model = gtk::NoSelection::new(Some(list_store.clone()));
     let list_view = gtk::ListView::new(Some(selection_model), Some(factory));
     list_view.set_show_separators(false);
-    list_view.add_css_class("boxed-list");
+    list_view.add_css_class("virtual-history");
 
     (list_view, list_store)
 }
