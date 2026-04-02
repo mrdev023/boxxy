@@ -1,13 +1,13 @@
 use crate::commands::CommandRegistry;
-use crate::types::{ChatMessage, Role};
-use crate::widgets::build_message_widget;
+use crate::types::{ChatMessage, ChatMessageObject, Role};
 use boxxy_model_selection::{GlobalModelSelectorDialog, ModelProvider};
+use gtk4 as gtk;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk4 as gtk;
 use rig::message::Message;
 use std::cell::RefCell;
 use std::rc::Rc;
+use boxxy_core_widgets::{ObjectExtSafe, bind_property_async};
 
 #[derive(Clone)]
 pub struct AiSidebarComponent {
@@ -16,8 +16,7 @@ pub struct AiSidebarComponent {
 }
 
 pub(crate) struct AiSidebarInner {
-    pub message_list: gtk::Box,
-    pub scroll_adj: gtk::Adjustment,
+    pub list_store: gtk::gio::ListStore,
     pub input_entry: gtk::Entry,
     pub input_buffer: gtk::EntryBuffer,
     pub history: Vec<ChatMessage>,
@@ -50,11 +49,97 @@ impl AiSidebarComponent {
         scroll_window.set_vexpand(true);
         scroll_window.set_hscrollbar_policy(gtk::PolicyType::Never);
 
-        let message_list = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        message_list.set_margin_top(8);
-        message_list.set_margin_bottom(8);
-        scroll_window.set_child(Some(&message_list));
+        let list_store = gtk::gio::ListStore::new::<ChatMessageObject>();
+        let factory = gtk::SignalListItemFactory::new();
 
+        factory.connect_setup(move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            let registry = Rc::new(boxxy_viewer::ViewerRegistry::new_with_defaults());
+            let viewer = boxxy_viewer::StructuredViewer::new(registry);
+
+            let container = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            container.set_margin_top(8);
+            container.set_margin_bottom(8);
+            container.set_margin_start(8);
+            container.set_margin_end(8);
+
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            let bubble_box = viewer.widget();
+            bubble_box.add_css_class("message-bubble");
+            row.append(bubble_box);
+            container.append(&row);
+
+            // Store the viewer in the container so we can access it during bind
+            container.set_safe_data("viewer", viewer);
+
+            list_item.set_child(Some(&container));
+        });
+
+        factory.connect_bind(move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            let container = list_item.child().and_downcast::<gtk::Box>().unwrap();
+            let row = container.first_child().and_downcast::<gtk::Box>().unwrap();
+            let bubble_box = row.first_child().and_downcast::<gtk::Box>().unwrap();
+
+            if let Some(msg_obj) = list_item.item().and_downcast::<ChatMessageObject>() {
+                let viewer = container.get_safe_data::<boxxy_viewer::StructuredViewer>("viewer").unwrap();
+
+                // Sync initial content
+                viewer.set_content(&msg_obj.content());
+
+                // Update styling based on role
+                if msg_obj.role() == Role::User {
+                    row.set_halign(gtk::Align::End);
+                    row.set_margin_start(48);
+                    row.set_margin_end(8);
+                    bubble_box.add_css_class("user-message");
+                    bubble_box.remove_css_class("assistant-message");
+                } else {
+                    row.set_halign(gtk::Align::Start);
+                    row.set_margin_start(8);
+                    row.set_margin_end(48);
+                    bubble_box.add_css_class("assistant-message");
+                    bubble_box.remove_css_class("user-message");
+                }
+
+                // Use a dedicated utility to bind the property asynchronously.
+                // This handles cross-thread updates safely and returns a handler ID for cleanup.
+                let viewer_clone = viewer.clone();
+                let handler_id = bind_property_async(
+                    &msg_obj,
+                    "content",
+                    &bubble_box,
+                    move |_, content| {
+                        viewer_clone.set_content(&content);
+                    },
+                );
+
+                // Store handler ID safely using Quarks (no unsafe pointer manipulation needed)
+                container.set_safe_data("handler_id", handler_id);
+            }
+        });
+
+        factory.connect_unbind(move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            let container = list_item.child().and_downcast::<gtk::Box>().unwrap();
+            let viewer = container.get_safe_data::<boxxy_viewer::StructuredViewer>("viewer").unwrap();
+
+            // Clean up streaming signal handler safely
+            if let Some(obj) = list_item.item().and_downcast::<ChatMessageObject>() {
+                if let Some(handler_id) = container.steal_safe_data::<glib::SignalHandlerId>("handler_id") {
+                    obj.disconnect(handler_id);
+                }
+            }
+
+            viewer.clear();
+        });
+
+        let selection_model = gtk::NoSelection::new(Some(list_store.clone()));
+        let list_view = gtk::ListView::new(Some(selection_model), Some(factory));
+        list_view.set_show_separators(false);
+        list_view.add_css_class("chat-history");
+
+        scroll_window.set_child(Some(&list_view));
         widget.append(&scroll_window);
 
         let input_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -122,9 +207,24 @@ impl AiSidebarComponent {
             },
         );
 
+        let adj_scroll = scroll_window.vadjustment();
+        let list_view_scroll = list_view.clone();
+        list_store.connect_items_changed(move |store, _, _, _| {
+            let adj = adj_scroll.clone();
+            let lv = list_view_scroll.clone();
+            let n_items = store.n_items();
+            
+            glib::idle_add_local_once(move || {
+                // User-scroll guard: only auto-scroll if already at the bottom
+                let is_at_bottom = adj.value() + adj.page_size() >= adj.upper() - 100.0;
+                if is_at_bottom && n_items > 0 {
+                    lv.scroll_to(n_items - 1, gtk::ListScrollFlags::FOCUS, None);
+                }
+            });
+        });
+
         let inner = Rc::new(RefCell::new(AiSidebarInner {
-            message_list,
-            scroll_adj: scroll_window.vadjustment(),
+            list_store,
             input_entry: input_entry.clone(),
             input_buffer: input_buffer.clone(),
             history: Vec::new(),
@@ -205,9 +305,7 @@ impl AiSidebarComponent {
     pub fn clear_history(&self) {
         let mut inner = self.inner.borrow_mut();
         inner.history.clear();
-        while let Some(child) = inner.message_list.last_child() {
-            inner.message_list.remove(&child);
-        }
+        inner.list_store.remove_all();
         inner.input_entry.grab_focus();
     }
 
@@ -251,12 +349,8 @@ impl AiSidebarComponent {
             (content.clone(), hist)
         };
 
-        let user_msg = ChatMessage {
-            role: Role::User,
-            content: content.clone(),
-        };
-        inner.history.push(user_msg.clone());
-        inner.message_list.append(&build_message_widget(&user_msg));
+        let user_msg = ChatMessageObject::new(Role::User, content.clone());
+        inner.list_store.append(&user_msg);
         inner.input_buffer.set_text("");
 
         inner.is_loading = true;
@@ -266,8 +360,6 @@ impl AiSidebarComponent {
         inner.action_btn.set_tooltip_text(Some("Stop Generating"));
 
         inner.input_entry.grab_focus();
-
-        Self::smart_scroll(&inner.scroll_adj);
 
         let provider = inner.model_provider.clone();
         drop(inner);
@@ -322,32 +414,12 @@ impl AiSidebarComponent {
             inner.usage_label.set_visible(true);
         }
 
-        let ai_msg = ChatMessage {
-            role: Role::Assistant,
-            content,
-        };
-        inner.history.push(ai_msg.clone());
-        inner.message_list.append(&build_message_widget(&ai_msg));
+        let ai_msg = ChatMessageObject::new(Role::Assistant, content);
+        inner.list_store.append(&ai_msg);
 
         inner.is_loading = false;
         inner.action_btn.set_icon_name("boxxy-paper-plane-symbolic");
         inner.action_btn.set_tooltip_text(Some("Send"));
-
-        Self::smart_scroll(&inner.scroll_adj);
-    }
-
-    fn smart_scroll(adj: &gtk::Adjustment) {
-        let adj = adj.clone();
-        glib::idle_add_local_once(move || {
-            let value = adj.value();
-            let upper = adj.upper();
-            let page_size = adj.page_size();
-
-            // If we are close to the bottom (within 100 pixels), keep scrolling
-            if value > upper - page_size - 100.0 || value < 1.0 {
-                adj.set_value(upper - page_size);
-            }
-        });
     }
 }
 

@@ -550,7 +550,10 @@ impl ClawSession {
                                     let agent_name = self.name.clone();
                                     tokio::spawn(async move {
                                         let _ = tx_ui
-                                            .send(ClawEngineEvent::LazyErrorIndicator { agent_name })
+                                            .send(ClawEngineEvent::LazyErrorIndicator { 
+                                                agent_name,
+                                                visible: true,
+                                            })
                                             .await;
                                     });
                                 } else {
@@ -795,6 +798,7 @@ impl ClawSession {
                                 .tx_ui
                                 .send(ClawEngineEvent::ProposalResolved {
                                     agent_name: self.name.clone(),
+                                    approved: false,
                                 })
                                 .await;
                         }
@@ -885,6 +889,7 @@ impl ClawSession {
 
                         let _ = self.tx_ui.send(ClawEngineEvent::TaskCompleted {
                             agent_name: agent_name_for_event,
+                            task_id: uuid::Uuid::nil(), // Placeholder for now as we don't have it easily available here
                         }).await;
 
                         workspace.update_pane_tasks(self.pane_id.clone(), tasks).await;

@@ -5,21 +5,27 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 /// Internal state, wrapped in Rc to easily share with glib timeouts
-struct ViewerState {
-    container: gtk::Box,
-    registry: Rc<ViewerRegistry>,
+pub(crate) struct ViewerState {
+    pub(crate) container: gtk::Box,
+    pub(crate) registry: Rc<ViewerRegistry>,
 
     // Main buffer holding all processed text
-    buffer: RefCell<String>,
+    pub(crate) buffer: RefCell<String>,
     // The currently streaming, incomplete widget
-    active_widget: RefCell<Option<gtk::Widget>>,
+    pub(crate) active_widget: RefCell<Option<gtk::Widget>>,
 
     // Debouncing state
-    pending_text: RefCell<String>,
-    update_queued: Cell<bool>,
+    pub(crate) pending_text: RefCell<String>,
+    pub(crate) update_queued: Cell<bool>,
+
+    // Generation counter to cancel async tasks when the viewer is cleared or recycled.
+    // Atomic so it can be shared with background threads (e.g., syntax highlighters).
+    pub(crate) generation: Arc<AtomicU64>,
 }
 
 impl ViewerState {
@@ -83,7 +89,7 @@ impl ViewerState {
 /// A unified GTK widget for rendering structured Markdown and out-of-band JSON data.
 #[derive(Clone)]
 pub struct StructuredViewer {
-    state: Rc<ViewerState>,
+    pub(crate) state: Rc<ViewerState>,
 }
 
 impl StructuredViewer {
@@ -101,8 +107,19 @@ impl StructuredViewer {
                 active_widget: RefCell::new(None),
                 pending_text: RefCell::new(String::new()),
                 update_queued: Cell::new(false),
+                generation: Arc::new(AtomicU64::new(0)),
             }),
         }
+    }
+
+    /// Returns the current generation of the viewer. Incremented on clear/recycle.
+    pub fn generation(&self) -> u64 {
+        self.state.generation.load(Ordering::Relaxed)
+    }
+
+    /// Returns the shared generation atomic for background tasks.
+    pub fn generation_handle(&self) -> Arc<AtomicU64> {
+        self.state.generation.clone()
     }
 
     /// Returns the underlying GTK container.
@@ -124,6 +141,9 @@ impl StructuredViewer {
 
     /// Clears the viewer container and streaming state.
     pub fn clear(&self) {
+        // Increment generation to cancel pending async tasks (e.g., highlighting)
+        self.state.generation.fetch_add(1, Ordering::SeqCst);
+
         self.state.buffer.borrow_mut().clear();
         self.state.pending_text.borrow_mut().clear();
         *self.state.active_widget.borrow_mut() = None;

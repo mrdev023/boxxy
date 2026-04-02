@@ -114,6 +114,31 @@ tabbar tab.tab-slate:selected { background-image: linear-gradient(0deg, alpha(#6
 	background-color: mix(@theme_bg_color, black, 0.9);
 }
 
+/* Virtualized List History - ensures ListView doesn't have a solid background */
+.chat-history,
+.boxed-list {
+    background-color: transparent;
+}
+
+/* ── Claw Sidebar Virtual Rows ─────────────────────────────────────────── */
+.claw-virtual-row {
+    background-color: @card_bg_color;
+    border-radius: 12px;
+    margin: 4px 6px;
+    padding: 10px;
+    border: 1px solid alpha(currentColor, 0.05);
+}
+
+.claw-virtual-row .heading {
+    font-weight: bold;
+    font-size: 1.05em;
+}
+
+.claw-virtual-row .caption {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
 /* ── AI Chat ──────────────────────────────────────────────────────────────── */
 
 .message-bubble {

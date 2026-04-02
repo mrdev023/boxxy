@@ -1,8 +1,10 @@
 use crate::parser::blocks::ContentBlock;
 use crate::parser::markdown::escape_pango;
 use crate::renderer::BlockRenderer;
+use crate::widget::StructuredViewer;
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use std::rc::Rc;
 use std::sync::OnceLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
@@ -78,6 +80,13 @@ impl BlockRenderer for CodeRenderer {
             let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
             vbox.append(&separator);
 
+            // Create a local viewer instance to track generation. 
+            // This allows us to cancel async highlighting if the row is recycled by GtkListView.
+            let viewer = StructuredViewer::new(Rc::new(crate::registry::ViewerRegistry::new_with_defaults()));
+            unsafe {
+                vbox.set_data("viewer", viewer);
+            }
+
             let label = gtk::Label::new(None);
             label.set_use_markup(true);
             label.set_selectable(true);
@@ -93,11 +102,22 @@ impl BlockRenderer for CodeRenderer {
             // Initial plain text content (escaped)
             label.set_markup(&format!("<tt>{}</tt>", escape_pango(code)));
 
-            // Asynchronous highlighting
+            // Asynchronous highlighting with atomic generation check for virtualization safety.
+            // This ensures that if the row is recycled before the highlight finishes,
+            // we don't overwrite the new content with the old one.
             if !code.is_empty() {
                 let code_for_highlight = code.clone();
                 let lang_for_highlight = lang.clone();
                 let is_dark = libadwaita::StyleManager::default().is_dark();
+
+                // Capture the shared atomic and the current generation ID
+                let (gen_handle, start_gen) = if let Some(v_ptr) = unsafe { vbox.data::<StructuredViewer>("viewer") } {
+                    let v = unsafe { v_ptr.as_ref() };
+                    (v.generation_handle(), v.generation())
+                } else {
+                    // Fallback should not happen in practice
+                    (std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)), 0)
+                };
 
                 let (tx, rx) = async_channel::bounded::<String>(1);
 
@@ -142,7 +162,10 @@ impl BlockRenderer for CodeRenderer {
                 let label_clone = label.clone();
                 gtk::glib::spawn_future_local(async move {
                     if let Ok(markup) = rx.recv().await {
-                        label_clone.set_markup(&markup);
+                        // Only apply the highlighted markup if the viewer generation still matches.
+                        if gen_handle.load(std::sync::atomic::Ordering::Relaxed) == start_gen {
+                            label_clone.set_markup(&markup);
+                        }
                     }
                 });
             }

@@ -152,7 +152,6 @@ pub fn handle_terminal_event(
                             }
                         }
                         inner.claw.refresh_visibility();
-                        inner.claw.scroll_to_bottom();
                     }
                     boxxy_claw::engine::ClawEngineEvent::DiagnosisComplete { .. }
                     | boxxy_claw::engine::ClawEngineEvent::InjectCommand { .. }
@@ -160,7 +159,6 @@ pub fn handle_terminal_event(
                     | boxxy_claw::engine::ClawEngineEvent::RestoreHistory(..)
                     | boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand { .. } => {
                         inner.claw.refresh_visibility();
-                        inner.claw.scroll_to_bottom();
                     }
                     boxxy_claw::engine::ClawEngineEvent::RequestSpawnAgent {
                         location,

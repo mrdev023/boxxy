@@ -29,6 +29,7 @@ boxxy-model-selection = { path = "../model_selection" }
 boxxy-preferences = { path = "../preferences" }
 boxxy-db = { path = "../db" }
 boxxy-viewer = { path = "../viewer" }
+boxxy-core-widgets = { path = "../core_widgets" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }

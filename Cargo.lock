@@ -600,6 +600,7 @@ dependencies = [
  "boxxy-agent",
  "boxxy-ai-core",
  "boxxy-core-toolbox",
+ "boxxy-core-widgets",
  "boxxy-db",
  "boxxy-model-selection",
  "boxxy-preferences",
@@ -652,6 +653,7 @@ dependencies = [
 name = "boxxy-core-widgets"
 version = "0.0.31"
 dependencies = [
+ "async-channel",
  "glib",
  "gtk4",
 ]
@@ -732,6 +734,7 @@ name = "boxxy-sidebar"
 version = "0.0.31"
 dependencies = [
  "anyhow",
+ "async-channel",
  "boxxy-ai-core",
  "boxxy-core-widgets",
  "boxxy-model-selection",

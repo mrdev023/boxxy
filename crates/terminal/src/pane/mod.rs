@@ -85,7 +85,8 @@ pub struct TerminalPaneComponent {
     agent_badge: AgentBadge,
     pending_proactive_diagnosis: PendingDiagnosis,
     claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
-    claw_message_list: gtk::ListBox,
+    pub claw_message_list: gtk::ListView,
+
     is_claw_active: Rc<Cell<bool>>,
     is_proactive: Rc<Cell<bool>>,
     is_pinned: Rc<Cell<bool>>,
@@ -147,7 +148,7 @@ impl TerminalPaneComponent {
             claw_session.start(agent.claw_proxy().clone());
         });
 
-        let claw_message_list = boxxy_claw::ui::create_claw_message_list();
+        let (claw_message_list, claw_list_store) = boxxy_claw::ui::create_claw_message_list();
 
         let is_claw_active = Rc::new(Cell::new(false));
         let is_proactive = Rc::new(Cell::new(false));
@@ -441,12 +442,13 @@ impl TerminalPaneComponent {
             id.clone(),
             claw_sender.clone(),
             claw_rx,
-            claw_message_list.clone(),
+            claw_list_store.clone(),
             callback.clone(),
             init.spawn_intent,
             total_tokens.clone(),
             is_pinned.clone(),
         );
+
 
         // Keep popover height capped to the live pane height.
         let claw_popover_for_resize = claw_popover.clone();
@@ -518,7 +520,7 @@ impl TerminalPaneComponent {
         self.total_tokens.get()
     }
 
-    pub fn claw_history_widget(&self) -> gtk::ListBox {
+    pub fn claw_history_widget(&self) -> gtk::ListView {
         self.claw_message_list.clone()
     }
 

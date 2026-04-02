@@ -13,7 +13,7 @@ pub(super) fn setup_claw(
     id: String,
     claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
     claw_rx: async_channel::Receiver<boxxy_claw::engine::ClawEngineEvent>,
-    claw_message_list: gtk::ListBox,
+    claw_list_store: gtk::gio::ListStore,
     callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
     spawn_intent: Option<String>,
     total_tokens: Rc<Cell<u64>>,
@@ -158,7 +158,7 @@ pub(super) fn setup_claw(
     let cb_clone_events = callback.clone();
     let popover_event_clone = claw_popover.clone();
     let indicator_event_clone = claw_indicator.clone();
-    let claw_list_events = claw_message_list.clone();
+    let claw_store_events = claw_list_store.clone();
     let inner_clone = inner.clone();
     let total_tokens_for_events = total_tokens.clone();
     let is_pinned_for_events = is_pinned.clone();
@@ -186,7 +186,7 @@ pub(super) fn setup_claw(
                             .set(total_tokens_for_events.get() + usage.total_tokens);
                     }
                     boxxy_claw::ui::add_diagnosis_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         diagnosis,
@@ -211,7 +211,7 @@ pub(super) fn setup_claw(
                     }
                     if !diagnosis.is_empty() {
                         boxxy_claw::ui::add_diagnosis_row(
-                            &claw_list_events,
+                            &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
                             diagnosis,
@@ -219,7 +219,7 @@ pub(super) fn setup_claw(
                     }
 
                     boxxy_claw::ui::add_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         command,
@@ -245,7 +245,7 @@ pub(super) fn setup_claw(
                             .set(total_tokens_for_events.get() + usage.total_tokens);
                     }
                     boxxy_claw::ui::add_file_write_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         path,
@@ -271,7 +271,7 @@ pub(super) fn setup_claw(
                             .set(total_tokens_for_events.get() + usage.total_tokens);
                     }
                     boxxy_claw::ui::add_file_delete_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         path,
@@ -297,7 +297,7 @@ pub(super) fn setup_claw(
                             .set(total_tokens_for_events.get() + usage.total_tokens);
                     }
                     boxxy_claw::ui::add_kill_process_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         *pid,
@@ -319,7 +319,7 @@ pub(super) fn setup_claw(
                             .set(total_tokens_for_events.get() + usage.total_tokens);
                     }
                     boxxy_claw::ui::add_clipboard_get_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         |_| {},
@@ -343,7 +343,7 @@ pub(super) fn setup_claw(
                             .set(total_tokens_for_events.get() + usage.total_tokens);
                     }
                     boxxy_claw::ui::add_clipboard_set_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         text,
@@ -370,7 +370,7 @@ pub(super) fn setup_claw(
                     }
                     if !explanation.is_empty() {
                         boxxy_claw::ui::add_diagnosis_row(
-                            &claw_list_events,
+                            &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
                             explanation,
@@ -378,7 +378,7 @@ pub(super) fn setup_claw(
                     }
 
                     boxxy_claw::ui::add_approval_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         command,
@@ -419,7 +419,7 @@ pub(super) fn setup_claw(
                     indicator_event_clone.hide();
                     popover_event_clone.hide();
                     boxxy_claw::ui::add_diagnosis_row(
-                        &claw_list_events,
+                        &claw_store_events,
                         id.clone(),
                         None,
                         "Agent was EVICTED because the session was resumed in another pane.",
@@ -458,7 +458,7 @@ pub(super) fn setup_claw(
                     });
                 }
                 boxxy_claw::engine::ClawEngineEvent::SystemMessage { text } => {
-                    boxxy_claw::ui::add_diagnosis_row(&claw_list_events, id.clone(), None, text);
+                    boxxy_claw::ui::add_diagnosis_row(&claw_store_events, id.clone(), None, text);
                     cb_clone_events(PaneOutput::Notification(id.clone(), text.clone()));
                 }
                 boxxy_claw::engine::ClawEngineEvent::RequestScrollback {
@@ -513,7 +513,7 @@ pub(super) fn setup_claw(
                     }
                     if tool_name == "list_processes" {
                         boxxy_claw::ui::add_process_list_row(
-                            &claw_list_events,
+                            &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
                             result,
@@ -528,56 +528,13 @@ pub(super) fn setup_claw(
                     inner_clone.borrow().agent_badge.set_has_tasks(has_pending);
                 }
                 boxxy_claw::engine::ClawEngineEvent::RestoreHistory(rows) => {
-                    // Clear current list first
-                    while let Some(row) = claw_list_events.row_at_index(0) {
-                        claw_list_events.remove(&row);
-                    }
+                    // Bulk append history items to minimize UI layout passes
+                    let mut items = Vec::with_capacity(rows.len());
                     for row in rows {
-                        match row {
-                            boxxy_claw::engine::PersistentClawRow::Diagnosis {
-                                pane_id,
-                                agent_name,
-                                content,
-                                ..
-                            } => {
-                                boxxy_claw::ui::add_diagnosis_row(
-                                    &claw_list_events,
-                                    pane_id.clone(),
-                                    agent_name.clone(),
-                                    &content,
-                                );
-                            }
-                            boxxy_claw::engine::PersistentClawRow::Suggested {
-                                pane_id,
-                                agent_name,
-                                diagnosis,
-                                command,
-                                ..
-                            } => {
-                                boxxy_claw::ui::add_suggested_row(
-                                    &claw_list_events,
-                                    pane_id.clone(),
-                                    agent_name.clone(),
-                                    &diagnosis,
-                                    &command,
-                                );
-                            }
-                            boxxy_claw::engine::PersistentClawRow::ProcessList {
-                                pane_id,
-                                agent_name,
-                                result_json,
-                                ..
-                            } => {
-                                boxxy_claw::ui::add_process_list_row(
-                                    &claw_list_events,
-                                    pane_id.clone(),
-                                    agent_name.clone(),
-                                    &result_json,
-                                    |_, _| {},
-                                );
-                            }
-                        }
+                        items.push(boxxy_claw::engine::ClawRowObject::new(row.clone()));
                     }
+                    claw_store_events.remove_all();
+                    claw_store_events.extend_from_slice(&items);
                 }
                 boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } => {
                     // Handled by the window orchestrator for sound

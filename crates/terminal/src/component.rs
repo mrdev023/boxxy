@@ -655,7 +655,7 @@ impl TerminalComponent {
         }
     }
 
-    pub fn claw_history_widget(&self) -> gtk::ListBox {
+    pub fn claw_history_widget(&self) -> gtk::ListView {
         let inner = self.inner.borrow();
         inner
             .panes

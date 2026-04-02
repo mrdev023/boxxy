@@ -4,6 +4,7 @@ use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 use std::rc::Rc;
+use boxxy_core_widgets::ObjectExtSafe;
 
 pub struct ProcessListRenderer;
 
@@ -88,7 +89,7 @@ pub struct ClawSidebarComponent {
     scroll: gtk::ScrolledWindow,
     usage_lbl: gtk::Label,
     command_panel: gtk::Box,
-    current_list: Rc<std::cell::RefCell<Option<gtk::ListBox>>>,
+    current_list: Rc<std::cell::RefCell<Option<gtk::ListView>>>,
     tasks_expander: gtk::Expander,
     tasks_list: gtk::ListBox,
     on_cancel_task: Rc<dyn Fn(uuid::Uuid) + 'static>,
@@ -123,7 +124,7 @@ impl ClawSidebarComponent {
 
         widget.append(&scroll);
 
-        let current_list: Rc<std::cell::RefCell<Option<gtk::ListBox>>> =
+        let current_list: Rc<std::cell::RefCell<Option<gtk::ListView>>> =
             Rc::new(std::cell::RefCell::new(None));
 
         // Command panel (Usage + Clear Button)
@@ -152,8 +153,12 @@ impl ClawSidebarComponent {
         let scroll_clone = scroll.clone();
         clear_btn.connect_clicked(move |_| {
             if let Some(list) = current_list_clear.borrow().as_ref() {
-                while let Some(row) = list.row_at_index(0) {
-                    list.remove(&row);
+                if let Some(model) = list.model() {
+                    if let Some(store) = model.downcast_ref::<gtk::NoSelection>()
+                        .and_then(|s| s.model())
+                        .and_then(|m| m.downcast::<gtk::gio::ListStore>().ok()) {
+                        store.remove_all();
+                    }
                 }
             }
             status_page_clone.set_visible(true);
@@ -196,7 +201,7 @@ impl ClawSidebarComponent {
         false
     }
 
-    pub fn set_history_widget(&self, list: &gtk::ListBox) {
+    pub fn set_history_widget(&self, list: &gtk::ListView) {
         if let Some(old) = self.current_list.borrow().as_ref()
             && old == list
         {
@@ -208,6 +213,31 @@ impl ClawSidebarComponent {
             list.unparent();
         }
 
+        // Auto-scroll logic for virtual list
+        let adj = self.scroll.vadjustment();
+        let list_clone = list.clone();
+        if let Some(model) = list.model() {
+            if let Some(store) = model.downcast_ref::<gtk::NoSelection>()
+                .and_then(|s| s.model())
+                .and_then(|m| m.downcast::<gtk::gio::ListStore>().ok()) {
+                
+                let adj_clone = adj.clone();
+                let lv = list_clone.clone();
+                store.connect_items_changed(move |s, _, _, _| {
+                    let a = adj_clone.clone();
+                    let list_v = lv.clone();
+                    let n_items = s.n_items();
+                    gtk::glib::idle_add_local_once(move || {
+                        // User guard: only scroll if the user is already at the bottom
+                        let is_at_bottom = a.value() + a.page_size() >= a.upper() - 100.0;
+                        if is_at_bottom && n_items > 0 {
+                            list_v.scroll_to(n_items - 1, gtk::ListScrollFlags::FOCUS, None);
+                        }
+                    });
+                });
+            }
+        }
+
         self.scroll.set_child(Some(list));
         *self.current_list.borrow_mut() = Some(list.clone());
         self.refresh_visibility();
@@ -215,25 +245,13 @@ impl ClawSidebarComponent {
 
     pub fn refresh_visibility(&self) {
         if let Some(list) = self.current_list.borrow().as_ref() {
-            let has_items = list.row_at_index(0).is_some();
+            let has_items = list.model()
+                .map(|m| m.n_items() > 0)
+                .unwrap_or(false);
             self.status_page.set_visible(!has_items);
             self.scroll.set_visible(has_items);
             self.command_panel.set_visible(has_items);
         }
-    }
-
-    pub fn scroll_to_bottom(&self) {
-        let adj = self.scroll.vadjustment();
-        gtk::glib::idle_add_local_once(move || {
-            let value = adj.value();
-            let upper = adj.upper();
-            let page_size = adj.page_size();
-
-            // If we are close to the bottom (within 100 pixels), keep scrolling
-            if value > upper - page_size - 100.0 || value < 1.0 {
-                adj.set_value(upper - page_size);
-            }
-        });
     }
 
     pub fn update_diagnosis_mode(&self, _mode: &boxxy_preferences::config::ClawAutoDiagnosisMode) {
@@ -367,133 +385,192 @@ impl Default for ClawSidebarComponent {
     }
 }
 
-pub fn create_claw_message_list() -> gtk::ListBox {
-    gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .css_classes(["boxed-list"])
-        .build()
+pub fn create_claw_message_list() -> (gtk::ListView, gtk::gio::ListStore) {
+    let list_store = gtk::gio::ListStore::new::<crate::engine::ClawRowObject>();
+    let factory = gtk::SignalListItemFactory::new();
+
+    factory.connect_setup(move |_, list_item| {
+        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        vbox.add_css_class("claw-virtual-row");
+
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let icon = gtk::Image::new();
+        header.append(&icon);
+
+        let title = gtk::Label::new(None);
+        title.add_css_class("heading");
+        title.set_halign(gtk::Align::Start);
+        header.append(&title);
+
+        let pane_lbl = gtk::Label::new(None);
+        pane_lbl.add_css_class("caption");
+        pane_lbl.add_css_class("dim-label");
+        header.append(&pane_lbl);
+
+        vbox.append(&header);
+
+        let registry = get_claw_viewer_registry();
+        let viewer = StructuredViewer::new(registry);
+        vbox.append(viewer.widget());
+
+        let cmd_label = gtk::Label::new(None);
+        cmd_label.set_halign(gtk::Align::Start);
+        cmd_label.set_wrap(true);
+        cmd_label.set_selectable(true);
+        cmd_label.add_css_class("monospace");
+        cmd_label.add_css_class("dim-label");
+        cmd_label.set_visible(false);
+        vbox.append(&cmd_label);
+
+        vbox.set_safe_data("icon", icon);
+        vbox.set_safe_data("title", title);
+        vbox.set_safe_data("pane_lbl", pane_lbl);
+        vbox.set_safe_data("viewer", viewer);
+        vbox.set_safe_data("cmd_label", cmd_label);
+
+        list_item.set_child(Some(&vbox));
+    });
+
+    factory.connect_bind(move |_, list_item| {
+        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let vbox = list_item.child().and_downcast::<gtk::Box>().unwrap();
+
+        let icon = vbox.get_safe_data::<gtk::Image>("icon").unwrap();
+        let title = vbox.get_safe_data::<gtk::Label>("title").unwrap();
+        let pane_lbl = vbox.get_safe_data::<gtk::Label>("pane_lbl").unwrap();
+        let viewer = vbox.get_safe_data::<StructuredViewer>("viewer").unwrap();
+        let cmd_label = vbox.get_safe_data::<gtk::Label>("cmd_label").unwrap();
+
+        if let Some(obj) = list_item.item().and_downcast::<crate::engine::ClawRowObject>() {
+            let row = obj.get_row();
+            match row {
+                crate::engine::PersistentClawRow::Diagnosis {
+                    pane_id,
+                    agent_name,
+                    content,
+                    ..
+                } => {
+                    icon.set_icon_name(Some("boxxyclaw"));
+                    icon.add_css_class("accent");
+                    icon.remove_css_class("warning");
+                    title.set_label("Diagnosis");
+
+                    let id_short = if pane_id.len() >= 7 { &pane_id[..7] } else { &pane_id };
+                    let pane_text = if let Some(name) = agent_name {
+                        format!("{} ({})", name, id_short)
+                    } else {
+                        format!("Pane {}", id_short)
+                    };
+                    pane_lbl.set_label(&pane_text);
+
+                    viewer.set_content(&content);
+                    cmd_label.set_visible(false);
+                }
+                crate::engine::PersistentClawRow::Suggested {
+                    pane_id,
+                    agent_name,
+                    diagnosis,
+                    command,
+                    ..
+                } => {
+                    icon.set_icon_name(Some("boxxy-dialog-warning-symbolic"));
+                    icon.add_css_class("warning");
+                    icon.remove_css_class("accent");
+                    title.set_label("Suggested Action");
+
+                    let id_short = if pane_id.len() >= 7 { &pane_id[..7] } else { &pane_id };
+                    let pane_text = if let Some(name) = agent_name {
+                        format!("{} ({})", name, id_short)
+                    } else {
+                        format!("Pane {}", id_short)
+                    };
+                    pane_lbl.set_label(&pane_text);
+
+                    if !diagnosis.is_empty() {
+                        viewer.set_content(&diagnosis);
+                        viewer.widget().set_visible(true);
+                    } else {
+                        viewer.widget().set_visible(false);
+                    }
+
+                    cmd_label.set_label(&command);
+                    cmd_label.set_visible(true);
+                }
+                crate::engine::PersistentClawRow::ProcessList {
+                    pane_id,
+                    agent_name,
+                    result_json,
+                    ..
+                } => {
+                    icon.set_icon_name(Some("boxxyclaw"));
+                    icon.add_css_class("accent");
+                    icon.remove_css_class("warning");
+                    title.set_label("Process List");
+
+                    let id_short = if pane_id.len() >= 7 { &pane_id[..7] } else { &pane_id };
+                    let pane_text = if let Some(name) = agent_name {
+                        format!("{} ({})", name, id_short)
+                    } else {
+                        format!("Pane {}", id_short)
+                    };
+                    pane_lbl.set_label(&pane_text);
+
+                    viewer.clear();
+                    viewer.append_custom_block("list_processes", &result_json);
+                    cmd_label.set_visible(false);
+                }
+            }
+        }
+    });
+
+    factory.connect_unbind(move |_, list_item| {
+        let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+        let vbox = list_item.child().and_downcast::<gtk::Box>().unwrap();
+        let viewer = vbox.get_safe_data::<StructuredViewer>("viewer").unwrap();
+        viewer.clear();
+    });
+
+    let selection_model = gtk::NoSelection::new(Some(list_store.clone()));
+    let list_view = gtk::ListView::new(Some(selection_model), Some(factory));
+    list_view.set_show_separators(false);
+    list_view.add_css_class("boxed-list");
+
+    (list_view, list_store)
 }
 
 pub fn add_diagnosis_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     diagnosis: &str,
 ) {
-    let row = gtk::ListBoxRow::new();
-    row.set_selectable(false);
-    row.set_activatable(false);
-
-    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    vbox.set_margin_top(8);
-    vbox.set_margin_bottom(8);
-    vbox.set_margin_start(8);
-    vbox.set_margin_end(8);
-
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let icon = gtk::Image::from_icon_name("boxxyclaw");
-    icon.add_css_class("accent");
-    header.append(&icon);
-
-    let title = gtk::Label::new(Some("Diagnosis"));
-    title.add_css_class("heading");
-    title.set_halign(gtk::Align::Start);
-    header.append(&title);
-
-    let id_short = if pane_id.len() >= 7 {
-        &pane_id[..7]
-    } else {
-        &pane_id
-    };
-
-    let pane_text = if let Some(name) = agent_name {
-        format!("{} ({})", name, id_short)
-    } else {
-        format!("Pane {}", id_short)
-    };
-
-    let pane_lbl = gtk::Label::new(Some(&pane_text));
-    pane_lbl.add_css_class("caption");
-    pane_lbl.add_css_class("dim-label");
-    header.append(&pane_lbl);
-
-    vbox.append(&header);
-
-    let viewer = StructuredViewer::new(get_claw_viewer_registry());
-    viewer.set_content(diagnosis);
-    vbox.append(viewer.widget());
-
-    row.set_child(Some(&vbox));
-
-    list.append(&row);
+    list.append(&crate::engine::ClawRowObject::new(crate::engine::PersistentClawRow::Diagnosis {
+        pane_id,
+        agent_name,
+        content: diagnosis.to_string(),
+        usage: None,
+    }));
 }
 
 pub fn add_suggested_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     diagnosis: &str,
     command: &str,
 ) {
-    let row = gtk::ListBoxRow::new();
-    row.set_selectable(false);
-    row.set_activatable(false);
-
-    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    vbox.set_margin_top(8);
-    vbox.set_margin_bottom(8);
-    vbox.set_margin_start(8);
-    vbox.set_margin_end(8);
-
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let icon = gtk::Image::from_icon_name("boxxy-dialog-warning-symbolic");
-    icon.add_css_class("warning");
-    header.append(&icon);
-
-    let title = gtk::Label::new(Some("Suggested Action"));
-    title.add_css_class("heading");
-    title.set_halign(gtk::Align::Start);
-    header.append(&title);
-
-    let id_short = if pane_id.len() >= 7 {
-        &pane_id[..7]
-    } else {
-        &pane_id
-    };
-
-    let pane_text = if let Some(name) = agent_name {
-        format!("{} ({})", name, id_short)
-    } else {
-        format!("Pane {}", id_short)
-    };
-
-    let pane_lbl = gtk::Label::new(Some(&pane_text));
-    pane_lbl.add_css_class("caption");
-    pane_lbl.add_css_class("dim-label");
-    header.append(&pane_lbl);
-
-    vbox.append(&header);
-
-    if !diagnosis.is_empty() {
-        let viewer = StructuredViewer::new(get_claw_viewer_registry());
-        viewer.set_content(diagnosis);
-        vbox.append(viewer.widget());
-    }
-
-    let cmd_label = gtk::Label::new(Some(command));
-    cmd_label.set_halign(gtk::Align::Start);
-    cmd_label.set_wrap(true);
-    cmd_label.set_selectable(true);
-    cmd_label.add_css_class("monospace");
-    cmd_label.add_css_class("dim-label");
-    vbox.append(&cmd_label);
-
-    row.set_child(Some(&vbox));
-    list.append(&row);
+    list.append(&crate::engine::ClawRowObject::new(crate::engine::PersistentClawRow::Suggested {
+        pane_id,
+        agent_name,
+        diagnosis: diagnosis.to_string(),
+        command: command.to_string(),
+        usage: None,
+    }));
 }
 
 pub fn add_approval_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     command: &str,
@@ -509,7 +586,7 @@ pub fn add_approval_row(
 }
 
 pub fn add_file_write_approval_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     path: &str,
@@ -527,7 +604,7 @@ pub fn add_file_write_approval_row(
 }
 
 pub fn add_file_delete_approval_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     path: &str,
@@ -544,7 +621,7 @@ pub fn add_file_delete_approval_row(
 }
 
 pub fn add_kill_process_approval_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     pid: u32,
@@ -562,7 +639,7 @@ pub fn add_kill_process_approval_row(
 }
 
 pub fn add_clipboard_get_approval_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     _on_reply: impl Fn(bool) + 'static,
@@ -578,7 +655,7 @@ pub fn add_clipboard_get_approval_row(
 }
 
 pub fn add_clipboard_set_approval_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     text: &str,
@@ -595,54 +672,16 @@ pub fn add_clipboard_set_approval_row(
 }
 
 pub fn add_process_list_row(
-    list: &gtk::ListBox,
+    list: &gtk::gio::ListStore,
     pane_id: String,
     agent_name: Option<String>,
     result_json: &str,
     _on_kill_request: impl Fn(u32, String) + 'static,
 ) {
-    let row = gtk::ListBoxRow::new();
-    row.set_selectable(false);
-    row.set_activatable(false);
-
-    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    vbox.set_margin_top(8);
-    vbox.set_margin_bottom(8);
-    vbox.set_margin_start(8);
-    vbox.set_margin_end(8);
-
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    let icon = gtk::Image::from_icon_name("boxxyclaw");
-    icon.add_css_class("accent");
-    header.append(&icon);
-
-    let title = gtk::Label::new(Some("Process List"));
-    title.add_css_class("heading");
-    title.set_halign(gtk::Align::Start);
-    header.append(&title);
-
-    let id_short = if pane_id.len() >= 7 {
-        &pane_id[..7]
-    } else {
-        &pane_id
-    };
-    let pane_text = if let Some(name) = agent_name {
-        format!("{name} ({id_short})")
-    } else {
-        format!("Pane {id_short}")
-    };
-
-    let pane_lbl = gtk::Label::new(Some(&pane_text));
-    pane_lbl.add_css_class("caption");
-    pane_lbl.add_css_class("dim-label");
-    header.append(&pane_lbl);
-
-    vbox.append(&header);
-
-    let viewer = StructuredViewer::new(get_claw_viewer_registry());
-    viewer.append_custom_block("list_processes", result_json);
-    vbox.append(viewer.widget());
-
-    row.set_child(Some(&vbox));
-    list.append(&row);
+    list.append(&crate::engine::ClawRowObject::new(crate::engine::PersistentClawRow::ProcessList {
+        pane_id,
+        agent_name,
+        result_json: result_json.to_string(),
+        usage: None,
+    }));
 }

@@ -8,6 +8,8 @@ use boxxy_db::Db;
 pub use session::ClawSession;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use gtk4::glib;
+use gtk4::subclass::prelude::*;
 
 pub fn persist_visual_event(
     db_cell: Arc<Mutex<Option<Db>>>,
@@ -92,6 +94,73 @@ pub enum ClawMessage {
     TogglePin(bool),
     /// Cancel a specific scheduled task.
     CancelTask { task_id: uuid::Uuid },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub enum SpawnLocation {
+    NewTab,
+    VerticalSplit,
+    HorizontalSplit,
+}
+
+mod imp {
+    use super::*;
+    use gtk4::glib;
+    use gtk4::prelude::*;
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    pub struct ClawRowObject {
+        pub row: RefCell<Option<PersistentClawRow>>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for ClawRowObject {
+        const NAME: &'static str = "ClawRowObject";
+        type Type = super::ClawRowObject;
+        type ParentType = glib::Object;
+    }
+
+    impl ObjectImpl for ClawRowObject {
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: std::sync::LazyLock<Vec<glib::ParamSpec>> = std::sync::LazyLock::new(|| {
+                vec![
+                    glib::ParamSpecString::builder("content").build(),
+                ]
+            });
+            PROPERTIES.as_ref()
+        }
+
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "content" => {
+                    let row = self.row.borrow();
+                    match row.as_ref().unwrap() {
+                        PersistentClawRow::Diagnosis { content, .. } => content.to_value(),
+                        PersistentClawRow::Suggested { diagnosis, .. } => diagnosis.to_value(),
+                        PersistentClawRow::ProcessList { result_json, .. } => result_json.to_value(),
+                    }
+                }
+                _ => unimplemented!(),
+            }
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct ClawRowObject(ObjectSubclass<imp::ClawRowObject>);
+}
+
+impl ClawRowObject {
+    pub fn new(row: PersistentClawRow) -> Self {
+        let obj: Self = glib::Object::builder().build();
+        obj.imp().row.replace(Some(row));
+        obj
+    }
+
+    pub fn get_row(&self) -> PersistentClawRow {
+        self.imp().row.borrow().as_ref().unwrap().clone()
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -203,19 +272,18 @@ impl PersistentClawRow {
                 content: format!("Proposed killing process: {process_name} (PID: {pid})"),
                 usage: usage.clone(),
             }),
-            ClawEngineEvent::ProposeGetClipboard {
-                agent_name, usage, ..
-            } => Some(PersistentClawRow::Diagnosis {
-                pane_id,
-                agent_name: Some(agent_name.clone()),
-                content: "Proposed reading from clipboard.".to_string(),
-                usage: usage.clone(),
-            }),
+            ClawEngineEvent::ProposeGetClipboard { agent_name, usage } => {
+                Some(PersistentClawRow::Diagnosis {
+                    pane_id,
+                    agent_name: Some(agent_name.clone()),
+                    content: "Proposed reading from clipboard.".to_string(),
+                    usage: usage.clone(),
+                })
+            }
             ClawEngineEvent::ProposeSetClipboard {
                 agent_name,
                 text,
                 usage,
-                ..
             } => Some(PersistentClawRow::Diagnosis {
                 pane_id,
                 agent_name: Some(agent_name.clone()),
@@ -223,159 +291,141 @@ impl PersistentClawRow {
                 usage: usage.clone(),
             }),
             ClawEngineEvent::ProposeTerminalCommand {
-                agent_name,
                 command,
                 explanation,
+                agent_name,
                 usage,
-                ..
-            } => Some(PersistentClawRow::Diagnosis {
+            } => Some(PersistentClawRow::Suggested {
                 pane_id,
                 agent_name: Some(agent_name.clone()),
-                content: format!("{explanation}\n\nProposed command:\n```bash\n{command}\n```"),
+                diagnosis: explanation.clone(),
+                command: command.clone(),
                 usage: usage.clone(),
-            }),
-            ClawEngineEvent::SystemMessage { text } => Some(PersistentClawRow::Diagnosis {
-                pane_id,
-                agent_name: None,
-                content: text.clone(),
-                usage: None,
             }),
             ClawEngineEvent::ToolResult {
                 agent_name,
                 tool_name,
                 result,
                 usage,
-                ..
-            } if tool_name == "list_processes" => Some(PersistentClawRow::ProcessList {
-                pane_id,
-                agent_name: Some(agent_name.clone()),
-                result_json: result.clone(),
-                usage: usage.clone(),
-            }),
+            } => {
+                if tool_name == "list_processes" {
+                    Some(PersistentClawRow::ProcessList {
+                        pane_id,
+                        agent_name: Some(agent_name.clone()),
+                        result_json: result.clone(),
+                        usage: usage.clone(),
+                    })
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum SpawnLocation {
-    VerticalSplit,
-    HorizontalSplit,
-    NewTab,
-}
-
-/// Events sent from the Claw Engine back up to the GTK UI
+/// Events emitted from the Claw Engine up to the GTK UI
 #[derive(Debug, Clone)]
 pub enum ClawEngineEvent {
-    /// The agent has finished its diagnosis.
+    Identity {
+        agent_name: String,
+        pinned: bool,
+        total_tokens: u64,
+    },
+    AgentThinking {
+        is_thinking: bool,
+        agent_name: String,
+    },
     DiagnosisComplete {
         agent_name: String,
         diagnosis: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent suggests a command to be injected into the terminal prompt.
     InjectCommand {
         agent_name: String,
         command: String,
         diagnosis: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent proposes to write or edit a file, requiring user approval.
     ProposeFileWrite {
         agent_name: String,
         path: String,
         content: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent proposes to delete a file, requiring user approval.
     ProposeFileDelete {
         agent_name: String,
         path: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent proposes to kill a process, requiring user approval.
     ProposeKillProcess {
         agent_name: String,
         pid: u32,
         process_name: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent proposes to read the system clipboard, requiring user approval.
     ProposeGetClipboard {
         agent_name: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent proposes to set the system clipboard, requiring user approval.
     ProposeSetClipboard {
         agent_name: String,
         text: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// The agent wants the user to run a command in the terminal and wait for the result.
     ProposeTerminalCommand {
         agent_name: String,
         command: String,
         explanation: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// Emitted when the agent starts or stops thinking (for UI indicators).
-    AgentThinking {
+    ProposalResolved {
         agent_name: String,
-        is_thinking: bool,
+        approved: bool,
     },
-    /// Emitted when a command failed but the agent hasn't analyzed it yet (Lazy mode).
-    LazyErrorIndicator { agent_name: String },
-    /// Emitted when a proposal is rejected, dismissed, or otherwise resolved so UIs can sync state.
-    ProposalResolved { agent_name: String },
-    /// Emitted when the agentrequests older lines from the terminal's scrollback buffer.
-    #[allow(clippy::type_complexity)]
-    RequestScrollback {
-        agent_name: String,
-        max_lines: usize,
-        offset_lines: usize,
-        reply: std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>,
+    SystemMessage {
+        text: String,
     },
-    /// Emitted to announce the agent's identity to the UI.
-    Identity {
-        agent_name: String,
-        pinned: bool,
-        total_tokens: u64,
-    },
-    /// Emitted when the agent was evicted because the session was resumed elsewhere.
-    Evicted,
-    /// Emitted when the agent requests the UI to switch the terminal's CWD.
-    RequestCwdSwitch { path: String },
-    /// Emitted to show a generic system message in the sidebar.
-    SystemMessage { text: String },
-    /// Emitted when the agent requests to spawn a new agent in a split or tab.
     RequestSpawnAgent {
         source_agent_name: String,
         location: SpawnLocation,
         intent: Option<String>,
     },
-    /// Emitted when the agent requests to close a specific agent's pane.
-    RequestCloseAgent { target_agent_name: String },
-    /// Emitted when the agent needs to send raw keystrokes to another agent's pane.
+    RequestCloseAgent {
+        target_agent_name: String,
+    },
+    RequestScrollback {
+        agent_name: String,
+        max_lines: usize,
+        offset_lines: usize,
+        reply: Arc<Mutex<Option<tokio::sync::oneshot::Sender<String>>>>,
+    },
     InjectKeystrokes {
         target_agent_name: String,
         keys: String,
     },
-    /// Emitted when a tool produces structured output (e.g. process list).
+    RequestCwdSwitch {
+        path: String,
+    },
     ToolResult {
         agent_name: String,
         tool_name: String,
-        result: String, // JSON
+        result: String,
         usage: Option<rig::completion::Usage>,
     },
-    /// Emitted when the set of pending tasks for this agent changes.
-    TaskStatusChanged {
+    LazyErrorIndicator {
+        visible: bool,
         agent_name: String,
-        tasks: Vec<ScheduledTask>,
     },
-    /// Emitted to restore past interaction history in the sidebar.
-    RestoreHistory(Vec<PersistentClawRow>),
-    /// Emitted when the pinned status of the session changes.
     PinStatusChanged(bool),
-    /// Emitted when a scheduled task has been completed and triggered.
-    TaskCompleted { agent_name: String },
+    TaskStatusChanged {
+        tasks: Vec<ScheduledTask>,
+        agent_name: String,
+    },
+    RestoreHistory(Vec<PersistentClawRow>),
+    Evicted,
+    TaskCompleted {
+        agent_name: String,
+        task_id: uuid::Uuid,
+    },
 }

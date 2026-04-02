@@ -57,7 +57,7 @@ impl TerminalController {
         self.controller.is_proactive()
     }
 
-    pub fn claw_history_widget(&self) -> gtk4::ListBox {
+    pub fn claw_history_widget(&self) -> gtk4::ListView {
         self.controller.claw_history_widget()
     }
 

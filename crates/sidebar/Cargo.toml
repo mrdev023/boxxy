@@ -19,3 +19,4 @@ boxxy-preferences = { path = "../preferences" }
 boxxy-viewer = { path = "../viewer" }
 uuid.workspace = true
 boxxy-core-widgets.workspace = true
+async-channel.workspace = true

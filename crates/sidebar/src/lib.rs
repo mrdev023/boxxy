@@ -4,4 +4,4 @@ pub mod types;
 pub mod widgets;
 
 pub use component::AiSidebarComponent;
-pub use types::{ChatMessage, Role};
+pub use types::{ChatMessage, ChatMessageObject, Role};
