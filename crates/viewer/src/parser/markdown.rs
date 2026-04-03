@@ -46,7 +46,9 @@ pub fn parse_markdown(input: &str) -> Vec<ContentBlock> {
     for event in parser {
         match event {
             Event::Start(tag) => {
-                maybe_close_implicit_paragraph(&mut stack, &mut root_blocks);
+                if is_block_tag(&tag) {
+                    maybe_close_implicit_paragraph(&mut stack, &mut root_blocks);
+                }
                 match tag {
                     Tag::Paragraph => stack.push(ParseContainer::Paragraph(String::new(), false)),
                     Tag::Heading { level, .. } => {
@@ -70,7 +72,9 @@ pub fn parse_markdown(input: &str) -> Vec<ContentBlock> {
                         checked: None,
                     }),
                     Tag::Image {
-                        dest_url, title, ..
+                        dest_url,
+                        title,
+                        ..
                     } => {
                         stack.push(ParseContainer::Image {
                             url: dest_url.to_string(),
@@ -91,41 +95,51 @@ pub fn parse_markdown(input: &str) -> Vec<ContentBlock> {
                     maybe_close_implicit_paragraph(&mut stack, &mut root_blocks);
                 }
 
-                if let Some(container) = stack.pop() {
-                    let block = match (tag, container) {
-                        (TagEnd::Paragraph, ParseContainer::Paragraph(markup, _)) => {
-                            if markup.trim().is_empty() {
-                                None // Skip empty paragraphs (often created around images)
-                            } else {
-                                Some(ContentBlock::Paragraph(markup))
+                if is_block_tag_end(&tag) {
+                    if let Some(container) = stack.pop() {
+                        let block = match (tag, container) {
+                            (TagEnd::Paragraph, ParseContainer::Paragraph(markup, _)) => {
+                                if markup.trim().is_empty() {
+                                    None // Skip empty paragraphs (often created around images)
+                                } else {
+                                    Some(ContentBlock::Paragraph(markup))
+                                }
                             }
-                        }
-                        (TagEnd::Heading(_), ParseContainer::Heading(level, markup)) => {
-                            Some(ContentBlock::Heading { level, markup })
-                        }
-                        (TagEnd::BlockQuote(_), ParseContainer::BlockQuote(markup)) => {
-                            Some(ContentBlock::Blockquote(markup))
-                        }
-                        (TagEnd::CodeBlock, ParseContainer::CodeBlock(lang, code)) => {
-                            Some(ContentBlock::Code { lang, code })
-                        }
-                        (TagEnd::Item, ParseContainer::Item { blocks, checked }) => {
-                            if let Some(ParseContainer::List { items, .. }) = stack.last_mut() {
-                                items.push(ListItem { blocks, checked });
+                            (TagEnd::Heading(_), ParseContainer::Heading(level, markup)) => {
+                                Some(ContentBlock::Heading { level, markup })
                             }
-                            None
-                        }
-                        (TagEnd::List(_), ParseContainer::List { ordered, items }) => {
-                            Some(ContentBlock::List { ordered, items })
-                        }
-                        (TagEnd::Image, ParseContainer::Image { url, title, alt }) => {
-                            Some(ContentBlock::Image { url, title, alt })
-                        }
-                        _ => None,
-                    };
+                            (TagEnd::BlockQuote(_), ParseContainer::BlockQuote(markup)) => {
+                                Some(ContentBlock::Blockquote(markup))
+                            }
+                            (TagEnd::CodeBlock, ParseContainer::CodeBlock(lang, code)) => {
+                                Some(ContentBlock::Code { lang, code })
+                            }
+                            (TagEnd::Item, ParseContainer::Item { blocks, checked }) => {
+                                if let Some(ParseContainer::List { items, .. }) = stack.last_mut() {
+                                    items.push(ListItem { blocks, checked });
+                                }
+                                None
+                            }
+                            (TagEnd::List(_), ParseContainer::List { ordered, items }) => {
+                                Some(ContentBlock::List { ordered, items })
+                            }
+                            (TagEnd::Image, ParseContainer::Image { url, title, alt }) => {
+                                Some(ContentBlock::Image { url, title, alt })
+                            }
+                            _ => None,
+                        };
 
-                    if let Some(b) = block {
-                        push_block(&mut root_blocks, &mut stack, b);
+                        if let Some(b) = block {
+                            push_block(&mut root_blocks, &mut stack, b);
+                        }
+                    }
+                } else {
+                    // Inline styles end
+                    match tag {
+                        TagEnd::Strong => append_text(&mut stack, "</b>"),
+                        TagEnd::Emphasis => append_text(&mut stack, "</i>"),
+                        TagEnd::Strikethrough => append_text(&mut stack, "<s>"),
+                        _ => {}
                     }
                 }
             }
@@ -192,6 +206,32 @@ pub fn parse_markdown(input: &str) -> Vec<ContentBlock> {
     }
 
     root_blocks
+    }
+
+fn is_block_tag(tag: &Tag) -> bool {
+    matches!(
+        tag,
+        Tag::Paragraph
+            | Tag::Heading { .. }
+            | Tag::BlockQuote(_)
+            | Tag::CodeBlock(_)
+            | Tag::List(_)
+            | Tag::Item
+            | Tag::Image { .. }
+    )
+}
+
+fn is_block_tag_end(tag: &TagEnd) -> bool {
+    matches!(
+        tag,
+        TagEnd::Paragraph
+            | TagEnd::Heading(_)
+            | TagEnd::BlockQuote(_)
+            | TagEnd::CodeBlock
+            | TagEnd::List(_)
+            | TagEnd::Item
+            | TagEnd::Image
+    )
 }
 
 fn is_in_code_block(stack: &[ParseContainer]) -> bool {
@@ -306,6 +346,33 @@ mod tests {
         if let ContentBlock::List { items, .. } = &blocks[0] {
             assert_eq!(items[0].checked, Some(false));
             assert_eq!(items[1].checked, Some(true));
+        }
+    }
+
+    #[test]
+    fn test_inline_tag_splitting() {
+        let input = "- foo **bar** baz";
+        let blocks = parse_markdown(input);
+        assert_eq!(blocks.len(), 1);
+        if let ContentBlock::List { items, .. } = &blocks[0] {
+            assert_eq!(items.len(), 1);
+            // Verify that it is NOT split into multiple paragraphs
+            assert_eq!(items[0].blocks.len(), 1);
+            match &items[0].blocks[0] {
+                ContentBlock::Paragraph(m) => assert_eq!(m, "foo <b>bar</b> baz"),
+                _ => panic!("Expected Paragraph"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_link_splitting() {
+        let input = "- /path/to/[link](url): 10GB";
+        let blocks = parse_markdown(input);
+        assert_eq!(blocks.len(), 1);
+        if let ContentBlock::List { items, .. } = &blocks[0] {
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].blocks.len(), 1);
         }
     }
 
