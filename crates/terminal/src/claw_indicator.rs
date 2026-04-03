@@ -32,9 +32,9 @@ impl ClawIndicator {
         frame.set_margin_bottom(0);
 
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        hbox.set_margin_top(4);
-        hbox.set_margin_bottom(4);
-        hbox.set_margin_start(8);
+        hbox.set_margin_top(2);
+        hbox.set_margin_bottom(2);
+        hbox.set_margin_start(4);
         hbox.set_margin_end(4);
 
         // We wrap the main content in a flat button so it's clickable
