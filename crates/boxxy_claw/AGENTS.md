@@ -6,6 +6,14 @@ Provides the agentic reasoning engine for Boxxy-Terminal. It bridges the gap bet
 ## Architecture
 The crate uses an **Actor Model** mixed with a **Shared-Everything State** strategy to ensure state isolation while enabling workspace orchestration:
 
+- **Context Hygiene (CRITICAL):**
+  - **Static System Prompts:** The `SYSTEM PROMPT` is strictly static across all panes. Dynamic data (pane identity, time, active skills) is appended to the `USER PROMPT` (`## CURRENT TURN CONTEXT`). This maximizes implicit prefix caching for models like Gemini 3.1 and reduces token churn for all other models.
+  - **Freshness Buffer:** Only the last 4 turns of history retain full terminal snapshots and global radar data. Older turns are aggressively stripped of these blocks to prevent linear context growth.
+  - **Snapshot Deduplication:** The terminal snapshot is hashed every turn. If the hash hasn't changed since the previous turn, the payload is replaced with `[TERMINAL_SNAPSHOT: NO_CHANGE]`.
+  - **Semantic Deduplication ("Clone Killer"):** Before storing a new episodic memory, a background agent checks recent interactions for the current project path. If a new summary is semantically identical (>= 90% match) to an existing one, the engine `touch`es the existing interaction (updates the timestamp) rather than inserting a duplicate row.
+  - **Chit-Chat Filtering:** The background summarizer is strictly instructed to discard social greetings or non-technical chatter by outputting `NO_TECHNICAL_CHANGE`.
+  - **Robotic Frame:** Background memory extraction agents (Observer/Summarizer) are isolated from the main agent's persona using `[DATA_START]`/`[DATA_END]` tags and explicit anchor commands to enforce rigid JSON/technical outputs and prevent hallucinations.
+- **Agent Identification:** Agents identify themselves strictly by their unique pane name (e.g., "plentiful bream"), not by the underlying engine name ("Boxxy-Claw").
 - **`engine/session.rs`**: Implements the `ClawSession` actor. Each terminal pane owns its own dedicated session loop.
 - **`engine/agent.rs`**: Wraps the `rig-core` framework to create model-specific agents with tool support.
 - **`engine/dispatcher.rs`**: Modular parser that cleans LLM output and decides how to route suggestions back to the UI.
@@ -45,7 +53,6 @@ The crate uses an **Actor Model** mixed with a **Shared-Everything State** strat
   - **Implicit Background Observer**: A specialized `memory_model` evaluates every turn asynchronously to extract permanent facts without interrupting the main conversation.
   - **In-Memory Agent Persistence**: Instead of recreating agents per turn, `ClawSession` maintains a single, long-lived `rig::Agent` instance. This preserves internal session states and allows for faster, incremental context updates.
   - **Analytics Integration**: Visual history rows capture token `Usage` data, enabling historical cost and performance tracking. The session-level `total_tokens` counter is persisted and rehydrated to ensure continuity across model switches.
-  - **Context Hygiene 2.0 & "No Duplicated Data"**: Includes LLM-powered Semantic Query Expansion and aggressive **Context Stripping**. Buffer states are limited to 50 lines / 5,000 characters. Previous turns are aggressively pruned of all dynamic blocks (Skills, Radar, Memories), leaving ONLY the raw user query and assistant response in history to stop linear token growth. Raw terminal data is never persisted to the database; only concise episodic summaries are saved.
 
 ## Directives
 - **Lazy Loading & Lifecycle**: BoxxyClaw follows a strict two-stage initialization to keep the terminal lightweight:

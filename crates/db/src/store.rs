@@ -233,6 +233,35 @@ impl<'a> Store<'a> {
         Ok(result.last_insert_rowid())
     }
 
+    pub async fn get_recent_interactions_by_path(
+        &self,
+        project_path: &str,
+        limit: i64,
+    ) -> Result<Vec<Interaction>> {
+        let records = sqlx::query_as::<_, Interaction>(
+            r"
+            SELECT * FROM interactions 
+            WHERE project_path = ? 
+            ORDER BY last_accessed_at DESC 
+            LIMIT ?
+            ",
+        )
+        .bind(project_path)
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(records)
+    }
+
+    pub async fn touch_interaction(&self, id: i64) -> Result<()> {
+        sqlx::query("UPDATE interactions SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn search_interactions(
         &self,
         query: &str,

@@ -27,6 +27,7 @@ pub struct SessionState {
     pub persistent_agent: Option<crate::engine::agent::ClawAgent>,
     pub last_tools: Option<Vec<String>>,
     pub pending_tasks: Vec<crate::engine::ScheduledTask>,
+    pub last_snapshot_hash: Option<u64>,
 }
 
 pub struct ClawSession {
@@ -90,8 +91,9 @@ impl ClawSession {
                 persistent_agent: None,
                 last_tools: None,
                 pending_tasks: Vec::new(),
-            })),
-            diagnosis_mode: settings.claw_auto_diagnosis_mode,
+                last_snapshot_hash: None,
+                })),
+                diagnosis_mode: boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy,
         };
 
         (session, tx, rx_ui)
@@ -1047,14 +1049,7 @@ fn spawn_turn(
         let system_prompt_template =
             String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
 
-        let identity = format!(
-            "You are the Boxxy-Claw agent managing terminal pane: **{}**\n\
-            Your unique internal ID is: `{}`",
-            agent_name, pane_id
-        );
-
         let system_prompt = system_prompt_template
-            .replace("{{identity}}", &identity)
             .replace("{{available_skills}}", &available_skills_text);
 
         let creds = boxxy_ai_core::AiCredentials::new(
@@ -1085,34 +1080,61 @@ fn spawn_turn(
 
         let agent = agent_opt.unwrap();
 
-        // Truncate snapshot to 5,000 characters and 50 lines to prevent context blowup
-        let mut final_snapshot = snapshot_clone;
+        // Clean snapshot: remove completely empty or whitespace-only lines
+        let cleaned_snapshot: String = snapshot_clone
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<&str>>()
+            .join("\n");
 
-        // 1. Line limit (take only the last 50 lines)
-        let lines: Vec<&str> = final_snapshot.lines().collect();
-        if lines.len() > 50 {
-            final_snapshot = lines[lines.len() - 50..].join("\n");
-        }
+        // Hash the cleaned snapshot
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        cleaned_snapshot.hash(&mut hasher);
+        let current_hash = hasher.finish();
 
-        // 2. Character limit
-        if final_snapshot.len() > 5000 {
-            final_snapshot = format!(
-                "... (truncated {} chars) ...\n{}",
-                final_snapshot.len() - 5000,
-                &final_snapshot[final_snapshot.len() - 5000..]
-            );
-        }
+        let final_snapshot = if state_lock.last_snapshot_hash == Some(current_hash) {
+            "[TERMINAL_SNAPSHOT: NO_CHANGE]".to_string()
+        } else {
+            state_lock.last_snapshot_hash = Some(current_hash);
+            let mut snap = cleaned_snapshot;
+            // 1. Line limit (take only the last 50 lines)
+            let lines: Vec<&str> = snap.lines().collect();
+            if lines.len() > 50 {
+                snap = lines[lines.len() - 50..].join("\n");
+            }
+
+            // 2. Character limit
+            if snap.len() > 5000 {
+                snap = format!(
+                    "... (truncated {} chars) ...\n{}",
+                    snap.len() - 5000,
+                    &snap[snap.len() - 5000..]
+                );
+            }
+            snap
+        };
 
         // 3. Build Dynamic Turn Context (The part that changes every turn)
         let now = chrono::Utc::now();
+        let identity = format!(
+            "You are the Boxxy-Claw agent managing terminal pane: **{}**\n\
+            Your unique internal ID is: `{}`",
+            agent_name, pane_id
+        );
         let turn_context = format!(
-            "## CURRENT TURN CONTEXT\n\
+            "## YOUR IDENTITY\n\
+            {}\n\
+            \n\
+            ## CURRENT TURN CONTEXT\n\
             System Time: `{}`\n\
             CWD: `{}`\n\
             {}\n\
             {}\n\
             {}\n\
             {}\n",
+            identity,
             now.to_rfc3339(),
             cwd_clone,
             active_skills_text,
@@ -1151,6 +1173,8 @@ fn spawn_turn(
             }
         }
 
+        let history_len = history.len();
+        
         // We temporarily adapt the ClawAgent to accept `Vec<Message>` for the current prompt
         // instead of just `&str` since we need to send the multimodal `user_msg`.
 
@@ -1158,19 +1182,29 @@ fn spawn_turn(
         // (Skills, Radar, Memories, and Snapshots) so history grows near-zero tokens per turn.
         let mut final_history: Vec<rig::message::Message> = history
             .into_iter()
-            .map(|mut msg| {
+            .enumerate()
+            .map(|(i, mut msg)| {
+                // Rule 1B: Freshness Buffer - only keep the verbatim snapshot for the last 4 turns.
+                // Every user + assistant exchange is 2 messages, so 4 turns = 8 messages.
+                // We strip the dynamic blocks from anything older than the last 8 messages.
+                let is_old = history_len.saturating_sub(i) > 8;
+
                 if let rig::message::Message::User { content } = &mut msg {
                     let mut items: Vec<rig::message::UserContent> =
                         content.clone().into_iter().collect();
                     for item in &mut items {
                         if let rig::message::UserContent::Text(text) = item {
-                            // Find the start of the dynamic block and truncate everything after it
-                            if let Some(idx) = text.text.find("\n\n## CURRENT TURN CONTEXT") {
-                                text.text.truncate(idx);
-                            } else if let Some(idx) = text.text.find("\n\nTerminal Snapshot:\n```")
-                            {
-                                // Fallback for older messages
-                                text.text.truncate(idx);
+                            if is_old {
+                                // Find the start of the dynamic block and truncate everything after it
+                                if let Some(idx) = text.text.find("\n\n## YOUR IDENTITY") {
+                                    text.text.truncate(idx);
+                                } else if let Some(idx) = text.text.find("\n\n## CURRENT TURN CONTEXT") {
+                                    text.text.truncate(idx);
+                                } else if let Some(idx) = text.text.find("\n\n--- GLOBAL RADAR") {
+                                    text.text.truncate(idx);
+                                } else if let Some(idx) = text.text.find("\n\nTerminal Snapshot:\n```") {
+                                    text.text.truncate(idx);
+                                }
                             }
                         }
                     }
