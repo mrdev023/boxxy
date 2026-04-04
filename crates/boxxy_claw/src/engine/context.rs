@@ -197,10 +197,16 @@ pub async fn summarize_and_store(
                 dedup_context.push_str(&format!("{}: {}\n", r.id, r.content));
             }
 
-            dedup_context.push_str(&format!("\nNEW SUMMARY: {}\n\nOUTPUT (ID or UNIQUE):", summary));
+            dedup_context.push_str(&format!(
+                "\nNEW SUMMARY: {}\n\nOUTPUT (ID or UNIQUE):",
+                summary
+            ));
 
             let dedup_agent = boxxy_ai_core::create_agent(
-                &settings.memory_model.clone().or(settings.claw_model.clone()),
+                &settings
+                    .memory_model
+                    .clone()
+                    .or(settings.claw_model.clone()),
                 &creds,
                 "You are a precise duplication detector. Output only ID or UNIQUE.",
             );

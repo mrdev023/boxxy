@@ -71,7 +71,7 @@ serde_json = "1.0"
 sourceview5 = "0.11"
 chrono = { version = "0.4", features = ["serde"] }
 async-channel = "2.5.0"
-tokio = { version = "1.50", features = ["full"] }
+tokio = { version = "1.51.0", features = ["full"] }
 lazy_static = "1.5.0"
 futures-channel = "0.3.32"
 futures-util = "0.3.32"
@@ -93,13 +93,13 @@ bitflags = "2.11.0"
 home = "0.5.12"
 regex-automata = "0.4.14"
 unicode-width = "0.2.2"
-arc-swap = "1.9.0"
+arc-swap = "1.9.1"
 cursor-icon = "1.2"
 memchr = "2.8"
 miniz_oxide = "0.9.1"
 rustix-openpty = "0.2.0"
 rustix = "1.1.4"
-signal-hook = "0.4.3"
+signal-hook = "0.4.4"
 self_update = { version = "0.43.1", features = ["archive-tar", "compression-flate2"] }
 tempfile = "3.27.0"
 tar = "0.4.45"
@@ -112,7 +112,7 @@ notify = "8.2.0"
 uuid = { version = "1.23.0", features = ["v4"] }
 petname = "2.0.2"
 getrandom = "0.4.2"
-toml = "1.1.1"
+toml = "1.1.2"
 boxxy-bookmarks = { path = "crates/boxxy_bookmarks" }
 sysinfo = "0.38.4"
 arboard = "3.6.1"
@@ -122,6 +122,6 @@ boxxy-viewer = { path = "crates/viewer" }
 boxxy-telemetry = { path = "crates/telemetry" }
 opentelemetry = "0.31.0"
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.31.0", features = ["http-json"] }
+opentelemetry-otlp = { version = "0.31.1", features = ["http-json"] }
 opentelemetry-http = "0.31.0"
 opentelemetry-stdout = { version = "0.31.0", features = ["metrics"] }

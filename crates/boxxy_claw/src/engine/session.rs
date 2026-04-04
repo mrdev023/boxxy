@@ -92,8 +92,8 @@ impl ClawSession {
                 last_tools: None,
                 pending_tasks: Vec::new(),
                 last_snapshot_hash: None,
-                })),
-                diagnosis_mode: boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy,
+            })),
+            diagnosis_mode: boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy,
         };
 
         (session, tx, rx_ui)
@@ -1049,8 +1049,8 @@ fn spawn_turn(
         let system_prompt_template =
             String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
 
-        let system_prompt = system_prompt_template
-            .replace("{{available_skills}}", &available_skills_text);
+        let system_prompt =
+            system_prompt_template.replace("{{available_skills}}", &available_skills_text);
 
         let creds = boxxy_ai_core::AiCredentials::new(
             settings.get_effective_api_keys(),
@@ -1174,7 +1174,7 @@ fn spawn_turn(
         }
 
         let history_len = history.len();
-        
+
         // We temporarily adapt the ClawAgent to accept `Vec<Message>` for the current prompt
         // instead of just `&str` since we need to send the multimodal `user_msg`.
 
@@ -1198,11 +1198,15 @@ fn spawn_turn(
                                 // Find the start of the dynamic block and truncate everything after it
                                 if let Some(idx) = text.text.find("\n\n## YOUR IDENTITY") {
                                     text.text.truncate(idx);
-                                } else if let Some(idx) = text.text.find("\n\n## CURRENT TURN CONTEXT") {
+                                } else if let Some(idx) =
+                                    text.text.find("\n\n## CURRENT TURN CONTEXT")
+                                {
                                     text.text.truncate(idx);
                                 } else if let Some(idx) = text.text.find("\n\n--- GLOBAL RADAR") {
                                     text.text.truncate(idx);
-                                } else if let Some(idx) = text.text.find("\n\nTerminal Snapshot:\n```") {
+                                } else if let Some(idx) =
+                                    text.text.find("\n\nTerminal Snapshot:\n```")
+                                {
                                     text.text.truncate(idx);
                                 }
                             }

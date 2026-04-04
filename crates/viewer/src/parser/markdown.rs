@@ -72,9 +72,7 @@ pub fn parse_markdown(input: &str) -> Vec<ContentBlock> {
                         checked: None,
                     }),
                     Tag::Image {
-                        dest_url,
-                        title,
-                        ..
+                        dest_url, title, ..
                     } => {
                         stack.push(ParseContainer::Image {
                             url: dest_url.to_string(),
@@ -206,7 +204,7 @@ pub fn parse_markdown(input: &str) -> Vec<ContentBlock> {
     }
 
     root_blocks
-    }
+}
 
 fn is_block_tag(tag: &Tag) -> bool {
     matches!(

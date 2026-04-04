@@ -1,5 +1,5 @@
 use boxxy_model_selection::ModelProvider;
-use rig::agent::{HookAction, ToolCallHookAction, PromptHook};
+use rig::agent::{HookAction, PromptHook, ToolCallHookAction};
 use rig::client::CompletionClient;
 use rig::message::Message;
 use rig::providers::openai::responses_api::ResponsesCompletionModel;
@@ -70,7 +70,6 @@ impl<M: rig::completion::CompletionModel> PromptHook<M> for ModelContextHook {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct BoxxyAgent {
@@ -180,16 +179,32 @@ impl BoxxyAgent {
 
         let res_result = match &self.inner {
             BoxxyAgentInner::Gemini(agent) => {
-                agent.prompt(prompt).with_hook(hook).extended_details().await
+                agent
+                    .prompt(prompt)
+                    .with_hook(hook)
+                    .extended_details()
+                    .await
             }
             BoxxyAgentInner::Ollama(agent) => {
-                agent.prompt(prompt).with_hook(hook).extended_details().await
+                agent
+                    .prompt(prompt)
+                    .with_hook(hook)
+                    .extended_details()
+                    .await
             }
             BoxxyAgentInner::Anthropic(agent) => {
-                agent.prompt(prompt).with_hook(hook).extended_details().await
+                agent
+                    .prompt(prompt)
+                    .with_hook(hook)
+                    .extended_details()
+                    .await
             }
             BoxxyAgentInner::OpenAi(agent) => {
-                agent.prompt(prompt).with_hook(hook).extended_details().await
+                agent
+                    .prompt(prompt)
+                    .with_hook(hook)
+                    .extended_details()
+                    .await
             }
             BoxxyAgentInner::Error(e) => {
                 return Err(rig::completion::PromptError::CompletionError(
@@ -316,4 +331,3 @@ pub fn create_agent(
         preamble: system_prompt.to_string(),
     }
 }
-

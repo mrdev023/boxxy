@@ -24,7 +24,7 @@ impl BlockRenderer for ImageRenderer {
             picture.set_halign(gtk::Align::Center);
             // Optionally, give it a subtle border or radius
             picture.add_css_class("card");
-            
+
             // A spinner or placeholder while loading
             let overlay = gtk::Overlay::new();
             let spinner = gtk::Spinner::new();
@@ -33,10 +33,10 @@ impl BlockRenderer for ImageRenderer {
             spinner.set_margin_top(16);
             spinner.set_margin_bottom(16);
             spinner.start();
-            
+
             overlay.set_child(Some(&picture));
             overlay.add_overlay(&spinner);
-            
+
             vbox.append(&overlay);
 
             if !title.is_empty() {
@@ -52,12 +52,17 @@ impl BlockRenderer for ImageRenderer {
             let alt_clone = alt.clone();
 
             gtk::glib::spawn_future_local(async move {
-                let bytes_opt = if url_clone.starts_with("http://") || url_clone.starts_with("https://") {
+                let bytes_opt = if url_clone.starts_with("http://")
+                    || url_clone.starts_with("https://")
+                {
                     let (tx, rx) = async_channel::bounded::<Vec<u8>>(1);
                     let url_req = url_clone.clone();
-                    
+
                     std::thread::spawn(move || {
-                        if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                        {
                             rt.block_on(async {
                                 let client = reqwest::Client::builder()
                                     .timeout(std::time::Duration::from_secs(10))
@@ -69,13 +74,21 @@ impl BlockRenderer for ImageRenderer {
                                     Ok(resp) => {
                                         let status = resp.status();
                                         if !status.is_success() {
-                                            log::error!("Failed to fetch image {}: HTTP {}", url_req, status);
+                                            log::error!(
+                                                "Failed to fetch image {}: HTTP {}",
+                                                url_req,
+                                                status
+                                            );
                                             return;
                                         }
 
                                         let len = resp.content_length().unwrap_or(0);
                                         if len > 10 * 1024 * 1024 {
-                                            log::error!("Image {} is too large ({} bytes)", url_req, len);
+                                            log::error!(
+                                                "Image {} is too large ({} bytes)",
+                                                url_req,
+                                                len
+                                            );
                                             return;
                                         }
 
@@ -84,25 +97,29 @@ impl BlockRenderer for ImageRenderer {
                                         }
                                     }
                                     Err(e) => {
-                                        log::error!("Network error fetching image {}: {}", url_req, e);
+                                        log::error!(
+                                            "Network error fetching image {}: {}",
+                                            url_req,
+                                            e
+                                        );
                                     }
                                 }
                             });
                         }
                     });
-                    
+
                     rx.recv().await.ok()
                 } else {
                     let path = url_clone.strip_prefix("file://").unwrap_or(&url_clone);
                     let path = path.to_string();
                     let (tx, rx) = async_channel::bounded::<Vec<u8>>(1);
-                    
+
                     std::thread::spawn(move || {
                         if let Ok(bytes) = std::fs::read(&path) {
                             let _ = tx.send_blocking(bytes);
                         }
                     });
-                    
+
                     rx.recv().await.ok()
                 };
 
