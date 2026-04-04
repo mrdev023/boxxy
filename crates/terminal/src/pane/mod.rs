@@ -17,14 +17,12 @@ use crate::claw_indicator::ClawIndicator;
 use crate::overlay::{OverlayMode, TerminalOverlay};
 
 mod app_menu;
-mod badge;
 mod claw;
 mod events;
 mod gestures;
 mod preview;
 mod ui;
 
-use badge::AgentBadge;
 
 pub type PendingDiagnosis = Rc<RefCell<Option<(String, crate::TerminalProposal)>>>;
 
@@ -82,7 +80,7 @@ pub struct TerminalPaneComponent {
     _search_bar: Rc<SearchBarComponent>,
     claw_popover: TerminalOverlay,
     claw_indicator: ClawIndicator,
-    agent_badge: AgentBadge,
+    
     pending_proactive_diagnosis: PendingDiagnosis,
     claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
     pub claw_message_list: gtk::ListView,
@@ -108,7 +106,7 @@ pub(super) struct PaneInner {
     pub(super) n_columns: i64,
     pub(super) n_rows: i64,
     pub(super) pid: Option<u32>,
-    pub(super) agent_badge: AgentBadge,
+    pub(super) claw_indicator: Option<ClawIndicator>,
     pub(super) msg_bar: Rc<MsgBarComponent>,
     pub(super) callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
 }
@@ -153,7 +151,7 @@ impl TerminalPaneComponent {
         let is_claw_active = Rc::new(Cell::new(false));
         let is_proactive = Rc::new(Cell::new(false));
         let is_pinned = Rc::new(Cell::new(false));
-        let agent_badge = AgentBadge::new(&widget);
+        let claw_indicator = ClawIndicator::new(&widget);
         let total_tokens = Rc::new(Cell::new(0));
 
         let (msg_bar, inner) = {
@@ -208,7 +206,7 @@ impl TerminalPaneComponent {
 
                         if !is_claw_active_for_msg.get() {
                             is_claw_active_for_msg.set(true);
-                            inner_arc.borrow().agent_badge.set_visible(true);
+                            if let Some(ind) = &inner_arc.borrow().claw_indicator { ind.set_visible(true); }
                             inner_arc.borrow().msg_bar.update_ui(
                                 true,
                                 is_proactive_for_msg.get(),
@@ -278,7 +276,7 @@ impl TerminalPaneComponent {
                                 is_proactive_for_active.get(),
                                 is_pinned_for_active.get(),
                             );
-                            inner_arc.borrow().agent_badge.set_visible(active);
+                            if let Some(ind) = &inner_arc.borrow().claw_indicator { ind.set_visible(active); }
                         }
                         cb_toggle(PaneOutput::ClawStateChanged(
                             id_toggle.clone(),
@@ -366,7 +364,7 @@ impl TerminalPaneComponent {
                 n_columns: 0,
                 n_rows: 0,
                 pid: None,
-                agent_badge: agent_badge.clone(),
+                claw_indicator: None,
                 msg_bar: msg_bar.clone(),
                 callback: callback.clone(),
             }));
@@ -436,7 +434,7 @@ impl TerminalPaneComponent {
         );
         widget.add_overlay(&msg_bar.widget);
 
-        let (claw_popover, claw_indicator, pending_proactive_diagnosis) = claw::setup_claw(
+        let (claw_popover, pending_proactive_diagnosis) = claw::setup_claw(
             &widget,
             &inner,
             id.clone(),
@@ -447,7 +445,9 @@ impl TerminalPaneComponent {
             init.spawn_intent,
             total_tokens.clone(),
             is_pinned.clone(),
+            &claw_indicator,
         );
+        inner.borrow_mut().claw_indicator = Some(claw_indicator.clone());
 
         // Keep popover height capped to the live pane height.
         let claw_popover_for_resize = claw_popover.clone();
@@ -498,8 +498,7 @@ impl TerminalPaneComponent {
             _search_bar: search_bar_rc,
             claw_popover,
             claw_indicator,
-            agent_badge,
-            pending_proactive_diagnosis,
+                        pending_proactive_diagnosis,
             claw_sender,
             claw_message_list,
             is_claw_active,
@@ -827,7 +826,7 @@ impl TerminalPaneComponent {
         }
 
         // Update badge visibility
-        self.agent_badge.set_visible(active);
+        self.claw_indicator.set_visible(active);
 
         // Sync MsgBar toggle state
         self.msg_bar
@@ -1024,7 +1023,7 @@ impl TerminalPaneComponent {
         }
 
         inner.current_settings = Some(settings);
-        inner.agent_badge.update_settings();
+        if let Some(ind) = &inner.claw_indicator { ind.update_settings(); }
     }
 
     pub fn set_dimmed(&self, dimmed: bool) {

@@ -18,7 +18,8 @@ pub(super) fn setup_claw(
     spawn_intent: Option<String>,
     total_tokens: Rc<Cell<u64>>,
     is_pinned: Rc<Cell<bool>>,
-) -> (TerminalOverlay, ClawIndicator, PendingDiagnosis) {
+    claw_indicator: &ClawIndicator,
+) -> (TerminalOverlay, PendingDiagnosis) {
     let pending_proactive_diagnosis =
         Rc::new(RefCell::new(None::<(String, crate::TerminalProposal)>));
     let pending_diag_clone = pending_proactive_diagnosis.clone();
@@ -137,7 +138,7 @@ pub(super) fn setup_claw(
     widget.add_overlay(claw_popover.widget());
 
     let popover_clone = claw_popover.clone();
-    let claw_indicator = ClawIndicator::new(
+    claw_indicator.set_callbacks(
         || {},
         move || {
             let tx = tx_lazy_reply.clone();
@@ -153,7 +154,6 @@ pub(super) fn setup_claw(
             }
         },
     );
-    widget.add_overlay(claw_indicator.widget());
 
     let cb_clone_events = callback.clone();
     let popover_event_clone = claw_popover.clone();
@@ -405,7 +405,7 @@ pub(super) fn setup_claw(
                     pinned,
                     total_tokens,
                 } => {
-                    inner_clone.borrow().agent_badge.set_identity(agent_name);
+                    if let Some(ind) = &inner_clone.borrow().claw_indicator { ind.set_identity(agent_name); }
                     is_pinned_for_events.set(*pinned);
                     inner_clone.borrow().msg_bar.update_ui(
                         true, // Claw is active if it's sending Identity
@@ -423,7 +423,7 @@ pub(super) fn setup_claw(
                     );
                 }
                 boxxy_claw::engine::ClawEngineEvent::Evicted => {
-                    inner_clone.borrow().agent_badge.set_evicted(true);
+                    if let Some(ind) = &inner_clone.borrow().claw_indicator { ind.set_evicted(true); }
                     indicator_event_clone.hide();
                     popover_event_clone.hide();
                     boxxy_claw::ui::add_diagnosis_row(
@@ -479,9 +479,9 @@ pub(super) fn setup_claw(
                     let pane = pane_inner.terminal.clone();
 
                     if pane.is_alt_screen() {
-                        pane_inner.agent_badge.set_visible(false);
+                        if let Some(ind) = &pane_inner.claw_indicator { ind.set_visible(false); }
                     } else {
-                        pane_inner.agent_badge.set_visible(true);
+                        if let Some(ind) = &pane_inner.claw_indicator { ind.set_visible(true); }
                     }
 
                     let max_lines = *max_lines;
@@ -533,7 +533,7 @@ pub(super) fn setup_claw(
                     let has_pending = tasks
                         .iter()
                         .any(|t| t.status == boxxy_claw::engine::TaskStatus::Pending);
-                    inner_clone.borrow().agent_badge.set_has_tasks(has_pending);
+                    if let Some(ind) = &inner_clone.borrow().claw_indicator { ind.set_has_tasks(has_pending); }
                 }
                 boxxy_claw::engine::ClawEngineEvent::RestoreHistory(rows) => {
                     // Bulk append history items to minimize UI layout passes
@@ -553,5 +553,5 @@ pub(super) fn setup_claw(
         }
     });
 
-    (claw_popover, claw_indicator, pending_proactive_diagnosis)
+    (claw_popover, pending_proactive_diagnosis)
 }
