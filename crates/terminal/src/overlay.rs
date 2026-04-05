@@ -22,6 +22,8 @@ pub struct TerminalOverlay {
     command_view: gtk::TextView,
     reply_entry: gtk::Entry,
     template_entry: gtk::Entry,
+    #[allow(dead_code)]
+    attachment_mgr: boxxy_msgbar::AttachmentManager,
     accept_btn: gtk::Button,
     reject_btn: gtk::Button,
     ok_btn: gtk::Button,
@@ -167,6 +169,9 @@ impl TerminalOverlay {
 
         command_frame.set_child(Some(&command_view));
         vbox.append(&command_frame);
+
+        let attachment_mgr = boxxy_msgbar::AttachmentManager::new();
+        vbox.append(attachment_mgr.widget());
 
         // Reply area
         let reply_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -353,17 +358,21 @@ impl TerminalOverlay {
         let on_reply_clone = on_reply.clone();
         let cb_cancel_reply = on_cancel_rc.clone();
         let cm_clone_reply = current_mode.clone();
+        let c_attachment_mgr = attachment_mgr.clone();
 
         let do_reply = move || {
-            let text = reply_entry_clone.text().to_string();
-            if !text.is_empty() {
-                on_reply_clone((text, vec![]));
-                reply_entry_clone.set_text("");
-                p_clone3.set_reveal_child(false);
+            let original_text = reply_entry_clone.text().to_string();
+            let (text, images) = c_attachment_mgr.build_payload(&original_text);
+
+            if !text.trim().is_empty() || !images.is_empty() {
+                on_reply_clone((text, images));
             } else {
                 cb_cancel_reply(*cm_clone_reply.borrow());
-                p_clone3.set_reveal_child(false);
             }
+
+            reply_entry_clone.set_text("");
+            c_attachment_mgr.clear();
+            p_clone3.set_reveal_child(false);
         };
 
         let do_reply_clone = do_reply.clone();
@@ -382,6 +391,20 @@ impl TerminalOverlay {
             }
         });
 
+        let key_ctrl = gtk::EventControllerKey::new();
+        key_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let k_entry = reply_entry.clone();
+        let k_attachment_mgr = attachment_mgr.clone();
+        key_ctrl.connect_key_pressed(move |_, key, _, state| {
+            let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+            if is_ctrl && (key == gtk::gdk::Key::v || key == gtk::gdk::Key::V) {
+                k_attachment_mgr.handle_paste(&k_entry);
+                return gtk::glib::Propagation::Stop;
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        reply_entry.add_controller(key_ctrl);
+
         TerminalOverlay {
             revealer,
             outer_scroll: master_scroll,
@@ -392,6 +415,7 @@ impl TerminalOverlay {
             command_view,
             reply_entry,
             template_entry,
+            attachment_mgr,
             accept_btn,
             reject_btn,
             ok_btn,

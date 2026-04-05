@@ -1,3 +1,4 @@
+pub mod attachment;
 pub mod autocomplete;
 pub mod history;
 
@@ -6,24 +7,13 @@ use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use history::HistoryItem;
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Attachment {
-    pub id: String,
-    pub label: String,
-    pub content: String,
-    pub is_image: bool,
-}
+pub use attachment::{Attachment, AttachmentManager};
 
 pub struct MsgBarComponent {
     pub widget: gtk::Box,
     pub entry: gtk::Entry,
     pub is_active: Rc<Cell<bool>>,
-    pub tags_box: gtk::Box,
-    pub attachments: Rc<RefCell<Vec<Attachment>>>,
+    pub attachment_mgr: AttachmentManager,
     pub history: Rc<RefCell<history::MsgHistory>>,
     pub claw_toggle: gtk::Button,
     pub proactive_toggle: gtk::Button,
@@ -134,14 +124,12 @@ impl MsgBarComponent {
 
         widget.append(&pin_toggle);
 
-        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        tags_box.set_valign(gtk::Align::Center);
-        widget.append(&tags_box);
+        let attachment_mgr = AttachmentManager::new();
+        widget.append(attachment_mgr.widget());
 
         widget.append(&entry);
 
         let is_active = Rc::new(Cell::new(false));
-        let attachments = Rc::new(RefCell::new(Vec::<Attachment>::new()));
 
         let history = Rc::new(RefCell::new(history::MsgHistory::new()));
 
@@ -166,8 +154,7 @@ impl MsgBarComponent {
 
         let c_active = is_active.clone();
         let c_widget = widget.clone();
-        let c_attachments = attachments.clone();
-        let c_tags_box = tags_box.clone();
+        let c_attachment_mgr = attachment_mgr.clone();
         let c_history = history.clone();
 
         let on_submit_rc = Rc::new(on_submit);
@@ -178,41 +165,17 @@ impl MsgBarComponent {
         let c_history_activate = c_history.clone();
         entry.connect_activate(move |e| {
             let original_text = e.text().to_string();
-            let mut text = original_text.clone();
-            let mut images = Vec::new();
-
-            // Append attachments to the prompt
-            let atts = c_attachments.borrow();
-            if !atts.is_empty() {
-                let mut text_attachments_present = false;
-
-                for att in atts.iter() {
-                    if att.is_image {
-                        images.push(att.content.clone());
-                    } else {
-                        if !text_attachments_present {
-                            text.push_str("\n\n--- ATTACHMENTS ---");
-                            text_attachments_present = true;
-                        }
-                        text.push_str(&format!("\n\n[{}]\n{}", att.label, att.content));
-                    }
-                }
-            }
+            let (text, images) = c_attachment_mgr.build_payload(&original_text);
 
             if !text.trim().is_empty() || !images.is_empty() {
                 c_history_activate
                     .borrow_mut()
-                    .push(original_text, atts.clone());
+                    .push(original_text, c_attachment_mgr.get_attachments());
                 c_submit((text, images));
                 e.set_text("");
             }
 
-            // Clear attachments after submit
-            drop(atts);
-            c_attachments.borrow_mut().clear();
-            while let Some(child) = c_tags_box.first_child() {
-                c_tags_box.remove(&child);
-            }
+            c_attachment_mgr.clear();
 
             c_active.set(false);
             c_widget.set_visible(false);
@@ -225,8 +188,7 @@ impl MsgBarComponent {
         let k_widget = widget.clone();
         let k_entry = entry.clone();
         let k_cancel = on_cancel_rc;
-        let k_attachments = attachments.clone();
-        let k_tags_box = tags_box.clone();
+        let k_attachment_mgr = attachment_mgr.clone();
         let k_history = c_history;
 
         let k_autocomplete = autocomplete_ctrl.clone();
@@ -247,71 +209,29 @@ impl MsgBarComponent {
 
             if key == gtk::gdk::Key::Up {
                 let current_text = k_entry.text().to_string();
-                let current_atts = k_attachments.borrow().clone();
+                let current_atts = k_attachment_mgr.get_attachments();
                 if let Some(item) = k_history
                     .borrow_mut()
                     .navigate_up(current_text, current_atts)
                 {
-                    Self::load_history_item(&k_entry, &k_attachments, &k_tags_box, item);
+                    k_entry.set_text(&item.text);
+                    k_entry.set_position(-1);
+                    k_attachment_mgr.load_attachments(item.attachments);
                 }
                 return glib::Propagation::Stop;
             }
 
             if key == gtk::gdk::Key::Down {
                 if let Some(item) = k_history.borrow_mut().navigate_down() {
-                    Self::load_history_item(&k_entry, &k_attachments, &k_tags_box, item);
+                    k_entry.set_text(&item.text);
+                    k_entry.set_position(-1);
+                    k_attachment_mgr.load_attachments(item.attachments);
                 }
                 return glib::Propagation::Stop;
             }
 
             if is_ctrl && (key == gtk::gdk::Key::v || key == gtk::gdk::Key::V) {
-                let clipboard = gtk::gdk::Display::default().unwrap().clipboard();
-                let attachments = k_attachments.clone();
-                let tags_box = k_tags_box.clone();
-                let entry = k_entry.clone();
-
-                // Check text first
-                let clipboard_clone = clipboard.clone();
-                clipboard.read_text_async(None::<&gtk::gio::Cancellable>, move |res| {
-                    if let Ok(Some(text)) = res {
-                        let text_str = text.to_string();
-                        if text_str.len() > 250 || text_str.contains('\n') {
-                            Self::add_attachment_static(
-                                &attachments,
-                                &tags_box,
-                                "Text Snippet".to_string(),
-                                text_str,
-                                false,
-                            );
-                        } else {
-                            // Manually insert text at cursor using Editable trait
-                            let mut pos = entry.position();
-                            entry.insert_text(&text_str, &mut pos);
-                        }
-                    } else {
-                        // Check image if no text
-                        let attachments_img = attachments.clone();
-                        let tags_box_img = tags_box.clone();
-                        clipboard_clone.read_texture_async(
-                            None::<&gtk::gio::Cancellable>,
-                            move |res| {
-                                if let Ok(Some(texture)) = res {
-                                    let bytes = texture.save_to_png_bytes();
-                                    use base64::prelude::*;
-                                    let b64 = BASE64_STANDARD.encode(&bytes);
-
-                                    Self::add_attachment_static(
-                                        &attachments_img,
-                                        &tags_box_img,
-                                        "Image".to_string(),
-                                        b64,
-                                        true,
-                                    );
-                                }
-                            },
-                        );
-                    }
-                });
+                k_attachment_mgr.handle_paste(&k_entry);
                 return glib::Propagation::Stop;
             }
 
@@ -320,11 +240,7 @@ impl MsgBarComponent {
                 k_widget.set_visible(false);
                 k_entry.set_text("");
                 k_history.borrow_mut().reset();
-                // Clear attachments on cancel
-                k_attachments.borrow_mut().clear();
-                while let Some(child) = k_tags_box.first_child() {
-                    k_tags_box.remove(&child);
-                }
+                k_attachment_mgr.clear();
                 k_cancel();
                 glib::Propagation::Stop
             } else {
@@ -337,8 +253,7 @@ impl MsgBarComponent {
             widget,
             entry,
             is_active,
-            tags_box,
-            attachments,
+            attachment_mgr,
             history,
             claw_toggle,
             proactive_toggle,
@@ -408,82 +323,5 @@ impl MsgBarComponent {
         let attrs = gtk::pango::AttrList::new();
         attrs.insert(gtk::pango::AttrFontDesc::new(font_desc));
         self.entry.set_attributes(&attrs);
-    }
-
-    fn load_history_item(
-        entry: &gtk::Entry,
-        attachments: &Rc<RefCell<Vec<Attachment>>>,
-        tags_box: &gtk::Box,
-        item: HistoryItem,
-    ) {
-        entry.set_text(&item.text);
-        entry.set_position(-1);
-
-        attachments.borrow_mut().clear();
-        while let Some(child) = tags_box.first_child() {
-            tags_box.remove(&child);
-        }
-
-        for att in item.attachments {
-            Self::add_attachment_static(
-                attachments,
-                tags_box,
-                att.label,
-                att.content,
-                att.is_image,
-            );
-        }
-    }
-
-    fn add_attachment_static(
-        attachments: &Rc<RefCell<Vec<Attachment>>>,
-        tags_box: &gtk::Box,
-        label: String,
-        content: String,
-        is_image: bool,
-    ) {
-        let id = uuid::Uuid::new_v4().to_string();
-        let att = Attachment {
-            id: id.clone(),
-            label: label.clone(),
-            content,
-            is_image,
-        };
-
-        attachments.borrow_mut().push(att);
-
-        // UI Chip
-        let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        chip.add_css_class("msgbar-tag");
-        chip.set_widget_name(&id);
-
-        let lbl = gtk::Label::new(Some(&label));
-        chip.append(&lbl);
-
-        let close_btn = gtk::Button::builder()
-            .icon_name("boxxy-window-close-symbolic")
-            .css_classes(["flat", "circular"])
-            .can_focus(false)
-            .build();
-
-        let atts_clone = attachments.clone();
-        let tags_clone = tags_box.clone();
-        let id_clone = id;
-        close_btn.connect_clicked(move |_| {
-            atts_clone.borrow_mut().retain(|a| a.id != id_clone);
-            if let Some(child) = tags_clone.first_child() {
-                let mut curr = Some(child);
-                while let Some(c) = curr {
-                    if c.widget_name() == id_clone {
-                        tags_clone.remove(&c);
-                        break;
-                    }
-                    curr = c.next_sibling();
-                }
-            }
-        });
-
-        chip.append(&close_btn);
-        tags_box.append(&chip);
     }
 }
