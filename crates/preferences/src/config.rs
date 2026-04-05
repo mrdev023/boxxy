@@ -60,8 +60,8 @@ impl fmt::Display for ImagePreviewTrigger {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ClawAutoDiagnosisMode {
-    Proactive,
     #[default]
+    Proactive,
     Lazy,
 }
 
