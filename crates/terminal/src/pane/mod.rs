@@ -896,8 +896,12 @@ impl TerminalPaneComponent {
         self.claw_indicator.set_visible(active);
 
         // Sync MsgBar toggle state
-        self.msg_bar
-            .update_ui(active, self.is_proactive.get(), self.is_pinned.get(), self.is_web_search.get());
+        self.msg_bar.update_ui(
+            active,
+            self.is_proactive.get(),
+            self.is_pinned.get(),
+            self.is_web_search.get(),
+        );
 
         // If turning ON, tell the session to Initialize
         let tx = self.claw_sender.clone();
@@ -918,8 +922,12 @@ impl TerminalPaneComponent {
             boxxy_preferences::config::ClawAutoDiagnosisMode::Proactive
         );
         self.is_proactive.set(proactive);
-        self.msg_bar
-            .update_ui(self.is_claw_active.get(), proactive, self.is_pinned.get(), self.is_web_search.get());
+        self.msg_bar.update_ui(
+            self.is_claw_active.get(),
+            proactive,
+            self.is_pinned.get(),
+            self.is_web_search.get(),
+        );
 
         let _ = self
             .claw_sender
@@ -991,7 +999,8 @@ impl TerminalPaneComponent {
         let mut needs_invert_scroll = true;
         if let Some(ref p) = inner.current_settings {
             if p.enable_web_search != settings.enable_web_search {
-                self.msg_bar.set_web_search_visible(settings.enable_web_search);
+                self.msg_bar
+                    .set_web_search_visible(settings.enable_web_search);
 
                 if !settings.enable_web_search {
                     // Force disable if globally disallowed
@@ -1007,11 +1016,9 @@ impl TerminalPaneComponent {
                     );
                 } else {
                     // If enabled, send current local state to ensure it's synced
-                    let _ = self
-                        .claw_sender
-                        .send_blocking(boxxy_claw::engine::ClawMessage::ToggleWebSearch(
-                            self.is_web_search.get(),
-                        ));
+                    let _ = self.claw_sender.send_blocking(
+                        boxxy_claw::engine::ClawMessage::ToggleWebSearch(self.is_web_search.get()),
+                    );
                 }
             }
 

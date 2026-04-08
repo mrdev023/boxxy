@@ -168,7 +168,7 @@ impl ClawAgent {
 }
 #[must_use]
 #[allow(clippy::too_many_arguments)]
-pub fn create_claw_agent(
+pub async fn create_claw_agent(
     provider: &Option<ModelProvider>,
     creds: &AiCredentials,
     system_prompt: &str,
@@ -315,6 +315,20 @@ pub fn create_claw_agent(
             proxy: claw_proxy.clone(),
             approval: approval_handler.clone(),
         }));
+    }
+
+    // --- Inject MCP Tools ---
+    let mcp_manager = boxxy_mcp::manager::global_manager().await;
+    // Always sync the latest configs before building tools
+    mcp_manager
+        .update_configs(settings.mcp_servers.clone())
+        .await;
+    let mut mcp_tools = mcp_manager.build_rig_tools().await;
+    tools.append(&mut mcp_tools);
+
+    for tool in &tools {
+        let def = tool.definition("".to_string()).await;
+        log::info!("Injecting tool into Rig: {}", def.name);
     }
 
     let inner = match provider {

@@ -34,8 +34,7 @@ pub fn setup_agents_page(
     let group_agent_general: adw::PreferencesGroup = builder.object("group_agent_general").unwrap();
     let group_agent_toolbox: adw::PreferencesGroup = builder.object("group_agent_toolbox").unwrap();
 
-    // Initialize values
-    claw_on_by_default_switch.set_active(settings_rc.borrow().claw_on_by_default);
+    // Initialize values    claw_on_by_default_switch.set_active(settings_rc.borrow().claw_on_by_default);
     web_search_by_default_switch.set_active(settings_rc.borrow().web_search_on_by_default);
     proactive_by_default_switch.set_active(
         settings_rc.borrow().claw_auto_diagnosis_mode

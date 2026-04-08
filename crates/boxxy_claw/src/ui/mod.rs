@@ -215,8 +215,7 @@ impl ClawSidebarComponent {
         web_search_enabled: bool,
     ) {
         if !agent_name.is_empty() {
-            self.status_page
-                .set_title(&format!("Claw: {}", agent_name));
+            self.status_page.set_title(&format!("Claw: {}", agent_name));
             let mut desc = format!("System-eccentric agentic control.");
             if pinned {
                 desc.push_str(" (Pinned)");

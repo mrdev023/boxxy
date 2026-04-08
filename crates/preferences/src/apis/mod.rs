@@ -25,8 +25,10 @@ pub fn setup_apis_page(
     on_change: Rc<dyn Fn(Settings) + 'static>,
 ) -> Box<dyn Fn(&str) -> bool> {
     let dynamic_apis_group: adw::PreferencesGroup = builder.object("dynamic_apis_group").unwrap();
-    let group_search_engines: adw::PreferencesGroup = builder.object("group_search_engines").unwrap();
-    let tavily_api_key_entry: adw::PasswordEntryRow = builder.object("tavily_api_key_entry").unwrap();
+    let group_search_engines: adw::PreferencesGroup =
+        builder.object("group_search_engines").unwrap();
+    let tavily_api_key_entry: adw::PasswordEntryRow =
+        builder.object("tavily_api_key_entry").unwrap();
     let native_search_switch: adw::SwitchRow = builder.object("native_search_switch").unwrap();
     let ollama_base_url_entry: adw::EntryRow = builder.object("ollama_base_url_entry").unwrap();
     let group_ollama_api: adw::PreferencesGroup = builder.object("group_ollama_api").unwrap();
@@ -212,8 +214,9 @@ pub fn setup_apis_page(
             native_search_switch.upcast_ref(),
             "use native model search engines built in gemini gpt claude not implemented",
         );
-        
+
         let search_visible = search_tavily || search_native;
+
         group_ollama_api.set_visible(ollama_visible);
         group_search_engines.set_visible(search_visible);
         dynamic_apis_group.set_visible(any_visible);

@@ -86,6 +86,9 @@ Provides the `MsgBarComponent`, an inline GTK input overlay for interacting with
 ### 11. `boxxy-model-selection` (Library Crate)
 Data-driven model configuration UI. Uses a registry pattern to dynamically build selection dialogs and dropdowns based on registered `AiProvider` traits. Decouples AI capability discovery from the main application window.
 
+### 12. `boxxy-mcp` (Library Crate)
+Implements the Model Context Protocol (MCP) using `rmcp`. It provides a `McpClientManager` to orchestrate connections via Stdio and HTTP(SSE/Streamable). Features dynamic tool ingestion, bridging JSON Schema Draft 7 to `rig` via `DynamicMcpTool`, and employs a "Lazy Boot" caching strategy to prevent slow startup times when configuring heavy Node.js MCP servers.
+
 ## Distribution & Updates
 
 Boxxy supports two primary distribution channels:

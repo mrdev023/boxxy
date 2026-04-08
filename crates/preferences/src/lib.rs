@@ -5,6 +5,7 @@ pub mod apis;
 pub mod appearance;
 pub mod claw_ui;
 pub mod config;
+pub mod mcp;
 pub mod previews;
 pub mod shortcuts;
 

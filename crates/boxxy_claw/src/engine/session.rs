@@ -1054,20 +1054,23 @@ fn spawn_turn(
         let mut agent_opt = state_lock.persistent_agent.take();
 
         if agent_opt.is_none() {
-            agent_opt = Some(crate::engine::agent::create_claw_agent(
-                &settings.claw_model,
-                &creds,
-                &system_prompt,
-                &claw_proxy,
-                &cwd_clone,
-                tx_ui.clone(),
-                state.clone(),
-                db.clone(),
-                &settings,
-                session_id_clone.clone(),
-                pane_id.clone(),
-                state_lock.web_search_enabled,
-            ));
+            agent_opt = Some(
+                crate::engine::agent::create_claw_agent(
+                    &settings.claw_model,
+                    &creds,
+                    &system_prompt,
+                    &claw_proxy,
+                    &cwd_clone,
+                    tx_ui.clone(),
+                    state.clone(),
+                    db.clone(),
+                    &settings,
+                    session_id_clone.clone(),
+                    pane_id.clone(),
+                    state_lock.web_search_enabled,
+                )
+                .await,
+            );
         }
 
         let agent = agent_opt.unwrap();

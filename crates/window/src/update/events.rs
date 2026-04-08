@@ -159,34 +159,33 @@ pub fn handle_terminal_event(
                                     &agent_name,
                                     pinned,
                                     web_search_enabled,
-                                    );
-                                    }
-                                    }
-                                    }
-                                    boxxy_claw::engine::ClawEngineEvent::PinStatusChanged(pinned) => {
-                                    if let Some(page) = inner.tab_view.selected_page() {
-                                    let child = page.child();
-                                    if inner.tabs[pos].controller.widget() == &child {
-                                    inner.claw.set_history_widget(
+                                );
+                            }
+                        }
+                    }
+                    boxxy_claw::engine::ClawEngineEvent::PinStatusChanged(pinned) => {
+                        if let Some(page) = inner.tab_view.selected_page() {
+                            let child = page.child();
+                            if inner.tabs[pos].controller.widget() == &child {
+                                inner.claw.set_history_widget(
                                     &inner.tabs[pos].controller.claw_history_widget(),
                                     &inner.tabs[pos].controller.agent_name(),
                                     pinned,
                                     inner.tabs[pos].controller.is_web_search(),
-                                    );
-                                    }
-                                    }
-                                    }
-                                    boxxy_claw::engine::ClawEngineEvent::WebSearchStatusChanged(enabled) => {
-                                    if let Some(page) = inner.tab_view.selected_page() {
-                                    let child = page.child();
-                                    if inner.tabs[pos].controller.widget() == &child {
-                                    inner.claw.set_history_widget(
+                                );
+                            }
+                        }
+                    }
+                    boxxy_claw::engine::ClawEngineEvent::WebSearchStatusChanged(enabled) => {
+                        if let Some(page) = inner.tab_view.selected_page() {
+                            let child = page.child();
+                            if inner.tabs[pos].controller.widget() == &child {
+                                inner.claw.set_history_widget(
                                     &inner.tabs[pos].controller.claw_history_widget(),
                                     &inner.tabs[pos].controller.agent_name(),
                                     inner.tabs[pos].controller.is_pinned(),
                                     enabled,
-                                    );
-
+                                );
                             }
                         }
                     }

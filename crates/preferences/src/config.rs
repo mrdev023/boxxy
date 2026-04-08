@@ -167,6 +167,7 @@ pub struct Settings {
     pub claw_msgbar_shortcut: String,
     pub enable_telemetry: bool,
     pub install_id: Option<String>,
+    pub mcp_servers: Vec<boxxy_mcp::config::McpServerConfig>,
 }
 
 impl Default for Settings {
@@ -219,6 +220,7 @@ impl Default for Settings {
             claw_msgbar_shortcut: "<Ctrl>slash".to_string(),
             enable_telemetry: true, // ON by default during Preview
             install_id: None,
+            mcp_servers: vec![],
         }
     }
 }
