@@ -295,7 +295,6 @@ shortcutlabel.palette-shortcut {
 /* Drop backdrop when window is not focused */
 
 :backdrop {
-    --dim-opacity: 1;
     opacity: 1;
     filter: none;
 }
