@@ -5,7 +5,7 @@ Boxxy is the ONLY app you'll ever need ..but, yeah, it does look like a Linux Te
 
 ## Getting Started
 
-Read the [Getting Started](https://boxxy.dev/getting-started/) and check news on [Releases](https://github.com/miifrommera/boxxy/releases)
+Read the [Getting Started](https://boxxy.dev/getting-started/) and check news on [Releases](https://github.com/boxxy-dev/boxxy/releases)
 
 ---
 
@@ -31,7 +31,7 @@ Boxxy is currently in early preview, but it does have most of the things you exp
 
 Nightly builds. It supports automatic updates from within the app. If self-updates fail, you can update by rerunning the installation script
 ```bash
-curl -sSf https://raw.githubusercontent.com/miifrommera/boxxy/main/scripts/install.sh | sh
+curl -sSf https://raw.githubusercontent.com/boxxy-dev/boxxy/main/scripts/install.sh | sh
 ```
 Requires GTK 4.22, libAdwaita 1.9; aarch64 not currently supported because of the very slow builds, open an issue if you need it.
 
@@ -39,9 +39,9 @@ Requires GTK 4.22, libAdwaita 1.9; aarch64 not currently supported because of th
 
 Stable builds. Flathub submission [closed.](https://github.com/flathub/flathub/pull/8235)
 ```bash
-curl -O https://miifrommera.github.io/boxxy-flatpak-remote/boxxy.gpg && \
+curl -O https://boxxy-dev.github.io/boxxy-flatpak-remote/boxxy.gpg && \
   flatpak remote-add --user --if-not-exists --gpg-import=boxxy.gpg \
-  boxxy https://miifrommera.github.io/boxxy-flatpak-remote/repo && \
+  boxxy https://boxxy-dev.github.io/boxxy-flatpak-remote/repo && \
   flatpak install --user boxxy dev.boxxy.BoxxyTerminal
 ```
 

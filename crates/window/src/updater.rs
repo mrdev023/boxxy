@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tar::Archive;
 
-const REPO_OWNER: &str = "miifrommera";
+const REPO_OWNER: &str = "boxxy-dev";
 const REPO_NAME: &str = "boxxy";
 
 /// Handles the background update checking and downloading.

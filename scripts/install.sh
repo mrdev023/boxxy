@@ -4,7 +4,7 @@ set -eu
 # Boxxy Terminal Installation Script
 # Installs to ~/.local/boxxy-terminal
 
-REPO_OWNER="miifrommera"
+REPO_OWNER="boxxy-dev"
 REPO_NAME="boxxy"
 INSTALL_DIR="$HOME/.local/boxxy-terminal"
 BIN_DIR="$HOME/.local/bin"

@@ -4,8 +4,8 @@
 	<project_license>MIT</project_license>
 	<id>dev.boxxy.BoxxyTerminal</id>
 	<name>Boxxy Terminal</name>
-	<developer id="io.github.miifrommera">
-    	<name>Mii</name>
+	<developer id="io.github.boxxy-dev">
+    	<name>Boxxy Dev</name>
     </developer>
 
 	<summary>The Stupid Linux Terminal</summary>
@@ -24,7 +24,7 @@
 	</description>
 
     <url type="homepage">https://boxxy.dev/</url>
-    <url type="bugtracker">https://github.com/miifrommera/boxxy/issues</url>
+    <url type="bugtracker">https://github.com/boxxy-dev/boxxy/issues</url>
 
     <screenshots>
     	<screenshot type="default">

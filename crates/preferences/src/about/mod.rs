@@ -113,7 +113,7 @@ pub fn populate_about_page(
     let ext_icon2 = gtk::Image::from_icon_name("boxxy-external-link-symbolic");
     let issues_row = adw::ActionRow::builder()
         .title("Report an Issue")
-        .subtitle("https://github.com/miifrommera/boxxy/issues")
+        .subtitle("https://github.com/boxxy-dev/boxxy/issues")
         .activatable(true)
         .build();
     issues_row.add_suffix(&ext_icon2);
