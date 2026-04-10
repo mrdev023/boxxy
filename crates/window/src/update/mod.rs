@@ -462,7 +462,34 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         } => {
             window_state::save_window_state(&mut inner, width, height, is_maximized);
         }
-        AppInput::PushNotification(ready) => {
+        AppInput::ShowToast(msg) => {
+            let toast = adw::Toast::new(&msg);
+            toast.set_timeout(3);
+            inner.toast_overlay.add_toast(toast);
+        }
+        AppInput::PushGlobalNotification(ready) => {
+            let title = ready.title.clone();
+            let msg = ready.message.clone();
+
+            let is_update = ready.level == crate::widgets::notification::NotificationLevel::Update;
+            let should_notify = !is_update || !inner.window.is_active();
+
+            if should_notify {
+                if let Some(app) = inner.window.application() {
+                    let notif = gtk4::gio::Notification::new(&title);
+                    notif.set_body(Some(&msg));
+                    if ready.icon_name == "boxxyclaw-symbolic" {
+                        if let Ok(bytes) = gtk4::gio::resources_lookup_data(
+                            "/dev/boxxy/BoxxyTerminal/icons/boxxyclaw.svg",
+                            gtk4::gio::ResourceLookupFlags::NONE,
+                        ) {
+                            notif.set_icon(&gtk4::gio::BytesIcon::new(&bytes));
+                        }
+                    }
+                    app.send_notification(None, &notif);
+                }
+            }
+
             inner.notifications.push(ready.clone());
 
             let toast = adw::Toast::new(&ready.message);

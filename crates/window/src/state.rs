@@ -123,7 +123,8 @@ pub enum AppInput {
         height: i32,
         is_maximized: bool,
     },
-    PushNotification(Notification),
+    PushGlobalNotification(Notification),
+    ShowToast(String),
     DismissNotification(String),
     StartUpdateDownload(String, String, Option<String>), // (url, date, checksum_url)
     UpdateDownloaded(String),

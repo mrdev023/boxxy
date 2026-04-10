@@ -411,7 +411,7 @@ impl AppWindow {
                     checksum_url,
                 );
                 let _ = tx_update
-                    .send(AppInput::PushNotification(notification))
+                    .send(AppInput::PushGlobalNotification(notification))
                     .await;
             }
         });

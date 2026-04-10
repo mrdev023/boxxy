@@ -490,7 +490,6 @@ pub(super) fn setup_claw(
                 }
                 boxxy_claw::engine::ClawEngineEvent::SystemMessage { text } => {
                     boxxy_claw::ui::add_diagnosis_row(&claw_store_events, id.clone(), None, text);
-                    cb_clone_events(PaneOutput::Notification(id.clone(), text.clone()));
                 }
                 boxxy_claw::engine::ClawEngineEvent::RequestScrollback {
                     max_lines,
@@ -573,8 +572,9 @@ pub(super) fn setup_claw(
                     claw_store_events.remove_all();
                     claw_store_events.extend_from_slice(&items);
                 }
-                boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } => {
-                    // Handled by the window orchestrator for sound
+                boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } |
+                boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification { .. } => {
+                    // Handled by the window orchestrator for sound/notification
                 }
             }
 

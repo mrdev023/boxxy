@@ -20,6 +20,7 @@ This crate follows a modular **Model-View-Update (MVU)** architecture:
 - **Task Indicators**: Automatically manages `adw::TabPage` indicators (e.g., displaying a `boxxy-running-symbolic` clock icon) when a tab contains an agent with pending scheduled tasks, driven by `TaskStatusChanged` events.
 - **Multi-Window Support**: Native support for splitting tabs across multiple windows.
 - **Advanced Sidebar**: Houses the AI Chat, Claw Logs, and Theme Selector using a unified `AdwOverlaySplitView`.
+- **Unified Notification Pipeline**: Manages both local in-app toasts (`ShowToast`) and native OS desktop alerts (`PushGlobalNotification`), using `gtk4::gio::Notification` to ensure proper delivery through Flatpak portals while intelligently suppressing desktop alerts when the window is focused.
 - **Global Context Propagation**: The window acts as the primary orchestrator for the **Global Workspace Radar**. It coordinates global intents and orchestration messages to all active terminal peers, regardless of their workspace. Note that Claw mode itself is active **per-terminal pane**, not globally per window. The window observes the active pane's state to update its UI.
 - **Intelligent Default State**: Respects the `claw_on_by_default` setting during pane initialization. This ensures a "Lightweight First" experience while allowing power users to have full agentic assistance as their starting point for new terminals.
 - **Global Event Bus**: Routes asynchronous background events (CWD changes, AI responses) to the correct UI components.

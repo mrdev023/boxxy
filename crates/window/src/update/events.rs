@@ -52,7 +52,7 @@ pub fn handle_terminal_event(
             | TerminalEventKind::Osc133D(_, _)
             | TerminalEventKind::ForegroundProcessChanged(_) => {}
             TerminalEventKind::Notification(message) => {
-                let _ = inner.tx.send_blocking(AppInput::PushNotification(
+                let _ = inner.tx.send_blocking(AppInput::PushGlobalNotification(
                     crate::widgets::notification::Notification::new_info(message),
                 ));
             }
@@ -284,6 +284,23 @@ pub fn handle_terminal_event(
                     }
                     boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } => {
                         crate::sound::play_task_completion_sound();
+                    }
+                    boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification { title, message } => {
+                        let _ = inner.tx.send_blocking(AppInput::PushGlobalNotification(
+                            crate::widgets::notification::Notification {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                level: crate::widgets::notification::NotificationLevel::Info,
+                                title: title.clone(),
+                                message: message.clone(),
+                                icon_name: "boxxyclaw-symbolic".to_string(),
+                                actions: vec![crate::widgets::notification::NotificationAction {
+                                    label: "Dismiss".to_string(),
+                                    action_name: "win.dismiss-notification".to_string(),
+                                    is_primary: false,
+                                }],
+                                details: Vec::new(),
+                            }
+                        ));
                     }
                     _ => {} // Other events like AgentThinking or FileWrite are handled strictly by the Pane UI
                 }

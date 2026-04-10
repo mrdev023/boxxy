@@ -433,4 +433,8 @@ pub enum ClawEngineEvent {
         agent_name: String,
         task_id: uuid::Uuid,
     },
+    PushGlobalNotification {
+        title: String,
+        message: String,
+    },
 }

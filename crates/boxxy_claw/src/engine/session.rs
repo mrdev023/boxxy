@@ -839,9 +839,16 @@ impl ClawSession {
                                     let session_id = self.session_id.clone();
                                     let pane_id = self.pane_id.clone();
                                     tokio::spawn(async move {
-                                        let event = ClawEngineEvent::SystemMessage { text };
+                                        // First persist the visual message
+                                        let event = ClawEngineEvent::SystemMessage { text: text.clone() };
                                         persist_visual_event(db, session_id, pane_id, &event);
                                         let _ = tx_ui.send(event).await;
+
+                                        // Then emit the global desktop notification event
+                                        let _ = tx_ui.send(ClawEngineEvent::PushGlobalNotification {
+                                            title: "Boxxy Reminder".to_string(),
+                                            message: text,
+                                        }).await;
                                     });
                                 }
                                 TaskType::Command | TaskType::Query => {
