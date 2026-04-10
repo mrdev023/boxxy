@@ -285,7 +285,10 @@ pub fn handle_terminal_event(
                     boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } => {
                         crate::sound::play_task_completion_sound();
                     }
-                    boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification { title, message } => {
+                    boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification {
+                        title,
+                        message,
+                    } => {
                         let _ = inner.tx.send_blocking(AppInput::PushGlobalNotification(
                             crate::widgets::notification::Notification {
                                 id: uuid::Uuid::new_v4().to_string(),
@@ -299,7 +302,7 @@ pub fn handle_terminal_event(
                                     is_primary: false,
                                 }],
                                 details: Vec::new(),
-                            }
+                            },
                         ));
                     }
                     _ => {} // Other events like AgentThinking or FileWrite are handled strictly by the Pane UI

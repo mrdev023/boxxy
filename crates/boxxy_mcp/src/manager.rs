@@ -1,6 +1,6 @@
 use crate::config::{McpServerConfig, McpTransport};
 use crate::rig_bridge::tool::DynamicMcpTool;
-use log::{debug, error, info};
+use log::{error, info};
 use rmcp::model::Tool as McpToolDefinition;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,13 +36,35 @@ impl McpClientManager {
 
     pub async fn update_configs(&self, servers: Vec<McpServerConfig>) {
         let mut configs = self.configs.write().await;
+        let old_server_names: std::collections::HashSet<String> = configs.keys().cloned().collect();
+
         configs.clear();
+        let mut new_server_names = std::collections::HashSet::new();
         for server in servers {
             if server.enabled {
+                new_server_names.insert(server.name.clone());
                 configs.insert(server.name.clone(), server);
             }
         }
-        // TODO: Disconnect clients that are no longer in the config or were disabled.
+
+        // Disconnect clients that are no longer in the config or were disabled.
+        let mut active_clients = self.active_clients.write().await;
+        for removed_name in old_server_names.difference(&new_server_names) {
+            if let Some(client) = active_clients.remove(removed_name) {
+                info!("Disconnecting MCP server: {}", removed_name);
+                // Extract from Arc if it's the only reference to gracefully close it.
+                // Otherwise, the drop implementation (or OS process termination) will handle it.
+                if let Ok(mut c) = Arc::try_unwrap(client) {
+                    tokio::spawn(async move {
+                        let _ = c.close().await;
+                    });
+                }
+            }
+
+            // Also clear from tool cache
+            let mut cache = self.tool_cache.write().await;
+            cache.remove(removed_name);
+        }
     }
 
     /// Returns the cached tools for a server. If not cached, it attempts to initialize

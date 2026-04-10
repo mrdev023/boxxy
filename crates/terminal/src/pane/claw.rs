@@ -572,8 +572,8 @@ pub(super) fn setup_claw(
                     claw_store_events.remove_all();
                     claw_store_events.extend_from_slice(&items);
                 }
-                boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } |
-                boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification { .. } => {
+                boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. }
+                | boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification { .. } => {
                     // Handled by the window orchestrator for sound/notification
                 }
             }

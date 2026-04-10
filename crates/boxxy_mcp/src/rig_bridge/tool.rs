@@ -71,9 +71,19 @@ impl ToolDyn for DynamicMcpTool {
                             std::io::Error::new(std::io::ErrorKind::Other, err_msg),
                         )))
                     } else {
-                        let val = serde_json::to_value(&result.content)
-                            .unwrap_or(serde_json::Value::Null);
-                        Ok(val.to_string())
+                        let output = if let Some(structured) = result.structured_content {
+                            if result.content.is_empty() {
+                                structured
+                            } else {
+                                serde_json::json!({
+                                    "content": result.content,
+                                    "structured_content": structured
+                                })
+                            }
+                        } else {
+                            serde_json::to_value(&result.content).unwrap_or(serde_json::Value::Null)
+                        };
+                        Ok(output.to_string())
                     }
                 }
                 Err(e) => Err(rig::tool::ToolError::ToolCallError(Box::new(e))),
