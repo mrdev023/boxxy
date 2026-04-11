@@ -56,6 +56,7 @@ Host Privileged Agent. Bypasses Flatpak sandboxing to handle PTY management and 
 Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID.
 
 Agents possess full **System & Environment Authority**:
+- **Location & Time Context Injection**: Agents are implicitly aware of the user's geographic location (city, country, timezone) and precise local time without requiring tool calls, achieved via a silent background fetch (`ip-api.com`) and prompt injection. If disabled by the user, a strict `[PRIVACY POLICY]` is injected forbidding the agent from attempting to deduce location or time via shell commands.
 - **Persistent Interaction History**: Automatically saves visual events (diagnoses, suggestions, tool results) and **turn-based token usage** to the database. These are re-rendered instantly upon session restoration, ensuring zero context loss even for sidebar logs.
 - **Cross-Model Continuity**: Cumulative session analytics (Total Tokens) are persisted in the database, allowing users to switch LLM providers (e.g., Gemini to Claude) while maintaining a continuous record of the session's overall cost and context depth.
 - **Soft Clear Pattern**: Clicking "Clear Screen" in the sidebar marks a session-specific timestamp. Subsequent restorations only show history generated after that point, providing a clean visual state while keeping the underlying data safe.
@@ -118,4 +119,5 @@ To enforce clarity and predictability, Boxxy strictly adheres to the following U
 ## Development Protocol
 - **MCP:** Use Context7 MCP for all library documentation and code generation.
 - **Git:** NEVER automatically commit changes. Commits must be performed manually.
+- **GTK UI Files**: When modifying `.ui` files (XML), avoid using the ampersand character (`&`) in text labels (like `title` or `subtitle` properties) if possible. GTK's Pango markup parser will often fail to render the text if the string contains a raw ampersand after XML parsing. Prefer using the word "and".
 - **Documentation:** Keep this file and crate-level `AGENTS.md` files updated with all architectural changes.

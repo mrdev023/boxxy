@@ -538,6 +538,12 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="AdwSwitchRow" id="enable_os_context_switch">
+                                    <property name="title" translatable="yes">Enable Location and Time Context</property>
+                                    <property name="subtitle" translatable="yes">Inject location and local time into agent prompts.</property>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="AdwSwitchRow" id="enable_clipboard_tools_switch">
                                     <property name="title" translatable="yes">Enable Clipboard Tools</property>
                                     <property name="subtitle" translatable="yes">Allows agents to read from and write to your system clipboard.</property>

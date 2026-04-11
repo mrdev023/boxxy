@@ -14,6 +14,7 @@ use boxxy_core_toolbox::{
     HttpFetchTool, KillProcessTool, ListDirectoryTool, ListProcessesTool, SetClipboardTool,
 };
 use boxxy_model_selection::ModelProvider;
+use gtk4 as gtk;
 use rig::agent::Agent;
 use rig::client::CompletionClient;
 use rig::message::Message;
@@ -331,6 +332,38 @@ pub async fn create_claw_agent(
         log::info!("Injecting tool into Rig: {}", def.name);
     }
 
+    // --- Inject Location & Time Context ---
+    let mut final_preamble = system_prompt.to_string();
+    if settings.enable_os_context {
+        // Trigger fetch (it's cached)
+        boxxy_ai_core::utils::fetch_location_context().await;
+
+        let now = chrono::Local::now();
+        let time_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let mut context_block = format!(
+            "\n\n[ENVIRONMENT CONTEXT]\nTime: {}",
+            time_str
+        );
+
+        if let Some(loc) = boxxy_ai_core::utils::get_location_context() {
+            context_block.push_str(&format!(
+                "\nLocation: {}, {}\nTimezone: {}",
+                loc.city, loc.country, loc.timezone
+            ));
+        }
+
+        final_preamble.push_str(&context_block);
+    } else if let Ok(data) = gtk::gio::resources_lookup_data(
+        "/dev/boxxy/BoxxyTerminal/prompts/privacy_policy.md",
+        gtk::gio::ResourceLookupFlags::NONE,
+    ) {
+        if let Ok(policy) = String::from_utf8(data.to_vec()) {
+            final_preamble.push_str("\n\n");
+            final_preamble.push_str(&policy);
+        }
+    }
+
     let inner = match provider {
         ModelProvider::Gemini(model, _thinking) => {
             let key = creds.api_keys.get("Gemini").cloned().unwrap_or_default();
@@ -338,7 +371,7 @@ pub async fn create_claw_agent(
             let gemini_model = client.completion_model(model.api_name());
 
             let builder = rig::agent::AgentBuilder::new(gemini_model)
-                .preamble(system_prompt)
+                .preamble(&final_preamble)
                 .default_max_turns(100)
                 .tools(tools);
 
@@ -357,7 +390,7 @@ pub async fn create_claw_agent(
             let ollama_model = client.completion_model(model_name.as_str());
 
             let builder = rig::agent::AgentBuilder::new(ollama_model)
-                .preamble(system_prompt)
+                .preamble(&final_preamble)
                 .default_max_turns(100)
                 .tools(tools);
 
@@ -369,7 +402,7 @@ pub async fn create_claw_agent(
             let anthropic_model = client.completion_model(model.api_name());
 
             let builder = rig::agent::AgentBuilder::new(anthropic_model)
-                .preamble(system_prompt)
+                .preamble(&final_preamble)
                 .default_max_turns(100)
                 .tools(tools);
 
@@ -385,7 +418,7 @@ pub async fn create_claw_agent(
             let openai_model = client.completion_model(model.api_name());
 
             let mut builder = rig::agent::AgentBuilder::new(openai_model)
-                .preamble(system_prompt)
+                .preamble(&final_preamble)
                 .default_max_turns(100)
                 .tools(tools);
 
@@ -405,6 +438,6 @@ pub async fn create_claw_agent(
 
     ClawAgent {
         inner,
-        preamble: system_prompt.to_string(),
+        preamble: final_preamble,
     }
 }

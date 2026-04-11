@@ -28,13 +28,16 @@ pub fn setup_agents_page(
         builder.object("enable_web_tools_switch").unwrap();
     let enable_web_search_switch: adw::SwitchRow =
         builder.object("enable_web_search_switch").unwrap();
+    let enable_os_context_switch: adw::SwitchRow =
+        builder.object("enable_os_context_switch").unwrap();
     let enable_clipboard_tools_switch: adw::SwitchRow =
         builder.object("enable_clipboard_tools_switch").unwrap();
 
     let group_agent_general: adw::PreferencesGroup = builder.object("group_agent_general").unwrap();
     let group_agent_toolbox: adw::PreferencesGroup = builder.object("group_agent_toolbox").unwrap();
 
-    // Initialize values    claw_on_by_default_switch.set_active(settings_rc.borrow().claw_on_by_default);
+    // Initialize values
+    claw_on_by_default_switch.set_active(settings_rc.borrow().claw_on_by_default);
     web_search_by_default_switch.set_active(settings_rc.borrow().web_search_on_by_default);
     proactive_by_default_switch.set_active(
         settings_rc.borrow().claw_auto_diagnosis_mode
@@ -46,6 +49,7 @@ pub fn setup_agents_page(
     enable_dangerous_tools_switch.set_active(settings_rc.borrow().enable_dangerous_tools);
     enable_web_tools_switch.set_active(settings_rc.borrow().enable_web_tools);
     enable_web_search_switch.set_active(settings_rc.borrow().enable_web_search);
+    enable_os_context_switch.set_active(settings_rc.borrow().enable_os_context);
     enable_clipboard_tools_switch.set_active(settings_rc.borrow().enable_clipboard_tools);
 
     // Connect signals
@@ -155,6 +159,17 @@ pub fn setup_agents_page(
 
     let s_rc = settings_rc.clone();
     let cb = on_change.clone();
+    enable_os_context_switch.connect_active_notify(move |row| {
+        let mut s = s_rc.borrow_mut();
+        if s.enable_os_context != row.is_active() {
+            s.enable_os_context = row.is_active();
+            s.save();
+            cb(s.clone());
+        }
+    });
+
+    let s_rc = settings_rc.clone();
+    let cb = on_change.clone();
     enable_clipboard_tools_switch.connect_active_notify(move |row| {
         let mut s = s_rc.borrow_mut();
         if s.enable_clipboard_tools != row.is_active() {
@@ -172,6 +187,7 @@ pub fn setup_agents_page(
     let enable_system_tools_switch_clone = enable_system_tools_switch.clone();
     let enable_dangerous_tools_switch_clone = enable_dangerous_tools_switch.clone();
     let enable_web_tools_switch_clone = enable_web_tools_switch.clone();
+    let enable_os_context_switch_clone = enable_os_context_switch.clone();
     let enable_clipboard_tools_switch_clone = enable_clipboard_tools_switch.clone();
 
     Box::new(move |query: &str| {
@@ -217,13 +233,17 @@ pub fn setup_agents_page(
             enable_web_search_switch.upcast_ref(),
             "enable web search tools tavily providers",
         );
+        let ag_os = match_row(
+            enable_os_context_switch_clone.upcast_ref(),
+            "enable location and time context injection environment",
+        );
         let ag7 = match_row(
             enable_clipboard_tools_switch_clone.upcast_ref(),
             "enable clipboard tools read write copy paste",
         );
 
         group_agent_general.set_visible(ag1 || ag_web_default || ag_proactive || ag2);
-        group_agent_toolbox.set_visible(ag3 || ag4 || ag5 || ag6 || ag_search || ag7);
+        group_agent_toolbox.set_visible(ag3 || ag4 || ag5 || ag6 || ag_search || ag_os || ag7);
 
         group_agent_general.is_visible() || group_agent_toolbox.is_visible()
     })

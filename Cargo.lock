@@ -539,6 +539,7 @@ dependencies = [
  "async-trait",
  "boxxy-model-selection",
  "log",
+ "reqwest 0.13.2",
  "rig-core",
  "serde",
  "serde_json",
