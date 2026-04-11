@@ -30,10 +30,13 @@ impl SingleModelSelector {
     pub fn new<F: Fn(Option<ModelProvider>) + 'static>(
         initial: Option<ModelProvider>,
         ollama_url: String,
-        _api_keys: std::collections::HashMap<String, String>,
+        api_keys: std::collections::HashMap<String, String>,
         on_change: F,
     ) -> Self {
-        let providers = get_providers();
+        let providers: Vec<Box<dyn AiProvider>> = get_providers()
+            .into_iter()
+            .filter(|p| !p.requires_api_key() || api_keys.contains_key(p.name()))
+            .collect();
 
         let main_vbox = gtk::Box::new(gtk::Orientation::Vertical, 10);
         main_vbox.set_margin_start(10);
