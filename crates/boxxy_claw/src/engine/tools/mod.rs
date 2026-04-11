@@ -1,4 +1,5 @@
 pub mod memory;
+pub mod orchestration;
 pub mod scrollback;
 pub mod skills;
 pub mod tasks;
@@ -17,6 +18,7 @@ use tokio::sync::Mutex;
 
 use boxxy_db::Db;
 
+#[derive(Clone)]
 pub struct ClawApprovalHandler {
     pub tx_ui: async_channel::Sender<ClawEngineEvent>,
     pub state: Arc<Mutex<SessionState>>,
@@ -242,6 +244,7 @@ pub struct SysShellOutput {
 pub struct SysShellTool {
     pub proxy: AgentClawProxy<'static>,
     pub current_dir: String,
+    pub approval: Arc<ClawApprovalHandler>,
 }
 
 impl Tool for SysShellTool {
@@ -280,11 +283,20 @@ impl Tool for SysShellTool {
             )
         };
         match self.proxy.exec_shell(command).await {
-            Ok((exit_code, stdout, stderr)) => Ok(SysShellOutput {
-                stdout,
-                stderr,
-                exit_code,
-            }),
+            Ok((exit_code, stdout, stderr)) => {
+                let out = SysShellOutput {
+                    stdout,
+                    stderr,
+                    exit_code,
+                };
+                self.approval
+                    .report_tool_result(
+                        Self::NAME.to_string(),
+                        serde_json::to_string(&out).unwrap_or_default(),
+                    )
+                    .await;
+                Ok(out)
+            }
             Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
         }
     }

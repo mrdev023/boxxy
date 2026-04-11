@@ -6,6 +6,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use boxxy_claw::engine::AgentStatus;
 
 pub use attachment::{Attachment, AttachmentManager};
 
@@ -16,6 +17,7 @@ pub struct MsgBarComponent {
     pub attachment_mgr: AttachmentManager,
     pub history: Rc<RefCell<history::MsgHistory>>,
     pub claw_toggle: gtk::Button,
+    pub claw_image: gtk::Image,
     pub proactive_toggle: gtk::Button,
     pub pin_toggle: gtk::Button,
     pub web_search_toggle: gtk::Button,
@@ -61,10 +63,10 @@ impl MsgBarComponent {
 
         entry.add_css_class("monospace");
 
-        let icon = gtk::Image::from_icon_name("boxxy-boxxyclaw-symbolic");
+        let claw_image = gtk::Image::from_icon_name("boxxy-boxxyclaw-symbolic");
 
         let claw_toggle = gtk::Button::builder()
-            .child(&icon)
+            .child(&claw_image)
             .css_classes(["flat", "image-button"])
             .tooltip_text("Toggle Claw for this pane")
             .margin_start(4)
@@ -282,6 +284,7 @@ impl MsgBarComponent {
             attachment_mgr,
             history,
             claw_toggle,
+            claw_image,
             proactive_toggle,
             pin_toggle,
             web_search_toggle,
@@ -290,6 +293,29 @@ impl MsgBarComponent {
             pinned_state,
             web_search_state,
             _autocomplete: autocomplete_ctrl,
+        }
+    }
+
+    pub fn set_status(&self, status: AgentStatus) {
+        if !self.claw_state.get() {
+            self.claw_toggle.remove_css_class("accent");
+            self.claw_toggle.remove_css_class("warning");
+            return;
+        }
+
+        match status {
+            AgentStatus::Active | AgentStatus::Thinking | AgentStatus::Locking { .. } => {
+                self.claw_toggle.add_css_class("accent");
+                self.claw_toggle.remove_css_class("warning");
+            }
+            AgentStatus::Suspended => {
+                self.claw_toggle.remove_css_class("accent");
+                self.claw_toggle.add_css_class("warning");
+            }
+            AgentStatus::Idle => {
+                self.claw_toggle.remove_css_class("accent");
+                self.claw_toggle.remove_css_class("warning");
+            }
         }
     }
 
@@ -317,10 +343,16 @@ impl MsgBarComponent {
         self.pinned_state.set(pinned);
         self.web_search_state.set(web_search);
 
+        self.claw_image
+            .set_icon_name(Some("boxxy-boxxyclaw-symbolic"));
+
         if active {
             self.claw_toggle.add_css_class("accent");
         } else {
             self.claw_toggle.remove_css_class("accent");
+            self.claw_toggle.remove_css_class("warning");
+            self.claw_toggle
+                .set_tooltip_text(Some("Toggle Claw for this pane"));
         }
 
         if proactive {

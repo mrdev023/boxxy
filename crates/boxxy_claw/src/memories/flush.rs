@@ -1,4 +1,5 @@
 use boxxy_db::Db;
+use crate::utils::load_prompt_fallback;
 use boxxy_db::store::Store;
 use boxxy_model_selection::ModelProvider;
 use log::{debug, info};
@@ -45,13 +46,10 @@ pub async fn flush_history(
         }
     }
 
-    let data = gtk4::gio::resources_lookup_data(
+    let flush_prompt_template = load_prompt_fallback(
         "/dev/boxxy/BoxxyTerminal/prompts/memory_flush.md",
-        gtk4::gio::ResourceLookupFlags::NONE,
-    )
-    .expect("Failed to load memory_flush prompt resource");
-    let flush_prompt_template =
-        String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+        "memory_flush.md",
+    );
 
     let flush_prompt = flush_prompt_template.replace("{{text_to_summarize}}", &text_to_summarize);
 

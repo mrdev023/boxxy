@@ -96,6 +96,15 @@ pub enum ClawMessage {
     ToggleWebSearch(bool),
     /// Cancel a specific scheduled task.
     CancelTask { task_id: uuid::Uuid },
+    /// An event from the internal EventBus has occurred.
+    SubscriptionEvent {
+        event: ClawEvent,
+    },
+    /// A delegated async task has completed.
+    TaskCompletedEvent {
+        task_id: uuid::Uuid,
+        result: String,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -103,6 +112,28 @@ pub enum SpawnLocation {
     NewTab,
     VerticalSplit,
     HorizontalSplit,
+}
+
+/// Internal events for agent-to-agent orchestration
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum ClawEvent {
+    /// A process exited in a specific pane.
+    ProcessExited {
+        pane_id: String,
+        exit_code: i32,
+    },
+    /// A specific regex matched the terminal output of a pane.
+    OutputMatch {
+        pane_id: String,
+        matched_text: String,
+        regex: String,
+    },
+    /// A custom event published by an agent.
+    Custom {
+        source_agent: String,
+        name: String,
+        payload: String,
+    },
 }
 
 mod imp {
@@ -340,6 +371,11 @@ pub enum ClawEngineEvent {
         is_thinking: bool,
         agent_name: String,
     },
+    /// Broad state change for the agent (Sleeping, Awaiting, Locking, etc.)
+    SessionStateChanged {
+        agent_name: String,
+        status: AgentStatus,
+    },
     DiagnosisComplete {
         agent_name: String,
         diagnosis: String,
@@ -437,4 +473,13 @@ pub enum ClawEngineEvent {
         title: String,
         message: String,
     },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub enum AgentStatus {
+    Active,
+    Thinking,
+    Suspended, // Sleeping/Awaiting
+    Locking { resource: String },
+    Idle,
 }

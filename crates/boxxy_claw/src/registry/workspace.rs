@@ -12,6 +12,7 @@ pub struct PaneState {
     pub last_snapshot: Option<String>,
     pub status: Option<String>,
     pub tx: Option<async_channel::Sender<crate::engine::ClawMessage>>,
+    pub active_skills: Vec<String>,
 }
 
 pub struct WorkspaceRegistry {
@@ -21,6 +22,17 @@ pub struct WorkspaceRegistry {
     tasks: Arc<RwLock<HashMap<String, Vec<crate::engine::ScheduledTask>>>>,
     // Global shared intent/scratchpad for system-wide orchestration
     global_intent: Arc<RwLock<Option<String>>>,
+    // Event subscriptions: subscriber_pane_id -> Vec<EventFilter>
+    subscriptions: Arc<RwLock<HashMap<String, Vec<EventFilter>>>>,
+    // Resource locks: resource_path -> holder_pane_id
+    locks: Arc<RwLock<HashMap<String, String>>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum EventFilter {
+    ProcessExited { pane_id: Option<String> },
+    OutputMatch { pane_id: String, regex: String },
+    Custom { source_agent: Option<String>, name: String },
 }
 
 static WORKSPACE: OnceCell<Arc<WorkspaceRegistry>> = OnceCell::const_new();
@@ -44,6 +56,107 @@ impl WorkspaceRegistry {
             panes: Arc::new(RwLock::new(HashMap::new())),
             tasks: Arc::new(RwLock::new(HashMap::new())),
             global_intent: Arc::new(RwLock::new(None)),
+            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            locks: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub async fn acquire_lock(&self, pane_id: String, resource: String) -> Result<(), String> {
+        let mut locks = self.locks.write().await;
+        if let Some(holder) = locks.get(&resource) {
+            if holder == &pane_id {
+                return Ok(());
+            }
+            let panes = self.panes.read().await;
+            let holder_name = panes
+                .get(holder)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "Unknown Agent".to_string());
+            return Err(format!("LOCKED by agent '{}'", holder_name));
+        }
+        locks.insert(resource, pane_id);
+        Ok(())
+    }
+
+    pub async fn release_lock(&self, pane_id: String, resource: String) {
+        let mut locks = self.locks.write().await;
+        if let Some(holder) = locks.get(&resource) {
+            if holder == &pane_id {
+                locks.remove(&resource);
+            }
+        }
+    }
+
+    pub async fn release_all_locks(&self, pane_id: &str) {
+        let mut locks = self.locks.write().await;
+        locks.retain(|_, holder| holder != pane_id);
+    }
+
+    pub async fn subscribe(&self, subscriber_id: String, filter: EventFilter) {
+        let mut subs = self.subscriptions.write().await;
+        subs.entry(subscriber_id).or_default().push(filter);
+    }
+
+    pub async fn unsubscribe_all(&self, subscriber_id: &str) {
+        let mut subs = self.subscriptions.write().await;
+        subs.remove(subscriber_id);
+    }
+
+    pub async fn publish_event(&self, event: crate::engine::ClawEvent) {
+        let subs = self.subscriptions.read().await;
+        let panes = self.panes.read().await;
+
+        for (subscriber_id, filters) in subs.iter() {
+            let mut matched = false;
+            for filter in filters {
+                matched = match (&event, filter) {
+                    (
+                        crate::engine::ClawEvent::ProcessExited { pane_id, .. },
+                        EventFilter::ProcessExited {
+                            pane_id: filter_pane_id,
+                        },
+                    ) => filter_pane_id.is_none() || filter_pane_id.as_ref() == Some(pane_id),
+
+                    (
+                        crate::engine::ClawEvent::OutputMatch {
+                            pane_id, regex, ..
+                        },
+                        EventFilter::OutputMatch {
+                            pane_id: filter_pane_id,
+                            regex: filter_regex,
+                        },
+                    ) => pane_id == filter_pane_id && regex == filter_regex,
+
+                    (
+                        crate::engine::ClawEvent::Custom {
+                            source_agent, name, ..
+                        },
+                        EventFilter::Custom {
+                            source_agent: filter_source,
+                            name: filter_name,
+                        },
+                    ) => {
+                        (filter_source.is_none() || filter_source.as_ref() == Some(source_agent))
+                            && name == filter_name
+                    }
+                    _ => false,
+                };
+                if matched {
+                    break;
+                }
+            }
+
+            if matched {
+                if let Some(pane) = panes.get(subscriber_id) {
+                    if let Some(tx) = &pane.tx {
+                        let _ = tx
+                            .send(crate::engine::ClawMessage::SubscriptionEvent {
+                                event: event.clone(),
+                            })
+                            .await;
+                    }
+                }
+            }
         }
     }
 
@@ -90,6 +203,7 @@ impl WorkspaceRegistry {
             last_snapshot: None,
             status: None,
             tx: None,
+            active_skills: Vec::new(),
         });
         entry.tx = Some(tx);
     }
@@ -125,6 +239,7 @@ impl WorkspaceRegistry {
             last_snapshot: None,
             status: None,
             tx: None,
+            active_skills: Vec::new(),
         });
 
         if let Some(s) = session_id {
@@ -151,6 +266,27 @@ impl WorkspaceRegistry {
         }
     }
 
+    pub async fn update_pane_skills(&self, id: String, skills: Vec<String>) {
+        let mut panes = self.panes.write().await;
+        if let Some(pane) = panes.get_mut(&id) {
+            pane.active_skills = skills;
+        }
+    }
+
+    pub async fn find_agent_by_skill(&self, skill: &str) -> Vec<String> {
+        let panes = self.panes.read().await;
+        let skill_lower = skill.to_lowercase();
+        panes
+            .values()
+            .filter(|p| {
+                p.active_skills
+                    .iter()
+                    .any(|s| s.to_lowercase().contains(&skill_lower))
+            })
+            .map(|p| p.name.clone())
+            .collect()
+    }
+
     pub async fn evict_session(&self, session_id: &str) {
         let panes = self.panes.read().await;
         let target_tx = panes.values().find_map(|p| {
@@ -170,6 +306,10 @@ impl WorkspaceRegistry {
     pub async fn unregister_pane(&self, id: String) {
         let mut panes = self.panes.write().await;
         panes.remove(&id);
+        drop(panes);
+        
+        self.release_all_locks(&id).await;
+        self.unsubscribe_all(&id).await;
     }
 
     pub async fn set_pane_status(&self, id: String, status: Option<String>) {

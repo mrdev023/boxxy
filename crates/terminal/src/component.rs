@@ -623,6 +623,20 @@ impl TerminalComponent {
         }
     }
 
+    pub fn set_session_status_for_pane(
+        &self,
+        pane_id: &str,
+        status: boxxy_claw::engine::AgentStatus,
+    ) -> bool {
+        let inner = self.inner.borrow();
+        if let Some(pane_data) = inner.panes.get(pane_id) {
+            pane_data.controller.set_session_status(status);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn set_claw_active(&self, active: bool) {
         let inner = self.inner.borrow_mut();
         for pane_data in inner.panes.values() {

@@ -1,3 +1,4 @@
+use crate::utils::load_prompt_fallback;
 use crate::engine::{
     ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
     context::load_session_context, context::retrieve_memories, context::summarize_and_store,
@@ -29,6 +30,8 @@ pub struct SessionState {
     pub last_tools: Option<Vec<String>>,
     pub pending_tasks: Vec<crate::engine::ScheduledTask>,
     pub last_snapshot_hash: Option<u64>,
+    pub is_suspended: bool,
+    pub awaiting_tasks: Vec<uuid::Uuid>,
 }
 
 pub struct ClawSession {
@@ -94,6 +97,8 @@ impl ClawSession {
                 last_tools: None,
                 pending_tasks: Vec::new(),
                 last_snapshot_hash: None,
+                is_suspended: false,
+                awaiting_tasks: Vec::new(),
             })),
             diagnosis_mode: boxxy_preferences::config::ClawAutoDiagnosisMode::Lazy,
         };
@@ -117,7 +122,7 @@ impl ClawSession {
         let _ = self.tx_ui.send(event).await;
     }
 
-    async fn run(mut self, claw_proxy: AgentClawProxy<'static>) {
+    pub async fn run(mut self, claw_proxy: AgentClawProxy<'static>) {
         // LAZY LOADING: We don't initialize the DB or load skills until we receive a message.
         // This ensures BoxxyClaw doesn't consume memory/CPU if the user doesn't use the AI.
 
@@ -820,6 +825,93 @@ impl ClawSession {
                         ClawMessage::UpdateDiagnosisMode(mode) => {
                             self.diagnosis_mode = mode;
                         }
+                        ClawMessage::SubscriptionEvent { event } => {
+                            let mut state_lock = self.state.lock().await;
+                            
+                            // Handle external sleep requests
+                            if let crate::engine::ClawEvent::Custom { name, .. } = &event {
+                                if name == "request_sleep" && !state_lock.is_suspended {
+                                    log::info!("Agent {} received external sleep request. Suspending.", self.name);
+                                    state_lock.is_suspended = true;
+                                    let agent_name = self.name.clone();
+                                    let tx_ui = self.tx_ui.clone();
+                                    
+                                    tokio::spawn(async move {
+                                        let _ = tx_ui.send(crate::engine::ClawEngineEvent::SessionStateChanged {
+                                            agent_name,
+                                            status: crate::engine::AgentStatus::Suspended,
+                                        }).await;
+                                    });
+                                    continue;
+                                }
+                            }
+
+                            if state_lock.is_suspended {
+                                state_lock.is_suspended = false;
+                                drop(state_lock);
+
+                                // Broadcast to UI
+                                let _ = self.tx_ui.send(crate::engine::ClawEngineEvent::SessionStateChanged {
+                                    agent_name: self.name.clone(),
+                                    status: crate::engine::AgentStatus::Active,
+                                }).await;
+
+                                let snapshot = workspace.get_pane_snapshot(self.pane_id.clone()).await.unwrap_or_default();
+                                let prompt = format!("WAKEUP: An event you subscribed to has occurred: {:?}", event);
+
+                                spawn_turn(
+                                    self.pane_id.clone(),
+                                    self.session_id.clone(),
+                                    self.name.clone(),
+                                    &prompt,
+                                    &snapshot,
+                                    &session_ctx,
+                                    current_dir.clone(),
+                                    false,
+                                    claw_proxy.clone(),
+                                    self.db.clone(),
+                                    self.state.clone(),
+                                    self.tx_ui.clone(),
+                                    None,
+                                    vec![],
+                                );
+                            }
+                        }
+                        ClawMessage::TaskCompletedEvent { task_id, result } => {
+                            let mut state_lock = self.state.lock().await;
+                            state_lock.awaiting_tasks.retain(|id| id != &task_id);
+
+                            if state_lock.is_suspended && state_lock.awaiting_tasks.is_empty() {
+                                state_lock.is_suspended = false;
+                                drop(state_lock);
+
+                                // Broadcast to UI
+                                let _ = self.tx_ui.send(crate::engine::ClawEngineEvent::SessionStateChanged {
+                                    agent_name: self.name.clone(),
+                                    status: crate::engine::AgentStatus::Active,
+                                }).await;
+
+                                let snapshot = workspace.get_pane_snapshot(self.pane_id.clone()).await.unwrap_or_default();
+                                let prompt = format!("WAKEUP: Async task {} has completed with result: {}", task_id, result);
+
+                                spawn_turn(
+                                    self.pane_id.clone(),
+                                    self.session_id.clone(),
+                                    self.name.clone(),
+                                    &prompt,
+                                    &snapshot,
+                                    &session_ctx,
+                                    current_dir.clone(),
+                                    false,
+                                    claw_proxy.clone(),
+                                    self.db.clone(),
+                                    self.state.clone(),
+                                    self.tx_ui.clone(),
+                                    None,
+                                    vec![],
+                                );
+                            }
+                        }
                     }
                 }
                 _ = task_interval.tick() => {
@@ -1003,6 +1095,9 @@ fn spawn_turn(
         // 3. Build Active Skills Text (Full Content)
         // We limit this to a maximum of 2 skills in full to save tokens.
         if !active_skills.is_empty() {
+            let skill_names: Vec<String> = active_skills.iter().map(|s| s.frontmatter.name.clone()).collect();
+            workspace.update_pane_skills(pane_id.clone(), skill_names).await;
+
             active_skills_text.push_str("\n--- ACTIVE SKILLS (FULL INSTRUCTIONS) ---\n");
             for skill in active_skills.iter().take(2) {
                 active_skills_text.push_str(&format!("\n### SKILL: {}\n", skill.frontmatter.name));
@@ -1039,13 +1134,10 @@ fn spawn_turn(
             toolbox_count += 1;
         }
 
-        let data = gtk4::gio::resources_lookup_data(
+        let system_prompt_template = load_prompt_fallback(
             "/dev/boxxy/BoxxyTerminal/prompts/claw.md",
-            gtk4::gio::ResourceLookupFlags::NONE,
-        )
-        .expect("Failed to load claw prompt resource");
-        let system_prompt_template =
-            String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+            "claw.md",
+        );
 
         let system_prompt =
             system_prompt_template.replace("{{available_skills}}", &available_skills_text);

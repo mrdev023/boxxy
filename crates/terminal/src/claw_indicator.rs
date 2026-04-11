@@ -6,9 +6,12 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct ClawIndicator {
     container: gtk::Box,
+    badge_box: gtk::Box,
     badge_label: gtk::Label,
     badge_revealer: gtk::Revealer,
     clock_icon: gtk::Image,
+    sleep_icon: gtk::Image,
+    lock_icon: gtk::Image,
     revealer: gtk::Revealer,
     spinner: gtk::Image,
     icon: gtk::Image,
@@ -35,10 +38,16 @@ impl ClawIndicator {
             }
             .badge-label {
                 border-radius: 9999px;
-                padding: 2px 8px;
+                padding: 1px 8px;
                 font-weight: bold;
-                font-size: 0.70rem;
+                font-size: 0.68rem;
                 color: white;
+            }
+            .badge-label image {
+                -gtk-icon-size: 10px;
+            }
+            .badge-label.warning {
+                color: #fff3cd;
             }
             .badge-label.evicted {
                 filter: grayscale(100%);
@@ -101,7 +110,6 @@ impl ClawIndicator {
             .spacing(0)
             .visible(false)
             .build();
-        container.set_size_request(-1, 28);
 
         let revealer = gtk::Revealer::new();
         revealer.set_transition_type(gtk::RevealerTransitionType::SlideRight);
@@ -167,18 +175,37 @@ impl ClawIndicator {
         badge_revealer.set_transition_duration(280);
         badge_revealer.set_reveal_child(true);
 
+        let badge_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        badge_box.add_css_class("badge-label");
+        badge_box.set_valign(gtk::Align::Center);
+        badge_box.set_height_request(20);
+
         let badge_label = gtk::Label::builder()
-            .css_classes(["badge-label"])
             .valign(gtk::Align::Center)
             .build();
-        badge_revealer.set_child(Some(&badge_label));
-        container.append(&badge_revealer);
+        badge_box.append(&badge_label);
 
         let clock_icon = gtk::Image::builder()
             .icon_name("boxxy-timer-symbolic")
             .visible(false)
             .build();
-        container.append(&clock_icon);
+        badge_box.append(&clock_icon);
+
+        let sleep_icon = gtk::Image::builder()
+            .icon_name("boxxy-sleep-symbolic")
+            .visible(false)
+            .css_classes(["warning"])
+            .build();
+        badge_box.append(&sleep_icon);
+
+        let lock_icon = gtk::Image::builder()
+            .icon_name("boxxy-lock-symbolic")
+            .visible(false)
+            .build();
+        badge_box.append(&lock_icon);
+
+        badge_revealer.set_child(Some(&badge_box));
+        container.append(&badge_revealer);
 
         container.append(&revealer);
 
@@ -186,7 +213,7 @@ impl ClawIndicator {
 
         let badge_provider = gtk::CssProvider::new();
         #[allow(deprecated)]
-        badge_label
+        badge_box
             .style_context()
             .add_provider(&badge_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
@@ -197,9 +224,12 @@ impl ClawIndicator {
 
         Self {
             container,
+            badge_box,
             badge_label,
             badge_revealer,
             clock_icon,
+            sleep_icon,
+            lock_icon,
             revealer,
             spinner,
             icon,
@@ -251,19 +281,62 @@ impl ClawIndicator {
         }
     }
 
+    pub fn set_suspended(&self, suspended: bool) {
+        if !self.revealer.reveals_child() {
+            self.sleep_icon.set_visible(suspended);
+        }
+
+        if suspended {
+            self.badge_box.add_css_class("warning");
+        } else {
+            self.badge_box.remove_css_class("warning");
+        }
+    }
+
+    pub fn set_locking(&self, locking: bool, resource: Option<String>) {
+        if !self.revealer.reveals_child() {
+            self.lock_icon.set_visible(locking);
+        }
+        if let Some(res) = resource {
+            self.lock_icon
+                .set_tooltip_text(Some(&format!("Locked: {}", res)));
+        }
+    }
+
+    pub fn set_mode(&self, status: boxxy_claw::engine::AgentStatus) {
+        use boxxy_claw::engine::AgentStatus::*;
+
+        match status {
+            Suspended => {
+                self.set_suspended(true);
+                self.set_locking(false, None);
+            }
+            Locking { resource } => {
+                self.set_suspended(false);
+                self.set_locking(true, Some(resource));
+            }
+            _ => {
+                self.set_suspended(false);
+                self.set_locking(false, None);
+            }
+        }
+    }
+
     pub fn set_evicted(&self, evicted: bool) {
         self.is_evicted.set(evicted);
         if evicted {
             self.container.add_css_class("evicted");
+            self.badge_box.add_css_class("evicted");
         } else {
             self.container.remove_css_class("evicted");
+            self.badge_box.remove_css_class("evicted");
         }
         self.refresh_visibility();
     }
 
     pub fn set_identity(&self, name: &str) {
         self.is_evicted.set(false);
-        self.badge_label.remove_css_class("evicted");
+        self.badge_box.remove_css_class("evicted");
         self.badge_label.set_text(name);
 
         let color = self.generate_color(name);

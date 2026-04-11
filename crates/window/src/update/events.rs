@@ -128,7 +128,7 @@ pub fn handle_terminal_event(
                 }
                 inner.view_stack.set_visible_child_name("claw");
             }
-            TerminalEventKind::ClawEvent(_p_id, claw_event) => {
+            TerminalEventKind::ClawEvent(p_id, claw_event) => {
                 // Update token usage if this is the active tab/pane
                 let total_tokens = inner.tabs[pos].controller.get_total_tokens();
                 if let Some(page) = inner.tab_view.selected_page() {
@@ -139,6 +139,11 @@ pub fn handle_terminal_event(
                 }
 
                 match claw_event {
+                    boxxy_claw::engine::ClawEngineEvent::SessionStateChanged { status, .. } => {
+                        inner.tabs[pos]
+                            .controller
+                            .set_session_status_for_pane(&p_id, status);
+                    }
                     boxxy_claw::engine::ClawEngineEvent::Identity {
                         agent_name,
                         pinned,

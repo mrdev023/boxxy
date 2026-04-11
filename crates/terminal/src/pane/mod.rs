@@ -877,6 +877,11 @@ impl TerminalPaneComponent {
         self.is_proactive.get()
     }
 
+    pub fn set_session_status(&self, status: boxxy_claw::engine::AgentStatus) {
+        self.msg_bar.set_status(status.clone());
+        self.claw_indicator.set_mode(status);
+    }
+
     pub fn set_claw_active(&self, active: bool) {
         if self.is_claw_active.get() == active {
             return;

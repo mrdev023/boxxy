@@ -55,6 +55,13 @@ Host Privileged Agent. Bypasses Flatpak sandboxing to handle PTY management and 
 ### 5. `boxxy-claw` (Library Crate)
 Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID.
 
+Agents function as a **Collaborative Swarm**:
+- **Event-Driven Pub/Sub**: Upgraded with a central **EventBus** in the Workspace Radar. Agents can use `subscribe_to_pane` to passively monitor peers for process exits or terminal output matches (regex) without consuming tokens.
+- **Async Promises (Map-Reduce)**: Supports complex fanned-out workflows via `delegate_task_async` and `await_tasks`. A "Leader" agent can suspend its execution (0 tokens) until all child tasks return a result.
+- **Resource Locking**: Employs a global **LockTable** to prevent race conditions. Agents can use `acquire_lock(path)` to safely refactor shared codebases, blocking peers from modifying the same resource until released.
+- **Capability Routing (Service Mesh)**: Automatically routes requests to specialized experts (e.g., "rust-expert") based on active skills and working directory via the `request_assistance` tool.
+- **Autonomous Suspension**: Implements a dedicated **Sleep Mode**. Agents automatically pause their reasoning loop while waiting for external events or sub-tasks, optimizing both cost and system resources.
+
 Agents possess full **System & Environment Authority**:
 - **Location & Time Context Injection**: Agents are implicitly aware of the user's geographic location (city, country, timezone) and precise local time without requiring tool calls, achieved via a silent background fetch (`ip-api.com`) and prompt injection. If disabled by the user, a strict `[PRIVACY POLICY]` is injected forbidding the agent from attempting to deduce location or time via shell commands.
 - **Persistent Interaction History**: Automatically saves visual events (diagnoses, suggestions, tool results) and **turn-based token usage** to the database. These are re-rendered instantly upon session restoration, ensuring zero context loss even for sidebar logs.
@@ -82,7 +89,16 @@ Provides a structured library of high-level tools for Boxxy agents, completely d
 Settings management using an `AdwNavigationSplitView` architecture. UI is defined in `resources/ui/preferences.ui` and supports real-time search filtering. Implements the **"Master Switch vs Local Toggle"** design pattern (e.g., for Web Search), separating global capability authorization from per-pane activation.
 
 ### 10. `boxxy-msgbar` (Library Crate)
-Provides the `MsgBarComponent`, an inline GTK input overlay for interacting with Boxxy-Claw. Triggered globally via `Ctrl+/`, it anchors a native text entry precisely over the active terminal cursor. It features a robust GTK-based autocompletion system (`AutocompleteController`) for `@agent` names and seamlessly inherits the active terminal theme's background and foreground colors. It includes native toggle buttons for **Claw Mode**, **Proactive Diagnosis**, **Session Pinning**, and **Web Search** (allowing per-pane, isolated capability activation). It also includes a fully persistent, lazy-loaded history system (`MsgHistory`) that preserves text and rich multimedia attachments across sessions using `boxxy-db`, featuring automatic RAM pruning for large payloads.
+Provides the `MsgBarComponent`, an inline GTK input overlay for interacting with Boxxy-Claw. Triggered globally via `Ctrl+/`, it anchors a native text entry precisely over the active terminal cursor. It features a robust GTK-based autocompletion system (`AutocompleteController`) for `@agent` names and seamlessly inherits the active terminal theme's background and foreground colors. It includes native toggle buttons for **Claw Mode**, **Proactive Diagnosis**, **Session Pinning**, and **Web Search**.
+
+It includes a **Unified Status Indicator**:
+- The bot icon on the far left serves as both the **Claw Toggle** and a **Real-time Status Monitor**. 
+- It dynamically reflects the agent's current mode:
+    - 🦖 **Active**: Awake and ready.
+    - 🧠 **Thinking**: Processing a request or running a tool.
+    - 💤 **Suspended (Sleep)**: Waiting for a peer event or sub-task completion.
+    - 🔒 **Locking**: Holding a global resource lock.
+    - ⚪ **Idle**: Claw is deactivated for this pane.
 
 ### 11. `boxxy-model-selection` (Library Crate)
 Data-driven model configuration UI. Uses a registry pattern to dynamically build selection dialogs and dropdowns based on registered `AiProvider` traits. Decouples AI capability discovery from the main application window.

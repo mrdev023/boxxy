@@ -1,4 +1,5 @@
 use log::debug;
+use crate::utils::load_prompt_fallback;
 
 /// Scans the config directory for characters to build the session context.
 pub fn load_session_context() -> String {
@@ -45,13 +46,10 @@ pub async fn retrieve_memories(
         let store = boxxy_db::store::Store::new(db.pool());
         let settings = boxxy_preferences::Settings::load();
 
-        let data = gtk4::gio::resources_lookup_data(
+        let expansion_prompt_template = load_prompt_fallback(
             "/dev/boxxy/BoxxyTerminal/prompts/memory_expansion.md",
-            gtk4::gio::ResourceLookupFlags::NONE,
-        )
-        .expect("Failed to load memory_expansion prompt resource");
-        let expansion_prompt_template =
-            String::from_utf8(data.to_vec()).expect("Prompt resource is not valid UTF-8");
+            "memory_expansion.md",
+        );
 
         let expansion_prompt = expansion_prompt_template.replace("{{query}}", query);
 
@@ -157,17 +155,20 @@ pub async fn summarize_and_store(
 ) {
     let settings = boxxy_preferences::Settings::load();
 
-    let summarizer_prompt = format!(
-        "[DATA_START]\nUSER: {}\n\nASSISTANT: {}\n[DATA_END]\n\nSUMMARY_COMMAND: Output NO_TECHNICAL_CHANGE or 1 bullet point now.",
-        user_query, assistant_response
+    let summarizer_template = load_prompt_fallback(
+        "/dev/boxxy/BoxxyTerminal/prompts/memory_summarizer.md",
+        "memory_summarizer.md",
     );
+
+    let summarizer_prompt = summarizer_template
+        .replace("{{user_query}}", user_query)
+        .replace("{{assistant_response}}", assistant_response);
 
     // We use a simple agent call for summarization
     let agent = boxxy_ai_core::create_agent(
         &settings.claw_model,
         &creds,
-        "You are a robotic memory compactor. Summarize technical interaction data into a single, concise bullet point. Focus on technical accomplishments or learned system facts. \
-        Omit all social talk and character persona. If no technical change or new system fact is present, output ONLY: NO_TECHNICAL_CHANGE",
+        "You are a robotic memory compactor.",
     );
 
     if let Ok(res) = agent.prompt(&summarizer_prompt).await

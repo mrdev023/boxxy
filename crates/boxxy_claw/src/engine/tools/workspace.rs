@@ -302,6 +302,108 @@ impl Tool for DelegateTaskTool {
 }
 
 #[derive(Deserialize)]
+pub struct DelegateTaskAsyncArgs {
+    pub agent_name: String,
+    pub prompt: String,
+}
+
+#[derive(Serialize)]
+pub struct DelegateTaskAsyncOutput {
+    pub task_id: String,
+    pub message: String,
+}
+
+pub struct DelegateTaskAsyncTool {
+    pub state: std::sync::Arc<tokio::sync::Mutex<crate::engine::session::SessionState>>,
+}
+
+impl Tool for DelegateTaskAsyncTool {
+    const NAME: &'static str = "delegate_task_async";
+    type Error = std::io::Error;
+    type Args = DelegateTaskAsyncArgs;
+    type Output = DelegateTaskAsyncOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Delegate a task to another active agent asynchronously. \
+            CRITICAL: Use this instead of `spawn_agent` when you need to send a specific command/prompt to an existing agent and wait for the result. \
+            Returns a unique `task_id` immediately. You must follow up with `await_tasks([task_id])` to pause execution and retrieve the results once the agent finishes."
+                .to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "agent_name": {
+                        "type": "string",
+                        "description": "The exact mnemonic name of the target agent (e.g. 'plentiful bream'). Check the Global Radar for names."
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Detailed instructions for the target agent on what to execute and what to return."
+                    }
+                },
+                "required": ["agent_name", "prompt"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        boxxy_telemetry::track_tool_use(Self::NAME).await;
+        let workspace = global_workspace().await;
+        let task_id = uuid::Uuid::new_v4();
+
+        let my_name = {
+            let state = self.state.lock().await;
+            state.agent_name.clone()
+        };
+
+        if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+            let req = crate::engine::ClawMessage::DelegatedTask {
+                source_agent_name: my_name.clone(),
+                prompt: args.prompt,
+                reply_tx,
+            };
+
+            if let Err(e) = tx.send(req).await {
+                return Ok(DelegateTaskAsyncOutput {
+                    task_id: "".to_string(),
+                    message: format!("Failed to send task to agent: {}", e),
+                });
+            }
+
+            // Spawn a task to wait for the reply and then publish it back to the EventBus
+            let tx_self = {
+                let workspace = global_workspace().await;
+                workspace.get_pane_tx_by_name(&my_name).await
+            };
+
+            tokio::spawn(async move {
+                if let Ok(result) = reply_rx.await {
+                    if let Some(tx) = tx_self {
+                        let _ = tx.send(crate::engine::ClawMessage::TaskCompletedEvent {
+                            task_id,
+                            result,
+                        }).await;
+                    }
+                }
+            });
+
+            Ok(DelegateTaskAsyncOutput {
+                task_id: task_id.to_string(),
+                message: format!("Task delegated successfully. Task ID: {}", task_id),
+            })
+        } else {
+            Ok(DelegateTaskAsyncOutput {
+                task_id: "".to_string(),
+                message: format!("Agent '{}' not found.", args.agent_name),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct SendKeystrokesArgs {
     pub agent_name: String,
     pub keys: String,

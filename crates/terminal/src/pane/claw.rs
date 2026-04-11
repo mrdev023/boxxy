@@ -30,7 +30,22 @@ pub(super) fn setup_claw(
     if let Some(intent) = spawn_intent {
         let tx = claw_sender.clone();
         let inner_clone = inner.clone();
+        
+        // Wait for PID to ensure PTY is ready
         gtk::glib::spawn_future_local(async move {
+            let mut check_count = 0;
+            loop {
+                let has_pid = inner_clone.borrow().pid.is_some();
+                if has_pid {
+                    break;
+                }
+                check_count += 1;
+                if check_count > 50 { // Timeout after 5 seconds
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+
             let pane = inner_clone.borrow().terminal.clone();
             let cwd = inner_clone.borrow().working_dir.clone().unwrap_or_default();
             if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
@@ -170,6 +185,9 @@ pub(super) fn setup_claw(
     gtk::glib::spawn_future_local(async move {
         while let Ok(event) = claw_rx.recv().await {
             match &event {
+                boxxy_claw::engine::ClawEngineEvent::SessionStateChanged { status, .. } => {
+                    inner_clone.borrow().msg_bar.set_status(status.clone());
+                }
                 boxxy_claw::engine::ClawEngineEvent::AgentThinking { is_thinking, .. } => {
                     if *is_thinking {
                         indicator_event_clone.show_thinking();

@@ -24,6 +24,7 @@ fn main() {
     <file compressed="true" alias="icons/boxxy-boxxyclaw-symbolic.svg">icons/boxxy-boxxyclaw-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-running-symbolic.svg">icons/boxxy-running-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-walking2-symbolic.svg">icons/boxxy-walking2-symbolic.svg</file>
+    <file compressed="true" alias="icons/boxxy-sleep-symbolic.svg">icons/boxxy-sleep-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-bug-symbolic.svg">icons/boxxy-bug-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-user-bookmarks-symbolic.svg">icons/boxxy-user-bookmarks-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-external-link-symbolic.svg">icons/boxxy-external-link-symbolic.svg</file>
@@ -57,6 +58,7 @@ fn main() {
     <file compressed="true" alias="icons/boxxy-window-new-symbolic.svg">icons/boxxy-window-new-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-chat-none-symbolic.svg">icons/boxxy-chat-none-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-view-pin-symbolic.svg">icons/boxxy-view-pin-symbolic.svg</file>
+    <file compressed="true" alias="icons/boxxy-lock-symbolic.svg">icons/boxxy-lock-symbolic.svg</file>
     <file compressed="true" alias="icons/boxxy-spinner.gpa">icons/boxxy-spinner.gpa</file>
     <file compressed="true" alias="prompts/ai_chat.md">prompts/ai_chat.md</file>
     <file compressed="true" alias="prompts/claw.md">prompts/claw.md</file>
@@ -64,6 +66,7 @@ fn main() {
     <file compressed="true" alias="prompts/memory_expansion.md">prompts/memory_expansion.md</file>
     <file compressed="true" alias="prompts/memory_flush.md">prompts/memory_flush.md</file>
     <file compressed="true" alias="prompts/memory_summarizer.md">prompts/memory_summarizer.md</file>
+    <file compressed="true" alias="prompts/privacy_policy.md">prompts/privacy_policy.md</file>
     <file compressed="true" alias="ui/preferences.ui">ui/preferences.ui</file>
     <file compressed="true" alias="ui/widgets/notification_pill.ui">ui/widgets/notification_pill.ui</file>
     <file compressed="true" alias="ui/widgets/notification_details.ui">ui/widgets/notification_details.ui</file>
@@ -97,10 +100,12 @@ fn main() {
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-chat-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-chat-none-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-view-pin-symbolic.svg");
+    println!("cargo:rerun-if-changed=../../resources/icons/boxxy-lock-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-spinner.gpa");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxyclaw.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-running-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-walking2-symbolic.svg");
+    println!("cargo:rerun-if-changed=../../resources/icons/boxxy-sleep-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-bug-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-user-bookmarks-symbolic.svg");
     println!("cargo:rerun-if-changed=../../resources/icons/boxxy-external-link-symbolic.svg");
@@ -138,6 +143,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../resources/prompts/memory_expansion.md");
     println!("cargo:rerun-if-changed=../../resources/prompts/memory_flush.md");
     println!("cargo:rerun-if-changed=../../resources/prompts/memory_summarizer.md");
+    println!("cargo:rerun-if-changed=../../resources/prompts/privacy_policy.md");
     println!("cargo:rerun-if-changed=../../resources/ui/preferences.ui");
     println!("cargo:rerun-if-changed=../../resources/ui/widgets/notification_pill.ui");
     println!("cargo:rerun-if-changed=../../resources/ui/widgets/notification_details.ui");

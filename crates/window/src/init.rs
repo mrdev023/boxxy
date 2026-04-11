@@ -49,6 +49,14 @@ impl TerminalController {
             .update_diagnosis_mode_for_pane(pane_id, mode)
     }
 
+    pub fn set_session_status_for_pane(
+        &self,
+        pane_id: &str,
+        status: boxxy_claw::engine::AgentStatus,
+    ) -> bool {
+        self.controller.set_session_status_for_pane(pane_id, status)
+    }
+
     pub fn is_claw_active(&self) -> bool {
         self.controller.is_claw_active()
     }

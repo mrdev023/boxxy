@@ -4777,6 +4777,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "scenario-runner"
+version = "0.0.33"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "boxxy-agent",
+ "boxxy-ai-core",
+ "boxxy-claw",
+ "boxxy-core-toolbox",
+ "boxxy-preferences",
+ "chrono",
+ "env_logger",
+ "futures-util",
+ "log",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "zbus",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"

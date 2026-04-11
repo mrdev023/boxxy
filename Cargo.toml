@@ -23,6 +23,7 @@ members = [
     "crates/viewer",
     "crates/telemetry",
     "crates/boxxy_mcp",
+    "crates/scenario_runner",
     ]
 
 [workspace.package]

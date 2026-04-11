@@ -1,0 +1,27 @@
+[package]
+name = "scenario-runner"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+boxxy-claw = { path = "../boxxy_claw" }
+boxxy-ai-core = { path = "../ai_core" }
+boxxy-core-toolbox = { path = "../core_toolbox" }
+boxxy-agent = { path = "../boxxy_agent" }
+boxxy-preferences = { path = "../preferences" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+tokio = { workspace = true }
+zbus = { workspace = true }
+uuid = { workspace = true }
+futures-util = { workspace = true }
+
+log.workspace = true
+env_logger.workspace = true
+chrono.workspace = true
+tempfile = "3.27.0"

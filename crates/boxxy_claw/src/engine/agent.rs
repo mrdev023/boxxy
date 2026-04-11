@@ -1,11 +1,12 @@
+use crate::utils::load_prompt_fallback;
 use crate::engine::ClawEngineEvent;
 use crate::engine::session::SessionState;
 use crate::engine::tools::skills::ActivateSkillTool;
 use crate::engine::tools::tasks::{CancelTaskTool, ListTasksTool, ScheduleTaskTool};
 use crate::engine::tools::terminal::TerminalCommandTool;
 use crate::engine::tools::workspace::{
-    CloseAgentTool, DelegateTaskTool, ListActiveAgentsTool, ReadPaneTool, SendKeystrokesTool,
-    SetGlobalIntentTool, SpawnAgentTool,
+    CloseAgentTool, DelegateTaskAsyncTool, DelegateTaskTool, ListActiveAgentsTool, ReadPaneTool,
+    SendKeystrokesTool, SetGlobalIntentTool, SpawnAgentTool,
 };
 use crate::engine::tools::{ClawApprovalHandler, SysShellTool};
 use boxxy_agent::ipc::AgentClawProxy;
@@ -14,7 +15,6 @@ use boxxy_core_toolbox::{
     HttpFetchTool, KillProcessTool, ListDirectoryTool, ListProcessesTool, SetClipboardTool,
 };
 use boxxy_model_selection::ModelProvider;
-use gtk4 as gtk;
 use rig::agent::Agent;
 use rig::client::CompletionClient;
 use rig::message::Message;
@@ -208,6 +208,7 @@ pub async fn create_claw_agent(
         Box::new(SysShellTool {
             proxy: claw_proxy.clone(),
             current_dir: current_dir.to_string(),
+            approval: approval_handler.clone(),
         }),
         Box::new(crate::memories::MemoryStoreTool {
             db: db.clone(),
@@ -256,6 +257,32 @@ pub async fn create_claw_agent(
             tx_ui: tx_ui.clone(),
         }),
         Box::new(SetGlobalIntentTool),
+        Box::new(crate::engine::tools::orchestration::SubscribeToPaneTool {
+            pane_id: pane_id.clone(),
+            state: state.clone(),
+            tx_ui: tx_ui.clone(),
+        }),
+        Box::new(crate::engine::tools::orchestration::AcquireLockTool {
+            pane_id: pane_id.clone(),
+            state: state.clone(),
+            tx_ui: tx_ui.clone(),
+        }),
+        Box::new(crate::engine::tools::orchestration::ReleaseLockTool {
+            pane_id: pane_id.clone(),
+            state: state.clone(),
+            tx_ui: tx_ui.clone(),
+        }),
+        Box::new(crate::engine::tools::orchestration::PublishEventTool {
+            state: state.clone(),
+        }),
+        Box::new(crate::engine::tools::orchestration::AwaitTasksTool {
+            state: state.clone(),
+            tx_ui: tx_ui.clone(),
+        }),
+        Box::new(DelegateTaskAsyncTool {
+            state: state.clone(),
+        }),
+        Box::new(crate::engine::tools::orchestration::OrchestrateAgentTool),
     ];
 
     // Conditional Core Toolbox tools
@@ -354,14 +381,13 @@ pub async fn create_claw_agent(
         }
 
         final_preamble.push_str(&context_block);
-    } else if let Ok(data) = gtk::gio::resources_lookup_data(
-        "/dev/boxxy/BoxxyTerminal/prompts/privacy_policy.md",
-        gtk::gio::ResourceLookupFlags::NONE,
-    ) {
-        if let Ok(policy) = String::from_utf8(data.to_vec()) {
-            final_preamble.push_str("\n\n");
-            final_preamble.push_str(&policy);
-        }
+    } else {
+        let policy = load_prompt_fallback(
+            "/dev/boxxy/BoxxyTerminal/prompts/privacy_policy.md",
+            "privacy_policy.md",
+        );
+        final_preamble.push_str("\n\n");
+        final_preamble.push_str(&policy);
     }
 
     let inner = match provider {
