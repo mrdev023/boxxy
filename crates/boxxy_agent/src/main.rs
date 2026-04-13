@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
         boxxy_telemetry::init_db().await;
         boxxy_telemetry::init().await;
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(600)).await;
             boxxy_telemetry::flush_journal().await;
         }
     });
