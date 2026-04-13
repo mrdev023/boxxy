@@ -127,6 +127,6 @@ rmcp = { version = "1.4.0", features = ["client", "macros", "transport-streamabl
 keyring = "3.6.3"
 opentelemetry = "0.31.0"
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.31.1", features = ["http-json"] }
+opentelemetry-otlp = { version = "0.31.1", features = ["http-json", "reqwest", "reqwest-rustls"] }
 opentelemetry-http = "0.31.0"
 opentelemetry-stdout = { version = "0.31.0", features = ["metrics"] }

@@ -6,9 +6,10 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+reqwest = { version = "0.12", features = ["rustls-tls"] }
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
-opentelemetry-otlp.workspace = true
+opentelemetry-otlp = { workspace = true, features = ["reqwest", "reqwest-rustls"] }
 opentelemetry-http.workspace = true
 opentelemetry-stdout.workspace = true
 serde.workspace = true
@@ -17,5 +18,8 @@ tokio.workspace = true
 uuid.workspace = true
 log.workspace = true
 boxxy-preferences = { path = "../preferences" }
+boxxy-db = { path = "../db" }
+sqlx = { workspace = true }
 lazy_static.workspace = true
 async-trait.workspace = true
+

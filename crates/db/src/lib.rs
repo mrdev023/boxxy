@@ -14,7 +14,7 @@ pub mod store;
 static DB: OnceCell<Db> = OnceCell::const_new();
 pub static DATABASE_WAS_RESET: AtomicBool = AtomicBool::new(false);
 
-const CURRENT_SCHEMA_VERSION: i32 = 7;
+const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 #[derive(Clone)]
 pub struct Db {
@@ -169,6 +169,14 @@ impl Db {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 text TEXT NOT NULL,
                 attachments_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS telemetry_journal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                metric_name TEXT NOT NULL,
+                value REAL NOT NULL,
+                attributes_json TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 

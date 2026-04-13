@@ -22,3 +22,7 @@ libc = { workspace = true }
 directories = { workspace = true }
 futures-util = { workspace = true }
 enumflags2 = { workspace = true }
+boxxy-telemetry = { path = "../telemetry" }
+boxxy-db = { path = "../db" }
+boxxy-preferences = { path = "../preferences" }
+boxxy-model-selection = { path = "../model_selection" }

@@ -17,6 +17,16 @@ async fn main() -> Result<()> {
         .init();
     log::info!("Boxxy Agent starting...");
 
+    // Spawn background flush loop
+    tokio::spawn(async {
+        boxxy_telemetry::init_db().await;
+        boxxy_telemetry::init().await;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            boxxy_telemetry::flush_journal().await;
+        }
+    });
+
     let args: Vec<String> = std::env::args().collect();
     let fd_arg = args.iter().find(|a| a.starts_with("--socket-fd="));
 
@@ -118,8 +128,6 @@ async fn main() -> Result<()> {
                                 break;
                             }
                             Ok(mut g) => {
-                                // D-Bus traffic made the socket readable — not a close.
-                                // Clear the ready flag and wait for the next event.
                                 g.clear_ready();
                             }
                             Err(_) => {
@@ -138,6 +146,11 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // Final Telemetry Flush before exit
+    log::debug!("Performing final telemetry flush...");
+    boxxy_telemetry::flush_journal().await;
+    boxxy_telemetry::shutdown().await;
 
     Ok(())
 }

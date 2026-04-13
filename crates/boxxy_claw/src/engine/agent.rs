@@ -133,6 +133,7 @@ impl ClawAgent {
                 // Track Tokens
                 boxxy_telemetry::track_ai_tokens(
                     model_name,
+                    provider_name,
                     "input",
                     res.usage.input_tokens as u64,
                     "claw",
@@ -140,6 +141,7 @@ impl ClawAgent {
                 .await;
                 boxxy_telemetry::track_ai_tokens(
                     model_name,
+                    provider_name,
                     "output",
                     res.usage.output_tokens as u64,
                     "claw",

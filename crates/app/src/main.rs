@@ -19,9 +19,9 @@ fn main() {
     boxxy_preferences::Settings::init();
     boxxy_preferences::AppState::init();
 
-    // Initialize Telemetry
+    // Initialize Telemetry DB so we can write local events instantly
     tokio::spawn(async {
-        boxxy_telemetry::init().await;
+        boxxy_telemetry::init_db().await;
 
         // Track app.launch
         use sysinfo::System;
@@ -133,11 +133,6 @@ fn main() {
     });
 
     let exit_code = app.run();
-
-    // Flush Telemetry after the main window is closed
-    utils::runtime().block_on(async {
-        boxxy_telemetry::shutdown().await;
-    });
 
     std::process::exit(exit_code.into());
 }
