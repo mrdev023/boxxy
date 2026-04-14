@@ -1477,22 +1477,23 @@ fn spawn_turn(
                     .map(|m| format!("{:?}", m))
                     .unwrap_or_default();
 
-                // Generate title if it's the first turn (System + User + Assistant = 3 messages)
-                let mut title = String::new();
-                if state_lock.history.len() == 3 {
-                    title = prompt_clone.chars().take(50).collect();
-                }
+                // Count user messages to know when to generate a permanent LLM title
+                let user_msg_count = state_lock.history.iter().filter(|m| matches!(m, rig::message::Message::User { .. })).count();
 
-                let db_for_persistence = db.clone();
-                tokio::spawn(async move {
-                    let db_guard = db_for_persistence.lock().await;
-                    if let Some(db) = &*db_guard {
-                        let store = boxxy_db::store::Store::new(db.pool());
+                // Safely extract the Db clone before spawning to prevent race conditions with Deactivate/Evict
+                let db_val = {
+                    let db_guard = db.lock().await;
+                    db_guard.as_ref().cloned()
+                };
+
+                if let Some(db_for_persistence) = db_val.clone() {
+                    tokio::spawn(async move {
+                        let store = boxxy_db::store::Store::new(db_for_persistence.pool());
                         let _ = store
                             .upsert_session_state(
                                 &session_id_for_db,
                                 &agent_name_for_db,
-                                &title,
+                                "", // title is updated separately in the background LLM task
                                 &history_json,
                                 &pending_tasks_json,
                                 &agent_name_for_db,
@@ -1502,8 +1503,8 @@ fn spawn_turn(
                                 total_tokens_for_db,
                             )
                             .await;
-                    }
-                });
+                    });
+                }
 
                 // Optional: Trigger Memory Flush if history is too long
                 let creds = boxxy_ai_core::AiCredentials::new(
@@ -1523,7 +1524,6 @@ fn spawn_turn(
                 drop(state_lock);
                 let prompt_for_db = prompt_clone.clone();
                 let resp_for_db = response.clone();
-                let db_for_summary = db.clone();
                 let cwd_for_db = cwd_clone.clone();
                 let mem_model = settings
                     .memory_model
@@ -1535,11 +1535,72 @@ fn spawn_turn(
                 );
 
                 let session_id_for_summary = session_id_clone.clone();
-                tokio::spawn(async move {
-                    let db_guard = db_for_summary.lock().await;
-                    if db_guard.is_some() {
+                let title_model = mem_model.clone();
+                let title_creds = creds.clone();
+                let title_prompt = prompt_clone.clone();
+
+                if let Some(db_for_summary) = db_val {
+                    tokio::spawn(async move {
+                        // --- LLM Title Generation ---
+                        let store = boxxy_db::store::Store::new(db_for_summary.pool());
+                        let mut needs_title = false;
+                        let mut current_title = String::new();
+                        
+                        if let Ok(Some(session)) = store.get_session(&session_id_for_summary).await {
+                            current_title = session.title.unwrap_or_default();
+                            if current_title.trim().is_empty() {
+                                needs_title = true;
+                            }
+                        }
+                        
+                        // Force a beautiful LLM title specifically when the user sends their VERY FIRST prompt.
+                        // This overwrites any initial greeting fallbacks.
+                        if user_msg_count == 1 {
+                            needs_title = true;
+                        } else if user_msg_count == 2 {
+                            // If the second user message provides more context, and the first title was just a greeting, upgrade it.
+                            let lower_title = current_title.to_lowercase();
+                            if lower_title.contains("greeting") || lower_title.contains("hello") || current_title.len() < 15 {
+                                needs_title = true;
+                            }
+                        }
+
+                        if needs_title && !title_prompt.trim().is_empty() {
+                            let agent = boxxy_ai_core::create_agent(
+                                &title_model,
+                                &title_creds,
+                                "You are a conversation title generator. Summarize the user's prompt in 3 to 6 words. MUST BE UNDER 40 CHARACTERS. Output ONLY the raw title, no quotes, no punctuation. Capitalize it like a title."
+                            );
+                            if let Ok(res) = agent.prompt(&title_prompt).await {
+                                let generated_title = res.0.trim().trim_matches('"').trim_matches('\'').to_string();
+                                if !generated_title.is_empty() && generated_title != current_title {
+                                    let _ = sqlx::query("UPDATE sessions SET title = ? WHERE id = ?")
+                                        .bind(&generated_title)
+                                        .bind(&session_id_for_summary)
+                                        .execute(db_for_summary.pool())
+                                        .await;
+                                    current_title = generated_title;
+                                }
+                            }
+                        }
+                        
+                        // Fallback if title is STILL empty (e.g. LLM failed)
+                        if current_title.trim().is_empty() && !title_prompt.trim().is_empty() {
+                            let first_line = title_prompt.lines()
+                                .find(|l| !l.trim().is_empty())
+                                .unwrap_or("");
+                            let fallback = first_line.chars().take(40).collect::<String>().trim().to_string();
+                            if !fallback.is_empty() {
+                                let _ = sqlx::query("UPDATE sessions SET title = ? WHERE id = ?")
+                                    .bind(fallback)
+                                    .bind(&session_id_for_summary)
+                                    .execute(db_for_summary.pool())
+                                    .await;
+                            }
+                        }
+
                         summarize_and_store(
-                            &db_guard,
+                            &Some(db_for_summary.clone()),
                             &session_id_for_summary,
                             &prompt_for_db,
                             &resp_for_db,
@@ -1547,19 +1608,18 @@ fn spawn_turn(
                             creds.clone(),
                         )
                         .await;
-                    }
-                    drop(db_guard);
 
-                    let _ = crate::memories::extraction::extract_implicit_memory(
-                        db_for_summary.clone(),
-                        prompt_for_db,
-                        resp_for_db,
-                        mem_model,
-                        creds,
-                        cwd_for_db,
-                    )
-                    .await;
-                });
+                        let _ = crate::memories::extraction::extract_implicit_memory(
+                            Arc::new(Mutex::new(Some(db_for_summary.clone()))),
+                            prompt_for_db,
+                            resp_for_db,
+                            mem_model,
+                            creds,
+                            cwd_for_db,
+                        )
+                        .await;
+                    });
+                }
                 let mut command_opt = None;
                 let mut clean_diagnosis = response.clone();
 

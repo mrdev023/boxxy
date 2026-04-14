@@ -726,6 +726,7 @@ dependencies = [
  "boxxy-core-widgets",
  "boxxy-db",
  "boxxy-preferences",
+ "chrono",
  "glib",
  "gtk4",
  "lazy_static",

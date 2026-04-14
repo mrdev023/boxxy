@@ -19,8 +19,11 @@ pub fn persist_visual_event(
 ) {
     if let Some(row) = PersistentClawRow::from_engine_event(pane_id, event) {
         tokio::spawn(async move {
-            let db_guard = db_cell.lock().await;
-            if let Some(db) = &*db_guard {
+            let db_val = {
+                let db_guard = db_cell.lock().await;
+                db_guard.as_ref().cloned()
+            };
+            if let Some(db) = db_val {
                 let store = boxxy_db::store::Store::new(db.pool());
                 if let Ok(json) = serde_json::to_string(&row) {
                     let _ = store.add_claw_event(&session_id, &json).await;

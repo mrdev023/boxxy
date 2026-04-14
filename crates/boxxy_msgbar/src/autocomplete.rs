@@ -26,6 +26,8 @@ impl CompletionProvider for AgentCompletionProvider {
                     replacement_text: format!("@{}", agent.name),
                     icon_name: Some("boxxy-boxxyclaw-symbolic".to_string()),
                     secondary_text: Some(agent.status),
+                    badge_text: None,
+                    badge_color: None,
                 });
             }
         }
@@ -47,14 +49,51 @@ impl CompletionProvider for CommandCompletionProvider {
 
         if "resume".contains(&query_lower) {
             items.push(CompletionItem {
-                display_name: "resume".to_string(),
+                display_name: "Resume past session".to_string(),
                 replacement_text: "/resume".to_string(),
-                icon_name: Some("boxxy-chat-symbolic".to_string()),
-                secondary_text: Some("Resume a past session".to_string()),
+                icon_name: None,
+                secondary_text: None,
+                badge_text: None,
+                badge_color: None,
             });
         }
 
         items
+    }
+}
+
+fn generate_color(name: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    name.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    let r = (hash & 0xFF) as u8 % 150 + 50;
+    let g = ((hash >> 8) & 0xFF) as u8 % 150 + 50;
+    let b = ((hash >> 16) & 0xFF) as u8 % 150 + 50;
+
+    format!("rgb({}, {}, {})", r, g, b)
+}
+
+fn get_relative_age(updated_at: &str) -> String {
+    use chrono::{NaiveDateTime, Utc};
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(updated_at, "%Y-%m-%d %H:%M:%S") {
+        let now = Utc::now().naive_utc();
+        let duration = now.signed_duration_since(ndt);
+
+        if duration.num_days() > 0 {
+            format!("{}d", duration.num_days())
+        } else if duration.num_hours() > 0 {
+            format!("{}h", duration.num_hours())
+        } else if duration.num_minutes() > 0 {
+            format!("{}m", duration.num_minutes())
+        } else {
+            "now".to_string()
+        }
+    } else {
+        "unknown".to_string()
     }
 }
 
@@ -75,30 +114,33 @@ impl CompletionProvider for ResumeCompletionProvider {
         let sessions = runtime.block_on(async {
             if let Ok(db) = boxxy_db::Db::new().await {
                 let store = boxxy_db::store::Store::new(db.pool());
-                store
+                let res = store
                     .get_recent_active_sessions(10)
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                log::debug!("ResumeCompletionProvider fetched {} sessions from DB.", res.len());
+                for s in &res {
+                    log::debug!("  - Session: {} (Title: {:?})", s.id, s.title);
+                }
+                res
             } else {
                 Vec::new()
             }
         });
 
         for session in sessions {
-            let title = session
+            let mut title = session
                 .title
                 .unwrap_or_else(|| "Untitled Session".to_string());
+            if title.trim().is_empty() {
+                title = "Untitled Session".to_string();
+            }
             let agent_name = session.agent_name.unwrap_or_else(|| "Unknown".to_string());
-            let cwd = session.last_cwd.unwrap_or_else(|| "/".to_string());
             let msg_count = session.message_count;
 
             // Format age (very basic implementation)
             let age = if let Some(updated_at) = session.updated_at {
-                // Since SQLite returns a string for updated_at, and we didn't parse it to chrono yet
-                // we'll just show the raw timestamp or a placeholder if it looks too complex to parse here
-                // without adding more dependencies to this crate.
-                // Let's just use the raw string for now or skip it if too long.
-                updated_at.split(' ').next().unwrap_or("").to_string()
+                get_relative_age(&updated_at)
             } else {
                 "unknown".to_string()
             };
@@ -113,11 +155,15 @@ impl CompletionProvider for ResumeCompletionProvider {
                     "boxxy-chat-symbolic".to_string()
                 };
 
+                let badge_color = generate_color(&agent_name);
+
                 items.push(CompletionItem {
                     display_name: format!("{title} [{msg_count} msgs]"),
                     replacement_text: format!("/resume {}", session.id),
                     icon_name: Some(icon_name),
-                    secondary_text: Some(format!("{agent_name} • {age} • {cwd}")),
+                    secondary_text: Some(age),
+                    badge_text: Some(agent_name),
+                    badge_color: Some(badge_color),
                 });
             }
         }

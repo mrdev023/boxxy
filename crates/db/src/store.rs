@@ -138,18 +138,18 @@ impl<'a> Store<'a> {
         let records = sqlx::query_as::<_, Session>(
             r"
             SELECT * FROM (
-                SELECT s.*, COUNT(i.id) as message_count 
+                SELECT s.*, COUNT(e.id) as message_count 
                 FROM sessions s
-                JOIN interactions i ON s.id = i.session_id
+                JOIN claw_events e ON s.id = e.session_id
                 WHERE s.pinned = true
                 GROUP BY s.id
                 ORDER BY s.updated_at DESC
             )
             UNION ALL
             SELECT * FROM (
-                SELECT s.*, COUNT(i.id) as message_count 
+                SELECT s.*, COUNT(e.id) as message_count 
                 FROM sessions s
-                JOIN interactions i ON s.id = i.session_id
+                JOIN claw_events e ON s.id = e.session_id
                 WHERE s.pinned = false
                 GROUP BY s.id
                 ORDER BY s.updated_at DESC

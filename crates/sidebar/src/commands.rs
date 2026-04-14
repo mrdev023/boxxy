@@ -50,6 +50,8 @@ impl CompletionProvider for SidebarCommandProvider {
                 replacement_text: cmd.to_string(),
                 icon_name: Some("boxxy-running-symbolic".to_string()),
                 secondary_text: None,
+                badge_text: None,
+                badge_color: None,
             })
             .collect()
     }

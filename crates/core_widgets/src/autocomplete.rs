@@ -9,6 +9,8 @@ pub struct CompletionItem {
     pub replacement_text: String,
     pub icon_name: Option<String>,
     pub secondary_text: Option<String>,
+    pub badge_text: Option<String>,
+    pub badge_color: Option<String>,
 }
 
 pub trait CompletionProvider {
@@ -196,16 +198,66 @@ impl AutocompleteController {
             }
 
             let label = gtk::Label::new(Some(&item.display_name));
+            label.set_hexpand(true);
+            label.set_halign(gtk::Align::Fill);
+            label.set_xalign(0.0);
+            
+            // Only force a wide width for rich items (like session resume)
+            // to avoid making simple command suggestions ('/resume') weirdly wide.
+            if item.badge_text.is_some() {
+                label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                label.set_width_request(400);
+            } else {
+                label.set_ellipsize(gtk::pango::EllipsizeMode::None);
+                label.set_width_request(-1);
+            }
+            
             hbox.append(&label);
+
+            let right_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            right_box.set_halign(gtk::Align::End);
+            right_box.set_valign(gtk::Align::Center);
 
             if let Some(secondary) = item.secondary_text {
                 let sec_label = gtk::Label::new(Some(&secondary));
                 sec_label.add_css_class("caption");
                 sec_label.add_css_class("dim-label");
-                sec_label.set_hexpand(true);
+                // Fixed minimum width and right alignment inside the label for perfect column stacking
+                sec_label.set_width_request(40);
+                sec_label.set_xalign(1.0);
                 sec_label.set_halign(gtk::Align::End);
-                hbox.append(&sec_label);
+                right_box.append(&sec_label);
             }
+
+            if let Some(badge) = item.badge_text {
+                let badge_label = gtk::Label::new(Some(&badge));
+                badge_label.add_css_class("caption");
+                
+                let badge_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                badge_box.set_margin_top(0);
+                badge_box.set_margin_bottom(0);
+                // Fixed width for the badge container so they stack perfectly
+                badge_box.set_width_request(140);
+                badge_box.set_halign(gtk::Align::End);
+                
+                // We want the actual badge to center inside its allocated column space
+                let inner_badge_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                inner_badge_box.set_halign(gtk::Align::Center);
+                
+                if let Some(color) = item.badge_color {
+                    let provider = gtk::CssProvider::new();
+                    let css = format!(".autocomplete-badge {{ background-color: {}; color: white; border-radius: 12px; padding: 2px 8px; font-weight: bold; font-size: 0.9em; }}", color);
+                    provider.load_from_string(&css);
+                    inner_badge_box.style_context().add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+                    inner_badge_box.add_css_class("autocomplete-badge");
+                }
+                
+                inner_badge_box.append(&badge_label);
+                badge_box.append(&inner_badge_box);
+                right_box.append(&badge_box);
+            }
+
+            hbox.append(&right_box);
 
             row.set_child(Some(&hbox));
             self.list.append(&row);
