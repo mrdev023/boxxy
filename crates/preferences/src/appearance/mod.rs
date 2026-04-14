@@ -119,6 +119,9 @@ pub fn setup_appearance_page(
                     && let Some(new_path) = boxxy_themes::copy_background_image(&path)
                 {
                     let mut s = s_rc.borrow_mut();
+                    if let Some(old_path) = &s.background_image_path {
+                        boxxy_themes::delete_background_image(old_path);
+                    }
                     s.background_image_path = Some(new_path);
                     s.save();
                     let s_clone = s.clone();
@@ -135,6 +138,9 @@ pub fn setup_appearance_page(
     let update_subtitle = update_bg_subtitle.clone();
     clear_bg_image_btn.connect_clicked(move |_| {
         let mut s = s_rc.borrow_mut();
+        if let Some(old_path) = &s.background_image_path {
+            boxxy_themes::delete_background_image(old_path);
+        }
         s.background_image_path = None;
         s.save();
         let s_clone = s.clone();
