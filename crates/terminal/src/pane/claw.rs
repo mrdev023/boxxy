@@ -188,6 +188,9 @@ pub(super) fn setup_claw(
                 boxxy_claw::engine::ClawEngineEvent::SessionStateChanged { status, .. } => {
                     inner_clone.borrow().msg_bar.set_status(status.clone());
                 }
+                boxxy_claw::engine::ClawEngineEvent::UserMessage { content } => {
+                    boxxy_claw::ui::add_user_row(&claw_store_events, id.clone(), content);
+                }
                 boxxy_claw::engine::ClawEngineEvent::AgentThinking { is_thinking, .. } => {
                     if *is_thinking {
                         indicator_event_clone.show_thinking();

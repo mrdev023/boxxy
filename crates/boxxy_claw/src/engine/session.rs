@@ -671,6 +671,11 @@ impl ClawSession {
                             image_attachments,
                         } => {
                             current_dir = cwd.clone();
+                            self.send_ui(ClawEngineEvent::UserMessage {
+                                content: query.clone(),
+                            })
+                            .await;
+
                             if let Some(handle) = current_turn.take() {
                                 handle.abort();
                                 let _ = self
@@ -754,6 +759,11 @@ impl ClawSession {
                             image_attachments,
                         } => {
                             current_dir = cwd.clone();
+                            self.send_ui(ClawEngineEvent::UserMessage {
+                                content: message.clone(),
+                            })
+                            .await;
+
                             debug!(
                                 "Pane {} ({}): User reply: {message}. Checking for pending tools.",
                                 self.pane_id, self.name

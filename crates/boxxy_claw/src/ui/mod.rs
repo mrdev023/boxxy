@@ -497,6 +497,22 @@ pub fn create_claw_message_list() -> (gtk::ListView, gtk::gio::ListStore) {
                     viewer.set_content(&content);
                     cmd_label.set_visible(false);
                 }
+                crate::engine::PersistentClawRow::User { pane_id, content } => {
+                    icon.set_icon_name(Some("boxxy-comic-bubble-symbolic"));
+                    icon.remove_css_class("accent");
+                    icon.remove_css_class("warning");
+                    title.set_label("User Message");
+
+                    let id_short = if pane_id.len() >= 7 {
+                        &pane_id[..7]
+                    } else {
+                        &pane_id
+                    };
+                    pane_lbl.set_label(&format!("Pane {id_short}"));
+
+                    viewer.set_content(&content);
+                    cmd_label.set_visible(false);
+                }
                 crate::engine::PersistentClawRow::Suggested {
                     pane_id,
                     agent_name,
@@ -589,6 +605,15 @@ pub fn add_diagnosis_row(
             agent_name,
             content: diagnosis.to_string(),
             usage: None,
+        },
+    ));
+}
+
+pub fn add_user_row(list: &gtk::gio::ListStore, pane_id: String, content: &str) {
+    list.append(&crate::engine::ClawRowObject::new(
+        crate::engine::PersistentClawRow::User {
+            pane_id,
+            content: content.to_string(),
         },
     ));
 }

@@ -176,6 +176,7 @@ mod imp {
                     let row = self.row.borrow();
                     match row.as_ref().unwrap() {
                         PersistentClawRow::Diagnosis { content, .. } => content.to_value(),
+                        PersistentClawRow::User { content, .. } => content.to_value(),
                         PersistentClawRow::Suggested { diagnosis, .. } => diagnosis.to_value(),
                         PersistentClawRow::ProcessList { result_json, .. } => {
                             result_json.to_value()
@@ -235,6 +236,10 @@ pub enum PersistentClawRow {
         content: String,
         usage: Option<rig::completion::Usage>,
     },
+    User {
+        pane_id: String,
+        content: String,
+    },
     Suggested {
         pane_id: String,
         agent_name: Option<String>,
@@ -254,6 +259,10 @@ impl PersistentClawRow {
     #[must_use]
     pub fn from_engine_event(pane_id: String, event: &ClawEngineEvent) -> Option<Self> {
         match event {
+            ClawEngineEvent::UserMessage { content, .. } => Some(PersistentClawRow::User {
+                pane_id,
+                content: content.clone(),
+            }),
             ClawEngineEvent::DiagnosisComplete {
                 agent_name,
                 diagnosis,
@@ -382,6 +391,9 @@ pub enum ClawEngineEvent {
     SessionStateChanged {
         agent_name: String,
         status: AgentStatus,
+    },
+    UserMessage {
+        content: String,
     },
     DiagnosisComplete {
         agent_name: String,
