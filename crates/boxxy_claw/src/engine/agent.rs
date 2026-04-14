@@ -369,7 +369,7 @@ pub async fn create_claw_agent(
 
     for tool in &tools {
         let def = tool.definition("".to_string()).await;
-        log::info!("Injecting tool into Rig: {}", def.name);
+        log::debug!("Injecting tool into Rig: {}", def.name);
     }
 
     // --- Inject Location & Time Context ---
