@@ -1,11 +1,16 @@
 use anyhow::{Context, Result};
-use boxxy_agent::ipc::BoxxyAgent;
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use tokio::net::UnixStream;
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::broadcast;
 use zbus::connection::Builder;
+
+use boxxy_agent::core::state::AgentState;
+use boxxy_agent::subsystems::claw::ClawSubsystem;
+use boxxy_agent::subsystems::maintenance::MaintenanceSubsystem;
+use boxxy_agent::subsystems::pty::PtySubsystem;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,13 +26,28 @@ async fn main() -> Result<()> {
         .init();
     log::info!("Boxxy Agent starting...");
 
-    // Spawn background flush loop
-    tokio::spawn(async {
+    let state = AgentState::new();
+    let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
+
+    // Spawn background maintenance loop
+    let shutdown_rx_maintenance = shutdown_tx.subscribe();
+    tokio::spawn(async move {
         boxxy_telemetry::init_db().await;
         boxxy_telemetry::init().await;
+        
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
+        let mut shutdown_rx = shutdown_rx_maintenance;
+        
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(600)).await;
-            boxxy_telemetry::flush_journal().await;
+            tokio::select! {
+                _ = interval.tick() => {
+                    boxxy_telemetry::flush_journal().await;
+                }
+                _ = shutdown_rx.recv() => {
+                    log::info!("Maintenance loop shutting down gracefully.");
+                    break;
+                }
+            }
         }
     });
 
@@ -42,18 +62,12 @@ async fn main() -> Result<()> {
             .context("Failed to parse --socket-fd")?;
         log::info!("Using inherited FD: {}", fd_num);
 
-        // Log environment for debugging host escape
-        log::info!("Agent HOME: {:?}", std::env::var("HOME"));
-        log::info!("Agent SHELL: {:?}", std::env::var("SHELL"));
-        log::info!("Agent PATH: {:?}", std::env::var("PATH"));
-
         let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd_num) };
         std_stream
             .set_nonblocking(true)
             .context("Failed to set socket non-blocking")?;
         UnixStream::from_std(std_stream).context("Failed to create tokio UnixStream from std")?
     } else {
-        // Fallback for native path: UI passes the Unix socket path as the first argument.
         let socket_path = args
             .get(1)
             .context("Expected --socket-fd or socket path as first argument")?;
@@ -63,8 +77,6 @@ async fn main() -> Result<()> {
             .with_context(|| format!("Failed to connect to socket: {}", socket_path))?
     };
 
-    // Dup the stream FD before handing it to zbus so we can independently
-    // monitor it for closure (detecting when the UI process exits).
     let monitor_fd: Option<OwnedFd> = {
         use std::os::unix::io::AsRawFd;
         let dup = unsafe { libc::dup(stream.as_raw_fd()) };
@@ -78,34 +90,23 @@ async fn main() -> Result<()> {
 
     let _conn = Builder::unix_stream(stream)
         .p2p()
-        .serve_at("/dev/boxxy/BoxxyTerminal/Agent", BoxxyAgent::default())?
-        .serve_at(
-            "/dev/boxxy/BoxxyTerminal/AgentClaw",
-            boxxy_agent::claw::AgentClaw,
-        )?
+        .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Pty", PtySubsystem::new(state.clone()))?
+        .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Claw", ClawSubsystem::new(state.clone()))?
+        .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Maintenance", MaintenanceSubsystem::new(state.clone()))?
         .build()
         .await
         .context("Failed to build zbus connection")?;
 
-    log::info!(
-        "Boxxy Agent serving at /dev/boxxy/BoxxyTerminal/Agent and /dev/boxxy/BoxxyTerminal/AgentClaw"
-    );
+    log::info!("Boxxy Agent serving at /dev/boxxy/BoxxyTerminal/Agent/*");
 
     #[cfg(target_os = "linux")]
     unsafe {
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
     }
 
-    let mut sigterm =
-        signal(SignalKind::terminate()).context("Failed to set up SIGTERM handler")?;
+    let mut sigterm = signal(SignalKind::terminate()).context("Failed to set up SIGTERM handler")?;
     let mut sighup = signal(SignalKind::hangup()).context("Failed to set up SIGHUP handler")?;
 
-    // Wait for shutdown: SIGTERM/SIGHUP from parent death (PDEATHSIG), or socket
-    // HUP when the UI closes its end of the socket on exit.
-    //
-    // We use is_read_closed() to distinguish real connection closure (EPOLLRDHUP)
-    // from normal D-Bus traffic (EPOLLIN). When data arrives we clear the ready
-    // flag and loop; when the remote end closes we break out and exit.
     match monitor_fd.and_then(|fd| {
         AsyncFd::with_interest(fd, Interest::READABLE)
             .map_err(|e| {
@@ -150,6 +151,9 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // Trigger graceful shutdown of subsystems
+    let _ = shutdown_tx.send(());
 
     // Final Telemetry Flush before exit
     log::debug!("Performing final telemetry flush...");

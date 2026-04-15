@@ -735,7 +735,7 @@ impl TerminalPaneComponent {
                         (c, r)
                     };
 
-                    let options = boxxy_agent::ipc::SpawnOptions {
+                    let options = boxxy_agent::ipc::pty::SpawnOptions {
                         cwd: working_dir.unwrap_or_default(),
                         argv: cmd,
                         env,

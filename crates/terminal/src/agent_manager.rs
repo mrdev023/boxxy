@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
-use boxxy_agent::ipc::{AgentClawProxy, AgentProxy, SpawnOptions};
+use boxxy_agent::ipc::claw::AgentClawProxy;
+use boxxy_agent::ipc::pty::{AgentPtyProxy, SpawnOptions};
 use tokio::net::UnixStream;
 use zbus::connection::Builder;
 use zbus::zvariant::OwnedFd;
 
 #[derive(Clone)]
 pub struct AgentManager {
-    proxy: AgentProxy<'static>,
+    proxy: AgentPtyProxy<'static>,
     claw_proxy: AgentClawProxy<'static>,
 }
 
@@ -85,7 +86,7 @@ impl AgentManager {
 
     async fn connect_to_proxy(
         stream: UnixStream,
-    ) -> Result<(AgentProxy<'static>, AgentClawProxy<'static>)> {
+    ) -> Result<(AgentPtyProxy<'static>, AgentClawProxy<'static>)> {
         let guid = zbus::Guid::generate();
         let connection = Builder::unix_stream(stream)
             .p2p()
@@ -94,11 +95,11 @@ impl AgentManager {
             .await
             .context("Failed to establish P2P connection to agent")?;
 
-        let proxy = AgentProxy::builder(&connection)
+        let proxy = AgentPtyProxy::builder(&connection)
             .destination("dev.boxxy.BoxxyTerminal.Agent")?
             .build()
             .await
-            .context("Failed to create AgentProxy")?;
+            .context("Failed to create AgentPtyProxy")?;
 
         let claw_proxy = AgentClawProxy::builder(&connection)
             .destination("dev.boxxy.BoxxyTerminal.AgentClaw")?
@@ -258,7 +259,7 @@ impl AgentManager {
         Ok(())
     }
 
-    pub fn proxy(&self) -> &AgentProxy<'static> {
+    pub fn proxy(&self) -> &AgentPtyProxy<'static> {
         &self.proxy
     }
 

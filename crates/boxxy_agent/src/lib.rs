@@ -1,2 +1,3 @@
-pub mod claw;
+pub mod core;
 pub mod ipc;
+pub mod subsystems;

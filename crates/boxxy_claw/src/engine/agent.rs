@@ -9,7 +9,7 @@ use crate::engine::tools::workspace::{
     ReadPaneTool, SendKeystrokesTool, SetGlobalIntentTool, SpawnAgentTool,
 };
 use crate::engine::tools::{ClawApprovalHandler, SysShellTool};
-use boxxy_agent::ipc::AgentClawProxy;
+use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_core_toolbox::{
     FileDeleteTool, FileReadTool, FileWriteTool, GetClipboardTool, GetSystemInfoTool,
     HttpFetchTool, KillProcessTool, ListDirectoryTool, ListProcessesTool, SetClipboardTool,

@@ -55,7 +55,7 @@ Main UI Orchestrator using a modular MVU pattern. Manages the `AdwApplicationWin
 Manages the split-pane terminal environment. Features a deep modular architecture (`pane/`) handling UI, gestures, events, media previews, and Claw integration.
 
 ### 4. `boxxy-agent` (Binary/Library Crate)
-Host Privileged Agent. Bypasses Flatpak sandboxing to handle PTY management and host-level system administration via D-Bus IPC.
+Host Privileged Daemon. Bypasses Flatpak sandboxing to handle PTY management and host-level system administration via D-Bus IPC. Utilizing a **Subsystem Architecture**, it strictly separates latency-sensitive terminal I/O from background maintenance and AI-driven host operations. It implements an `AgentMode` state machine allowing it to "shed" interactive components when the UI closes, maintaining a minimal (~3MB) ghost footprint for background tasks like telemetry journaling and memory consolidation.
 
 ### 5. `boxxy-claw` (Library Crate)
 Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID.

@@ -1,14 +1,21 @@
+use crate::core::state::AgentState;
 use std::process::Stdio;
 use tokio::process::Command;
 use zbus::fdo;
 use zbus::interface;
 
-#[derive(Default)]
-pub struct AgentClaw;
+pub struct ClawSubsystem {
+    state: AgentState,
+}
 
-#[interface(name = "dev.boxxy.BoxxyTerminal.AgentClaw")]
-impl AgentClaw {
-    /// Execute a non-interactive shell command on the host.
+impl ClawSubsystem {
+    pub fn new(state: AgentState) -> Self {
+        Self { state }
+    }
+}
+
+#[interface(name = "dev.boxxy.BoxxyTerminal.Agent.Claw")]
+impl ClawSubsystem {
     async fn exec_shell(&self, command: String) -> fdo::Result<(i32, String, String)> {
         let child = Command::new("bash")
             .arg("-c")
@@ -30,7 +37,6 @@ impl AgentClaw {
         Ok((exit_code, stdout, stderr))
     }
 
-    /// Read a file from the host system.
     async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> fdo::Result<String> {
         let blacklisted = load_blacklist();
 
@@ -48,7 +54,6 @@ impl AgentClaw {
                 Err(e) => Err(fdo::Error::Failed(format!("Failed to read file: {}", e))),
             }
         } else {
-            // Line-based reading
             match tokio::fs::read_to_string(&path).await {
                 Ok(content) => {
                     let lines: Vec<&str> = content.lines().collect();
@@ -93,7 +98,6 @@ impl AgentClaw {
         }
     }
 
-    /// Write a file to the host system.
     async fn write_file(&self, path: String, content: String) -> fdo::Result<()> {
         let blacklisted = load_blacklist();
 
@@ -111,7 +115,6 @@ impl AgentClaw {
         }
     }
 
-    /// List contents of a directory. Returns (name, is_dir, size).
     async fn list_directory(&self, path: String) -> fdo::Result<Vec<(String, bool, u64)>> {
         let blacklisted = load_blacklist();
         for black_path in blacklisted {
@@ -138,7 +141,6 @@ impl AgentClaw {
         Ok(entries)
     }
 
-    /// Delete a file from the host system.
     async fn delete_file(&self, path: String) -> fdo::Result<()> {
         let blacklisted = load_blacklist();
         for black_path in blacklisted {
@@ -154,7 +156,6 @@ impl AgentClaw {
             .map_err(|e| fdo::Error::Failed(format!("Failed to delete file: {}", e)))
     }
 
-    /// Get system information summary.
     async fn get_system_info(&self) -> fdo::Result<String> {
         use sysinfo::{Disks, System};
         let mut sys = System::new_all();
@@ -194,7 +195,6 @@ impl AgentClaw {
         Ok(info.to_string())
     }
 
-    /// List running processes. Returns (pid, name, cpu_usage, memory_bytes, read_bytes, written_bytes).
     async fn list_processes(&self) -> fdo::Result<Vec<(u32, String, f64, u64, u64, u64)>> {
         use sysinfo::System;
         let mut sys = System::new_all();
@@ -216,7 +216,6 @@ impl AgentClaw {
         Ok(processes)
     }
 
-    /// Kill a process by PID.
     async fn kill_process(&self, pid: u32, signal: i32) -> fdo::Result<()> {
         unsafe {
             if libc::kill(pid as i32, signal) != 0 {
@@ -229,7 +228,6 @@ impl AgentClaw {
         Ok(())
     }
 
-    /// Get text content from the host clipboard.
     async fn get_clipboard(&self) -> fdo::Result<String> {
         let mut clipboard = arboard::Clipboard::new()
             .map_err(|e| fdo::Error::Failed(format!("Failed to open clipboard: {}", e)))?;
@@ -238,7 +236,6 @@ impl AgentClaw {
             .map_err(|e| fdo::Error::Failed(format!("Failed to read clipboard: {}", e)))
     }
 
-    /// Set text content to the host clipboard.
     async fn set_clipboard(&self, text: String) -> fdo::Result<()> {
         let mut clipboard = arboard::Clipboard::new()
             .map_err(|e| fdo::Error::Failed(format!("Failed to open clipboard: {}", e)))?;
@@ -248,7 +245,6 @@ impl AgentClaw {
     }
 }
 
-/// Load blacklist from config file or return defaults.
 fn load_blacklist() -> Vec<String> {
     let mut blacklisted = vec![
         "/etc/shadow".to_string(),
@@ -261,7 +257,6 @@ fn load_blacklist() -> Vec<String> {
     if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
         let blacklist_path = dirs.config_dir().join("boxxyclaw").join("BLACKLIST.md");
         if let Ok(content) = std::fs::read_to_string(&blacklist_path) {
-            // Read from file, replacing defaults
             let mut new_blacklist = Vec::new();
             for line in content.lines() {
                 let trimmed = line.trim();

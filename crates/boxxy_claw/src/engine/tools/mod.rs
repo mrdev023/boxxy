@@ -8,7 +8,7 @@ pub mod workspace;
 
 use crate::engine::ClawEngineEvent;
 use crate::engine::session::SessionState;
-use boxxy_agent::ipc::AgentClawProxy;
+use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_core_toolbox::ApprovalHandler;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;

@@ -4,7 +4,7 @@ use crate::engine::{
     context::load_session_context, context::retrieve_memories, context::summarize_and_store,
     dispatcher::extract_command_and_clean, persist_visual_event,
 };
-use boxxy_agent::ipc::AgentClawProxy;
+use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_db::Db;
 use log::{debug, info};
 use rig::message::Message;

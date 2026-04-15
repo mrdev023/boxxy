@@ -1,5 +1,5 @@
 use crate::ApprovalHandler;
-use boxxy_agent::ipc::AgentClawProxy;
+use boxxy_agent::ipc::claw::AgentClawProxy;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

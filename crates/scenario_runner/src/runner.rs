@@ -8,8 +8,12 @@ use zbus::connection::Builder;
 use zbus::Guid;
 use tokio::net::UnixStream;
 use futures_util;
-use boxxy_agent::ipc::{BoxxyAgent, AgentClawProxy};
-use boxxy_agent::claw::AgentClaw;
+use boxxy_agent::ipc::claw::AgentClawProxy;
+use boxxy_agent::subsystems::pty::PtySubsystem;
+use boxxy_agent::subsystems::claw::ClawSubsystem;
+use boxxy_agent::subsystems::maintenance::MaintenanceSubsystem;
+use boxxy_agent::core::state::AgentState;
+
 
 pub struct MockPane {
     pub id: String,
@@ -54,8 +58,8 @@ impl ScenarioRunner {
             Builder::unix_stream(p0)
                 .server(Guid::generate())?
                 .p2p()
-                .serve_at("/dev/boxxy/BoxxyTerminal/Agent", BoxxyAgent::default())?
-                .serve_at("/dev/boxxy/BoxxyTerminal/AgentClaw", AgentClaw)?
+                .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Pty", PtySubsystem::new(AgentState::new()))?
+                .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Claw", ClawSubsystem::new(AgentState::new()))?
                 .build(),
             Builder::unix_stream(p1)
                 .p2p()
