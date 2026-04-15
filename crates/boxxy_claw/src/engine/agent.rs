@@ -227,6 +227,11 @@ pub async fn create_claw_agent(
             current_dir: current_dir.to_string(),
             approval: approval_handler.clone(),
         }),
+        Box::new(crate::memories::MemoryDeleteTool {
+            db: db.clone(),
+            current_dir: current_dir.to_string(),
+            approval: approval_handler.clone(),
+        }),
         Box::new(crate::engine::tools::scrollback::ReadScrollbackTool {
             tx_ui: tx_ui.clone(),
             state: state.clone(),

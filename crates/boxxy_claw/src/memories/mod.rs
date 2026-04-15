@@ -4,4 +4,4 @@ pub mod flush;
 pub mod hygiene;
 pub mod tools;
 
-pub use tools::MemoryStoreTool;
+pub use tools::{MemoryStoreTool, MemoryDeleteTool};

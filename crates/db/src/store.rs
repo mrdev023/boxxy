@@ -426,6 +426,16 @@ impl<'a> Store<'a> {
         Ok(records)
     }
 
+    pub async fn delete_memory(&self, key: &str, project_path: Option<&str>) -> Result<()> {
+        let path = project_path.unwrap_or("global");
+        sqlx::query("DELETE FROM memories WHERE key = ? AND project_path = ?")
+            .bind(key)
+            .bind(path)
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
     // --- Skills ---
 
     pub async fn sync_skills(&self, skills: &[SkillRecord]) -> Result<()> {
@@ -587,6 +597,24 @@ mod tests {
         assert_eq!(results.len(), 1, "Only the verified, unpinned memory should be returned in search");
         assert_eq!(results[0].key, "verified_fact");
         assert_eq!(results[0].content, "Rust is a fast and memory-safe language.");
+    }
+
+    #[tokio::test]
+    async fn test_memory_deletion() {
+        let db = Db::new_in_memory().await.unwrap();
+        let store = Store::new(db.pool());
+
+        let key = "delete_me";
+        store
+            .add_memory(key, None, "I will be deleted", None, true, false)
+            .await
+            .unwrap();
+
+        assert!(store.get_memory_by_key(key, None).await.unwrap().is_some());
+
+        store.delete_memory(key, None).await.unwrap();
+
+        assert!(store.get_memory_by_key(key, None).await.unwrap().is_none());
     }
 
     #[tokio::test]

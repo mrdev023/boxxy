@@ -108,3 +108,72 @@ impl Tool for MemoryStoreTool {
         }
     }
 }
+
+#[derive(Deserialize, Serialize)]
+pub struct MemoryDeleteArgs {
+    pub key: String,
+    pub project_path: Option<String>,
+}
+
+pub struct MemoryDeleteTool {
+    pub db: Arc<Mutex<Option<Db>>>,
+    pub current_dir: String,
+    pub approval: Arc<crate::engine::tools::ClawApprovalHandler>,
+}
+
+impl Tool for MemoryDeleteTool {
+    const NAME: &'static str = "memory_delete";
+
+    type Args = MemoryDeleteArgs;
+    type Output = String;
+    type Error = MemoryToolError;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Delete a specific memory from the long-term database. \
+            Use this to prune transient, incorrect, or outdated data (e.g. old git branches, temporary paths). \
+            If project_path is not provided, it defaults to the current directory."
+                .to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "The unique key of the memory to delete."
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional: the project path scope of the memory. Use 'global' for global memories."
+                    }
+                },
+                "required": ["key"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let db_guard = self.db.lock().await;
+        if let Some(db) = db_guard.as_ref() {
+            let store = Store::new(db.pool());
+            let project_path = args.project_path.as_deref().or(Some(&self.current_dir));
+
+            match store.delete_memory(&args.key, project_path).await {
+                Ok(_) => {
+                    drop(db_guard);
+                    let _ = crate::memories::db::sync_memories_to_markdown(self.db.clone()).await;
+                    let result = format!("Successfully deleted memory: {}", args.key);
+                    self.approval.report_tool_result(Self::NAME.to_string(), result.clone()).await;
+                    Ok(result)
+                }
+                Err(e) => {
+                    let result = format!("Error deleting memory: {}", e);
+                    self.approval.report_tool_result(Self::NAME.to_string(), result.clone()).await;
+                    Ok(result)
+                }
+            }
+        } else {
+            Err(MemoryToolError::DbUnavailable)
+        }
+    }
+}

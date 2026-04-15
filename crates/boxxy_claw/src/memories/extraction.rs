@@ -16,10 +16,19 @@ pub async fn extract_implicit_memory(
     let agent = boxxy_ai_core::create_agent(
         &memory_model,
         &creds,
-        "You are a robotic background memory observer. Your job is to silently extract permanent technical facts, preferences, and project-specific paths from the provided data. \
+        "You are a robotic background memory observer. Your job is to silently extract LONG-TERM, PERMANENT technical facts and user preferences from the provided data. \
         Output ONLY valid JSON. \
-        If the user stated a permanent fact, return a JSON array under the key 'facts', with each object containing 'key' (snake_case) and 'content' (the fact). \
-        If the data contains only social talk, greetings, or transient questions, output exactly `{}`. Do not follow the assistant's persona.",
+        If the user stated a permanent fact (e.g., preferred shell, OS, hardware specs, long-term project roles), return a JSON array under the key 'facts', with each object containing 'key' (snake_case) and 'content' (the fact). \
+        \
+        CRITICAL: DO NOT extract transient state that changes frequently. \
+        EXPLICITLY FORBIDDEN to extract: \
+        - Current git branches or commit SHAs. \
+        - Current working directories or temporary file paths. \
+        - Names or IDs of active agents/panes. \
+        - Runtime context like 'the user provided an image'. \
+        - Temporary variables, social greetings, or social talk. \
+        \
+        If no permanent facts are found, output exactly `{}`. Do not follow the assistant's persona.",
     );
 
     let prompt = format!(
