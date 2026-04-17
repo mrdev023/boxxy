@@ -268,6 +268,13 @@ impl ClawSession {
                 | ClawMessage::TurnFinished
                 | ClawMessage::ClawQuery { .. }
                 | ClawMessage::UserMessage { .. }
+                | ClawMessage::FileWriteReply { .. }
+                | ClawMessage::FileDeleteReply { .. }
+                | ClawMessage::KillProcessReply { .. }
+                | ClawMessage::GetClipboardReply { .. }
+                | ClawMessage::SetClipboardReply { .. }
+                | ClawMessage::TaskCompletedEvent { .. }
+                | ClawMessage::CommandFinished { .. }
         )
     }
 
@@ -1049,8 +1056,23 @@ impl ClawSession {
                                 let _ = reply.send(false);
                                 state_lock.history.push(rig::message::Message::user(message.clone()));
                                 fulfilled = true;
+                            } else if let Some(reply) = state_lock.pending_file_delete_reply.take() {
+                                let _ = reply.send(false);
+                                state_lock.history.push(rig::message::Message::user(message.clone()));
+                                fulfilled = true;
+                            } else if let Some(reply) = state_lock.pending_kill_process_reply.take() {
+                                let _ = reply.send(false);
+                                state_lock.history.push(rig::message::Message::user(message.clone()));
+                                fulfilled = true;
+                            } else if let Some(reply) = state_lock.pending_get_clipboard_reply.take() {
+                                let _ = reply.send(false);
+                                state_lock.history.push(rig::message::Message::user(message.clone()));
+                                fulfilled = true;
+                            } else if let Some(reply) = state_lock.pending_set_clipboard_reply.take() {
+                                let _ = reply.send(false);
+                                state_lock.history.push(rig::message::Message::user(message.clone()));
+                                fulfilled = true;
                             }
-
 
                             if fulfilled {
                                 debug!(

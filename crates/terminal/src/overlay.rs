@@ -631,4 +631,8 @@ impl TerminalOverlay {
     pub fn is_visible(&self) -> bool {
         self.revealer.reveals_child()
     }
+
+    pub fn current_proposal(&self) -> crate::TerminalProposal {
+        self.current_proposal.borrow().clone()
+    }
 }

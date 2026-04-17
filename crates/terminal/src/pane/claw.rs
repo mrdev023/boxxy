@@ -74,6 +74,7 @@ pub(super) fn setup_claw(
     let cb_focus = callback.clone();
 
     let id_for_focus = id.clone();
+    let claw_popover_for_file_reply = claw_popover_self_ref.clone();
     let claw_popover = TerminalOverlay::new(
         move |cmd: String| {
             if let Some(inner) = inner_clone_for_cmd.upgrade() {
@@ -109,11 +110,33 @@ pub(super) fn setup_claw(
                 inner.borrow().terminal.grab_focus();
             }
 
+            let proposal = if let Some(popover) = claw_popover_for_file_reply.borrow().as_ref() {
+                popover.current_proposal()
+            } else {
+                crate::TerminalProposal::None
+            };
+
             let tx = tx_file_reply.clone();
             gtk::glib::spawn_future_local(async move {
-                let _ = tx
-                    .send(boxxy_claw::engine::ClawMessage::FileWriteReply { approved })
-                    .await;
+                let msg = match proposal {
+                    crate::TerminalProposal::FileWrite(_, _) => {
+                        boxxy_claw::engine::ClawMessage::FileWriteReply { approved }
+                    }
+                    crate::TerminalProposal::FileDelete(_) => {
+                        boxxy_claw::engine::ClawMessage::FileDeleteReply { approved }
+                    }
+                    crate::TerminalProposal::KillProcess(_, _) => {
+                        boxxy_claw::engine::ClawMessage::KillProcessReply { approved }
+                    }
+                    crate::TerminalProposal::GetClipboard => {
+                        boxxy_claw::engine::ClawMessage::GetClipboardReply { approved }
+                    }
+                    crate::TerminalProposal::SetClipboard(_) => {
+                        boxxy_claw::engine::ClawMessage::SetClipboardReply { approved }
+                    }
+                    _ => boxxy_claw::engine::ClawMessage::FileWriteReply { approved },
+                };
+                let _ = tx.send(msg).await;
             });
         },
         move |_proposal| {
