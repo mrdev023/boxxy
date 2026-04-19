@@ -3037,7 +3037,7 @@ impl<T: EventListener> Handler for Term<T> {
         }
 
         if let Some((cols, rows, width, height)) = cursor_offset {
-            log::info!(
+            log::debug!(
                 "Term::apc_dispatch: Advancing cursor by cols={:?}, rows={:?}, width={}, height={}",
                 cols,
                 rows,
@@ -3087,7 +3087,7 @@ impl<T: EventListener> Handler for Term<T> {
                         .insert(crate::engine::term::cell::Flags::GRAPHICS_ATTACHMENT);
                 }
             }
-            log::info!(
+            log::debug!(
                 "Term::apc_dispatch: Cursor advanced to {:?}",
                 self.grid.cursor.point
             );

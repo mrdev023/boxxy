@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
                     boxxy_telemetry::flush_journal().await;
                 }
                 _ = shutdown_rx.recv() => {
-                    log::info!("Maintenance loop shutting down gracefully.");
+                    log::debug!("Maintenance loop shutting down gracefully.");
                     break;
                 }
             }
@@ -119,24 +119,24 @@ async fn main() -> Result<()> {
             loop {
                 tokio::select! {
                     _ = sigterm.recv() => {
-                        log::info!("SIGTERM received, shutting down.");
+                        log::debug!("SIGTERM received, shutting down.");
                         break;
                     }
                     _ = sighup.recv() => {
-                        log::info!("SIGHUP received, shutting down.");
+                        log::debug!("SIGHUP received, shutting down.");
                         break;
                     }
                     guard = afd.readable() => {
                         match guard {
                             Ok(g) if g.ready().is_read_closed() => {
-                                log::info!("Socket closed, shutting down.");
+                                log::debug!("Socket closed, shutting down.");
                                 break;
                             }
                             Ok(mut g) => {
                                 g.clear_ready();
                             }
                             Err(_) => {
-                                log::info!("Socket error, shutting down.");
+                                log::debug!("Socket error, shutting down.");
                                 break;
                             }
                         }
@@ -146,8 +146,8 @@ async fn main() -> Result<()> {
         }
         None => {
             tokio::select! {
-                _ = sigterm.recv() => log::info!("SIGTERM received, shutting down."),
-                _ = sighup.recv()  => log::info!("SIGHUP received, shutting down."),
+                _ = sigterm.recv() => log::debug!("SIGTERM received, shutting down."),
+                _ = sighup.recv()  => log::debug!("SIGHUP received, shutting down."),
             }
         }
     }

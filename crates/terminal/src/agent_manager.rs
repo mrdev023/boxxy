@@ -315,4 +315,11 @@ impl AgentManager {
             .await
             .context("Agent set_foreground_tracking failed")
     }
+
+    pub async fn signal_process_group(&self, pid: u32, signal: i32) -> Result<()> {
+        self.proxy
+            .signal_process_group(pid, signal)
+            .await
+            .context("Agent signal_process_group failed")
+    }
 }

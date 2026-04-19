@@ -94,6 +94,23 @@ pub struct TerminalPaneComponent {
     msgbar_shortcut: gtk::Shortcut,
 }
 
+impl Drop for PaneInner {
+    fn drop(&mut self) {
+        if let Some(pid) = self.pid {
+            // When a terminal pane is closed, we must ensure all child processes are killed.
+            // Since the agent daemon outlives the UI, simply closing the PTY master FD 
+            // might not be enough if the child (like mpv) ignores SIGHUP or if the 
+            // agent is still holding the slave FD open.
+            log::info!("PaneInner dropping, killing process group for PID {}", pid);
+            glib::spawn_future_local(async move {
+                let agent = crate::get_agent().await;
+                // Signal 15 is SIGTERM. This ensures that the shell and all its children (like mpv) are terminated properly.
+                let _ = agent.signal_process_group(pid, 15).await;
+            });
+        }
+    }
+}
+
 pub(super) struct PaneInner {
     pub terminal: TerminalWidget,
     pub(super) scrolled_window: gtk::ScrolledWindow,

@@ -1,6 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as Base64;
-use log::{error, info};
+use log::error;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -120,17 +120,25 @@ impl KittyImageData {
     }
 }
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 pub struct KittyImage {
     pub id: u32,
     pub data: KittyImageData,
     pub texture: Option<gtk4::gdk::Texture>,
+    pub is_anonymous: bool,
+    pub last_used: AtomicU64,
 }
+
+static NEXT_LRU_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub struct KittyGraphics {
     pub images: HashMap<u32, Arc<KittyImage>>,
     pub placements: Vec<Placement>,
     pub pending_data: Vec<u8>,
     pub pending_command: Option<Command>,
+    pub max_image_bytes: usize,
+    pub max_images: usize,
 }
 
 pub type KittyResponse = (Option<String>, Option<(Option<u32>, Option<u32>, u32, u32)>);
@@ -164,6 +172,15 @@ impl KittyGraphics {
                 );
             }
         }
+        // Remove placements that have scrolled far beyond a reasonable scrollback limit.
+        // We use -50000 as a safe boundary to prevent infinite growth while
+        // preserving images in the typical 10k line scrollback buffer.
+        let old_len = self.placements.len();
+        self.placements.retain(|p| p.point.line.0 > -50000);
+
+        if self.placements.len() != old_len {
+            self.reap_unused_images();
+        }
     }
 
     pub fn new() -> Self {
@@ -172,6 +189,53 @@ impl KittyGraphics {
             placements: Vec::new(),
             pending_data: Vec::new(),
             pending_command: None,
+            max_image_bytes: 256 * 1024 * 1024,
+            max_images: 1024,
+        }
+    }
+
+    pub fn current_image_bytes(&self) -> usize {
+        self.images.values().map(|img| {
+            match &img.data {
+                KittyImageData::Dynamic(d) => (d.width() * d.height() * 4) as usize,
+                KittyImageData::RawRgb { data, .. } => data.len(),
+                KittyImageData::RawRgba { data, .. } => data.len(),
+            }
+        }).sum()
+    }
+
+    pub fn reap_unused_images(&mut self) {
+        let used_ids: std::collections::HashSet<u32> =
+            self.placements.iter().map(|p| p.image_id).collect();
+
+        self.images
+            .retain(|id, img| !img.is_anonymous || used_ids.contains(id));
+
+        let mut current_bytes = self.current_image_bytes();
+        if self.images.len() > self.max_images || current_bytes > self.max_image_bytes {
+            let mut candidates: Vec<(u32, u64)> = self
+                .images
+                .iter()
+                .map(|(id, img)| (*id, img.last_used.load(Ordering::Relaxed)))
+                .collect();
+
+            candidates.sort_by_key(|(_, last_used)| *last_used);
+
+            for (id, _) in candidates {
+                if self.images.len() <= self.max_images && current_bytes <= self.max_image_bytes {
+                    break;
+                }
+
+                if let Some(removed) = self.images.remove(&id) {
+                    let bytes = match &removed.data {
+                        KittyImageData::Dynamic(d) => (d.width() * d.height() * 4) as usize,
+                        KittyImageData::RawRgb { data, .. } => data.len(),
+                        KittyImageData::RawRgba { data, .. } => data.len(),
+                    };
+                    current_bytes = current_bytes.saturating_sub(bytes);
+                    self.placements.retain(|p| p.image_id != id);
+                }
+            }
         }
     }
 
@@ -187,13 +251,13 @@ impl KittyGraphics {
         let control = parts.next().unwrap_or(&[]);
         let payload = parts.next().unwrap_or(&[]);
 
-        info!(
+        log::trace!(
             "KittyGraphics: handle_command raw control len={}, payload len={}",
             control.len(),
             payload.len()
         );
         if !control.is_empty() {
-            info!(
+            log::trace!(
                 "KittyGraphics: control sequence: {}",
                 String::from_utf8_lossy(control)
             );
@@ -290,7 +354,7 @@ impl KittyGraphics {
             self.pending_data.extend_from_slice(payload);
         }
 
-        info!(
+        log::trace!(
             "KittyGraphics: chunk parsed, action={:?}, id={:?}, more={}, quiet={}, pending_len={}",
             cmd.action,
             cmd.image_id,
@@ -300,9 +364,9 @@ impl KittyGraphics {
         );
 
         if self.pending_command.as_ref().is_some_and(|c| !c.more) {
-            info!("KittyGraphics: more=0, processing pending command...");
+            log::trace!("KittyGraphics: more=0, processing pending command...");
             let (response, cursor_movement) = self.process_pending(cursor_point);
-            info!("KittyGraphics: returning response: {:?}", response);
+            log::trace!("KittyGraphics: returning response: {:?}", response);
             return (response, cursor_movement);
         }
         (None, None)
@@ -333,7 +397,7 @@ impl KittyGraphics {
             match Base64.decode(&sanitized) {
                 Ok(d) => raw_data = d,
                 Err(e) => {
-                    error!(
+                    log::debug!(
                         "KittyGraphics: Failed to decode base64: {} (sanitized len: {})",
                         e,
                         sanitized.len()
@@ -354,7 +418,7 @@ impl KittyGraphics {
         }
         self.pending_data.clear();
 
-        info!(
+        log::trace!(
             "KittyGraphics: Processing image: action={:?}, id={:?}, num={:?}, len={}",
             cmd.action,
             cmd.image_id,
@@ -364,10 +428,12 @@ impl KittyGraphics {
 
         // Assign a generated ID for anonymous images (id 0 or not specified)
         let mut image_id = cmd.image_id.unwrap_or(0);
+        let mut is_anonymous = false;
         if image_id == 0 {
             static NEXT_ANON_ID: std::sync::atomic::AtomicU32 =
                 std::sync::atomic::AtomicU32::new(2_000_000_000);
             image_id = NEXT_ANON_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            is_anonymous = true;
         }
 
         let mut error_msg = None;
@@ -445,7 +511,7 @@ impl KittyGraphics {
 
         if cmd.action == Action::Delete {
             let delete_mode = cmd.delete_mode.unwrap_or(b'a');
-            info!(
+            log::trace!(
                 "KittyGraphics: Deleting images, mode={}",
                 delete_mode as char
             );
@@ -478,6 +544,8 @@ impl KittyGraphics {
                     self.placements.clear();
                 }
             }
+
+            self.reap_unused_images();
 
             let response = if cmd.quiet != 1 && cmd.quiet != 2 {
                 Some("\x1b_G;OK\x1b\\".to_string())
@@ -538,7 +606,7 @@ impl KittyGraphics {
 
             if let Some(img_data) = img_data {
                 if cmd.action == Action::Query {
-                    info!(
+                    log::trace!(
                         "KittyGraphics: Query successful for image data (len={})",
                         data_len
                     );
@@ -547,9 +615,11 @@ impl KittyGraphics {
                         id: image_id,
                         data: img_data,
                         texture: None,
+                        is_anonymous,
+                        last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
                     });
                     self.images.insert(image_id, kitty_img);
-                    info!("KittyGraphics: Loaded image {}", image_id);
+                    log::trace!("KittyGraphics: Loaded image {}", image_id);
                 }
             }
         }
@@ -560,7 +630,13 @@ impl KittyGraphics {
         ) && error_msg.is_none()
         {
             if let Some(img) = self.images.get(&image_id) {
-                // Create a placement at current cursor position
+                img.last_used.store(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed), Ordering::Relaxed);
+
+                let z_idx = cmd.z.unwrap_or(0);
+                self.placements.retain(|p| {
+                    !(p.point == cursor_point && p.z_index == z_idx)
+                });
+
                 let placement = Placement {
                     image_id,
                     placement_id: cmd.placement_id.unwrap_or(0),
@@ -574,7 +650,7 @@ impl KittyGraphics {
                     visible_height: img.data.height(),
                 };
                 self.placements.push(placement);
-                info!(
+                log::trace!(
                     "KittyGraphics: Created placement for image {} at {:?}",
                     image_id, cursor_point
                 );
@@ -582,6 +658,8 @@ impl KittyGraphics {
                 error_msg = Some("ERROR:image not found".to_string());
             }
         }
+
+        self.reap_unused_images();
 
         // Return a response if required
         let response = if let Some(err) = error_msg {
@@ -626,3 +704,151 @@ impl KittyGraphics {
         (response, cursor_offset)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::index::{Line, Column};
+
+    #[test]
+    fn test_image_reaping() {
+        let mut kg = KittyGraphics::new();
+        kg.max_images = 2;
+        kg.max_image_bytes = 10000;
+
+        for id in 1..=2 {
+            let data = KittyImageData::RawRgb {
+                width: 1,
+                height: 1,
+                data: Arc::from([0, 0, 0]),
+            };
+            let img = Arc::new(KittyImage {
+                id,
+                data,
+                texture: None,
+                is_anonymous: true,
+                last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
+            });
+            kg.images.insert(id, img);
+            kg.placements.push(Placement {
+                image_id: id,
+                placement_id: 0,
+                point: Point::new(Line(id as i32), Column(0)),
+                width: None,
+                height: None,
+                x_offset: 0,
+                y_offset: 0,
+                z_index: 0,
+                visible_width: 1,
+                visible_height: 1,
+            });
+        }
+
+        assert_eq!(kg.images.len(), 2);
+
+        let id = 3;
+        let data = KittyImageData::RawRgb { width: 1, height: 1, data: Arc::from([0, 0, 0]) };
+        kg.images.insert(id, Arc::new(KittyImage {
+            id,
+            data,
+            texture: None,
+            is_anonymous: true,
+            last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
+        }));
+        kg.placements.push(Placement {
+            image_id: id,
+            placement_id: 0,
+            point: Point::new(Line(id as i32), Column(0)),
+            width: None,
+            height: None,
+            x_offset: 0,
+            y_offset: 0,
+            z_index: 0,
+            visible_width: 1,
+            visible_height: 1,
+        });
+
+        kg.reap_unused_images();
+        assert_eq!(kg.images.len(), 2);
+        assert!(kg.images.get(&1).is_none());
+        assert!(kg.images.get(&2).is_some());
+        assert!(kg.images.get(&3).is_some());
+
+        assert_eq!(kg.placements.len(), 2);
+        assert!(kg.placements.iter().all(|p| p.image_id != 1));
+    }
+
+    #[test]
+    fn test_lru_eviction() {
+        let mut kg = KittyGraphics::new();
+        kg.max_images = 2;
+        kg.max_image_bytes = 10000;
+
+        for id in 1..=3 {
+            let data = KittyImageData::RawRgb { width: 1, height: 1, data: Arc::from([0, 0, 0]) };
+            kg.images.insert(id, Arc::new(KittyImage {
+                id,
+                data,
+                texture: None,
+                is_anonymous: false,
+                last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
+            }));
+            kg.reap_unused_images();
+        }
+
+        assert_eq!(kg.images.len(), 2);
+        assert!(kg.images.get(&1).is_none());
+        assert!(kg.images.get(&2).is_some());
+        assert!(kg.images.get(&3).is_some());
+
+        kg.images.get(&2).unwrap().last_used.store(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed), Ordering::Relaxed);
+
+        let id = 4;
+        let data = KittyImageData::RawRgb { width: 1, height: 1, data: Arc::from([0, 0, 0]) };
+        kg.images.insert(id, Arc::new(KittyImage {
+            id,
+            data,
+            texture: None,
+            is_anonymous: false,
+            last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
+        }));
+        kg.reap_unused_images();
+
+        assert_eq!(kg.images.len(), 2);
+        assert!(kg.images.get(&3).is_none());
+        assert!(kg.images.get(&2).is_some());
+        assert!(kg.images.get(&4).is_some());
+    }
+
+    #[test]
+    fn test_image_bytes_eviction() {
+        let mut kg = KittyGraphics::new();
+        kg.max_images = 100;
+        kg.max_image_bytes = 10;
+
+        let data1 = KittyImageData::RawRgb { width: 2, height: 1, data: Arc::from([0; 6]) };
+        kg.images.insert(1, Arc::new(KittyImage {
+            id: 1,
+            data: data1,
+            texture: None,
+            is_anonymous: false,
+            last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
+        }));
+
+        let data2 = KittyImageData::RawRgb { width: 2, height: 1, data: Arc::from([0; 6]) };
+        kg.images.insert(2, Arc::new(KittyImage {
+            id: 2,
+            data: data2,
+            texture: None,
+            is_anonymous: false,
+            last_used: AtomicU64::new(NEXT_LRU_SEQ.fetch_add(1, Ordering::Relaxed)),
+        }));
+
+        kg.reap_unused_images();
+
+        assert_eq!(kg.images.len(), 1);
+        assert!(kg.images.get(&1).is_none());
+        assert!(kg.images.get(&2).is_some());
+    }
+}
+

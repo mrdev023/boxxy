@@ -25,14 +25,14 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
     gtk4::glib::spawn_future_local(async move {
         let agent = boxxy_terminal::get_agent().await;
         let mut running_apps = Vec::new();
-        for pid in pids {
+        for pid in &pids {
             log::debug!(
                 "handle_close_request: Querying running processes for PID {}",
                 pid
             );
             if let Ok(Ok(mut procs)) = tokio::time::timeout(
                 std::time::Duration::from_millis(500),
-                agent.get_running_processes(pid),
+                agent.get_running_processes(*pid),
             )
             .await
             {
@@ -51,6 +51,9 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
         let pending_tasks = workspace.get_all_pending_tasks().await;
 
         if running_apps.is_empty() && pending_tasks.is_empty() {
+            for pid in &pids {
+                let _ = agent.signal_process_group(*pid, 15).await;
+            }
             inner_clone.borrow().force_close.set(true);
             inner_clone.borrow().window.close();
             return;
@@ -102,6 +105,9 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
         let window = inner_clone.borrow().window.clone();
         let response = dialog.choose_future(Some(&window)).await;
         if response == "close" {
+            for pid in &pids {
+                let _ = agent.signal_process_group(*pid, 15).await;
+            }
             inner_clone.borrow().force_close.set(true);
             inner_clone.borrow().window.close();
         }

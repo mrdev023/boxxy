@@ -295,9 +295,32 @@ impl PtySubsystem {
     }
 
     async fn signal_process_group(&self, pid: u32, signal: i32) -> fdo::Result<()> {
+        let mut tpgid = None;
+        let stat_path = format!("/proc/{}/stat", pid);
+        if let Ok(stat_content) = std::fs::read_to_string(&stat_path) {
+            if let Some(rp_pos) = stat_content.rfind(')') {
+                if rp_pos + 2 < stat_content.len() {
+                    let rest = &stat_content[rp_pos + 2..];
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.len() >= 6 {
+                        let pgrp: u32 = parts[2].parse().unwrap_or(0);
+                        let parsed_tpgid: u32 = parts[5].parse().unwrap_or(0);
+                        if parsed_tpgid != 0 && parsed_tpgid != pgrp {
+                            tpgid = Some(parsed_tpgid);
+                        }
+                    }
+                }
+            }
+        }
+
         unsafe {
+            if let Some(tg) = tpgid {
+                log::debug!("Signaling foreground process group {} with signal {}", tg, signal);
+                libc::kill(-(tg as i32), signal);
+            }
+            log::debug!("Signaling shell process group {} with signal {}", pid, signal);
             if libc::kill(-(pid as i32), signal) != 0 {
-                return Err(fdo::Error::Failed("kill failed".to_string()));
+                // Ignore error if shell is already dead
             }
         }
         Ok(())
