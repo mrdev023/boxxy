@@ -1,10 +1,10 @@
+use crate::engine::session::{ClawSession, SessionState};
+use boxxy_agent::ipc::claw::AgentClawProxy;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::engine::session::{ClawSession, SessionState};
-use boxxy_agent::ipc::claw::AgentClawProxy;
 
 #[derive(Deserialize)]
 pub struct SummonHeadlessArgs {
@@ -62,16 +62,13 @@ impl Tool for SummonHeadlessWorkerTool {
             (
                 state.pane_id.clone(),
                 uuid::Uuid::parse_str(&state.session_id).unwrap_or_default(),
-                state.agent_name.clone()
+                state.agent_name.clone(),
             )
         };
 
         // Create and spawn the headless session
-        let (session, tx_child) = ClawSession::new_headless(
-            my_pane_id,
-            my_session_id,
-            args.profile,
-        );
+        let (session, tx_child) =
+            ClawSession::new_headless(my_pane_id, my_session_id, args.profile);
 
         let child_name = session.name.clone();
         session.start(self.claw_proxy.clone());
@@ -80,11 +77,13 @@ impl Tool for SummonHeadlessWorkerTool {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         // Send the delegated task
-        let _ = tx_child.send(crate::engine::ClawMessage::DelegatedTask {
-            source_agent_name: my_name.clone(),
-            prompt: args.prompt,
-            reply_tx,
-        }).await;
+        let _ = tx_child
+            .send(crate::engine::ClawMessage::DelegatedTask {
+                source_agent_name: my_name.clone(),
+                prompt: args.prompt,
+                reply_tx,
+            })
+            .await;
 
         // Register the task in our own state so we can await it
         {
@@ -100,22 +99,27 @@ impl Tool for SummonHeadlessWorkerTool {
             // To get tx_self, we need to ask the workspace registry
             let workspace = crate::registry::workspace::global_workspace().await;
             let tx_self = workspace.get_pane_tx_by_name(&my_name).await.unwrap();
-            
+
             tokio::spawn(async move {
                 let result_str = match reply_rx.await {
                     Ok(msg) => msg,
                     Err(_) => "Task failed or worker crashed.".to_string(),
                 };
-                let _ = tx_self.send(crate::engine::ClawMessage::TaskCompletedEvent {
-                    task_id,
-                    result: result_str,
-                }).await;
+                let _ = tx_self
+                    .send(crate::engine::ClawMessage::TaskCompletedEvent {
+                        task_id,
+                        result: result_str,
+                    })
+                    .await;
             });
         }
 
         Ok(SummonHeadlessOutput {
             task_id: task_id.to_string(),
-            message: format!("Successfully summoned headless worker '{}' (Task ID: {}). Use `await_tasks` to wait for its completion.", child_name, task_id),
+            message: format!(
+                "Successfully summoned headless worker '{}' (Task ID: {}). Use `await_tasks` to wait for its completion.",
+                child_name, task_id
+            ),
         })
     }
 }

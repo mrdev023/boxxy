@@ -2,7 +2,9 @@ use log::debug;
 
 pub fn load_prompt_fallback(resource_path: &str, filename: &str) -> String {
     // 1. Try GResource (Standard UI path)
-    if let Ok(data) = gtk4::gio::resources_lookup_data(resource_path, gtk4::gio::ResourceLookupFlags::NONE) {
+    if let Ok(data) =
+        gtk4::gio::resources_lookup_data(resource_path, gtk4::gio::ResourceLookupFlags::NONE)
+    {
         if let Ok(content) = String::from_utf8(data.to_vec()) {
             return content;
         }
@@ -26,5 +28,8 @@ pub fn load_prompt_fallback(resource_path: &str, filename: &str) -> String {
     }
 
     // 3. Last resort: built-in defaults or panic
-    panic!("CRITICAL: Failed to load prompt resource {} or find fallback file {}", resource_path, filename);
+    panic!(
+        "CRITICAL: Failed to load prompt resource {} or find fallback file {}",
+        resource_path, filename
+    );
 }

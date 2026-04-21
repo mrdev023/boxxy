@@ -54,7 +54,7 @@ impl Tool for SetAgentStateTool {
                 let state = self.state.lock().await;
                 state.tx_self.clone()
             };
-            
+
             // Critical: Send the TransitionRequest directly.
             // Sending SleepToggle triggers an urgent UI pop-up because it's meant for User clicks.
             // We want the system to cleanly transition itself.

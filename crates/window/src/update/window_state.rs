@@ -165,6 +165,7 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
 
     for tab in &inner.tabs {
         tab.controller.update_settings(settings.clone(), variant);
+        tab.controller.notify_settings_invalidated();
     }
 
     if inner.sidebar_toolbar.width_request() != settings.ai_chat_width {

@@ -1201,7 +1201,7 @@ impl WidgetImpl for TerminalWidget {
             let palette = self.palette.borrow();
             let draw_kitty_images = |is_background: bool| {
                 let mut texture_cache = self.kitty_textures.borrow_mut();
-                
+
                 // Prune textures that are no longer in the engine's image set.
                 // This ensures that when the engine reaps images (e.g. during mpv playback),
                 // we also release the corresponding GPU-backed GdkTextures.

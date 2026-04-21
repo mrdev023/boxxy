@@ -88,7 +88,7 @@ pub fn setup_mcp_page(
                 let server_clone = server.clone();
                 let old_name = server.name.clone();
                 let render_ref_inner = render_ref.clone();
-                
+
                 edit_btn.connect_clicked(move |btn| {
                     if let Some(window) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok())
                     {
@@ -96,7 +96,7 @@ pub fn setup_mcp_page(
                         let cb_inner2 = cb_inner.clone();
                         let old_name_clone = old_name.clone();
                         let render_ref_inner2 = render_ref_inner.clone();
-                        
+
                         let dialog = mcp_dialog::build_add_mcp_dialog(
                             &window,
                             Some(&server_clone),
@@ -149,7 +149,7 @@ pub fn setup_mcp_page(
                     };
                     s_clone.save();
                     cb_inner(s_clone);
-                    
+
                     // Re-render the whole list
                     if let Some(render) = render_ref_inner.borrow().as_ref() {
                         render();
@@ -179,7 +179,7 @@ pub fn setup_mcp_page(
             let dialog = mcp_dialog::build_add_mcp_dialog(&window, None, move |new_config| {
                 let s_clone = {
                     let mut s = s_rc_inner.borrow_mut();
-                    
+
                     // Prevent duplicate names
                     let mut unique_name = new_config.name.clone();
                     let mut counter = 1;
@@ -187,16 +187,16 @@ pub fn setup_mcp_page(
                         unique_name = format!("{} ({})", new_config.name, counter);
                         counter += 1;
                     }
-                    
+
                     let mut final_config = new_config.clone();
                     final_config.name = unique_name;
-                    
+
                     s.mcp_servers.push(final_config);
                     s.clone()
                 };
                 s_clone.save();
                 cb_inner(s_clone);
-                
+
                 if let Some(render) = render_ref_inner.borrow().as_ref() {
                     render();
                 }

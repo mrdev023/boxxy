@@ -57,9 +57,5 @@ pub async fn fetch_location_context() {
 
 /// Returns the current location context from cache.
 pub fn get_location_context() -> Option<LocationContext> {
-    LOCATION_CACHE
-        .get()?
-        .read()
-        .unwrap()
-        .clone()
+    LOCATION_CACHE.get()?.read().unwrap().clone()
 }

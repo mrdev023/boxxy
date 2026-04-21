@@ -1,5 +1,5 @@
 use boxxy_db::Db;
-use log::{debug, info};
+use log::debug;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -11,7 +11,7 @@ pub async fn run_hygiene(db: Arc<Mutex<Option<Db>>>) -> anyhow::Result<()> {
 
     let pool = db_val.pool();
 
-    info!("Running Memory Hygiene...");
+    debug!("Running Memory Hygiene...");
 
     // 1. Delete episodic interactions older than 30 days
     let deleted_interactions = sqlx::query(
@@ -44,6 +44,6 @@ pub async fn run_hygiene(db: Arc<Mutex<Option<Db>>>) -> anyhow::Result<()> {
         );
     }
 
-    info!("Memory Hygiene complete.");
+    debug!("Memory Hygiene complete.");
     Ok(())
 }

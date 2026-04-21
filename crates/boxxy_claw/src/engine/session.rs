@@ -1,9 +1,9 @@
-use crate::utils::load_prompt_fallback;
 use crate::engine::{
     ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
     context::load_session_context, context::retrieve_memories,
     dispatcher::extract_command_and_clean, persist_visual_event, turn::spawn_turn,
 };
+use crate::utils::load_prompt_fallback;
 use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_db::Db;
 use log::{debug, info};
@@ -38,6 +38,7 @@ pub struct SessionState {
     pub sleep_timestamp: Option<i64>,
     pub awaiting_tasks: Vec<uuid::Uuid>,
     pub tx_self: async_channel::Sender<ClawMessage>,
+    pub mcp_handle: Option<std::sync::Arc<boxxy_mcp::manager::McpClientManager>>,
 }
 
 pub struct ClawSession {
@@ -109,6 +110,7 @@ impl ClawSession {
                 sleep_timestamp: None,
                 awaiting_tasks: Vec::new(),
                 tx_self: tx.clone(),
+                mcp_handle: None,
             })),
         };
 
@@ -123,8 +125,11 @@ impl ClawSession {
         let pane_id = format!("{}-headless-{}", parent_pane_id, uuid::Uuid::new_v4());
         let (mut session, tx, _) = Self::new(pane_id.clone());
 
-        let name = format!("{} Shadow", petname::petname(1, "").unwrap_or_else(|| "Ghost".to_string()));
-        
+        let name = format!(
+            "{} Shadow",
+            petname::petname(1, "").unwrap_or_else(|| "Ghost".to_string())
+        );
+
         // Mutate for headless execution
         {
             let mut state = session.state.try_lock().unwrap();
@@ -135,7 +140,10 @@ impl ClawSession {
         }
 
         session.name = name;
-        session.session_context = format!("You are a specialized transient background worker. {}\n", profile);
+        session.session_context = format!(
+            "You are a specialized transient background worker. {}\n",
+            profile
+        );
 
         (session, tx)
     }
@@ -157,7 +165,10 @@ impl ClawSession {
     }
 
     async fn clear_ui_history(&self) {
-        let _ = self.tx_ui.send(ClawEngineEvent::RestoreHistory(vec![])).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::RestoreHistory(vec![]))
+            .await;
     }
 
     async fn handle_transition(
@@ -179,7 +190,7 @@ impl ClawSession {
                 if let Some(handle) = current_turn.take() {
                     handle.abort();
                 }
-                
+
                 // Immediately pop urgent if we were interrupted
                 if let Some(next_msg) = urgent_backlog.pop_front() {
                     let _ = self.tx_self.send(next_msg).await;
@@ -193,7 +204,7 @@ impl ClawSession {
         }
 
         let current_quality = state_lock.context_quality.clone();
-        
+
         // --- HARD WAKE INTERCEPT ---
         // If User is waking from Sleep to Waiting, we enter Working to summarize history
         if current_status == crate::engine::AgentStatus::Sleep
@@ -223,12 +234,13 @@ impl ClawSession {
                     session_id,
                     sleep_timestamp,
                     tx_self,
-                ).await;
+                )
+                .await;
             });
             *current_turn = Some(task_handle);
             return;
         }
-        
+
         // Handle entering sleep
         if req.target_state == crate::engine::AgentStatus::Sleep {
             state_lock.sleep_timestamp = Some(chrono::Utc::now().timestamp_millis());
@@ -245,8 +257,11 @@ impl ClawSession {
                 status: req.target_state,
             })
             .await;
-            
-        crate::registry::workspace::global_workspace().await.set_pane_quality(self.pane_id.clone(), Some(current_quality)).await;
+
+        crate::registry::workspace::global_workspace()
+            .await
+            .set_pane_quality(self.pane_id.clone(), Some(current_quality))
+            .await;
     }
 
     fn is_urgent_msg(msg: &ClawMessage) -> bool {
@@ -255,7 +270,10 @@ impl ClawSession {
                 return true;
             }
         }
-        if let ClawMessage::SubscriptionEvent { event: crate::engine::ClawEvent::Custom { name, .. } } = msg {
+        if let ClawMessage::SubscriptionEvent {
+            event: crate::engine::ClawEvent::Custom { name, .. },
+        } = msg
+        {
             if name == "request_sleep" {
                 return true;
             }
@@ -409,6 +427,24 @@ impl ClawSession {
                     let session_ctx = self.session_context.clone();
 
                     match msg {
+                        ClawMessage::SettingsInvalidated => {
+                            info!("[{}] Settings changed. Next turn will trigger a hot-swap.", self.name);
+
+                            let settings = boxxy_preferences::Settings::load();
+                            let claw_model = settings.claw_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+                            let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+
+                            let event = ClawEngineEvent::SystemMessage {
+                                text: format!("Claw: {}\nDreams: {}", claw_model, memory_model),
+                            };
+                            crate::engine::persist_visual_event(
+                                self.db.clone(),
+                                self.session_id.clone(),
+                                self.pane_id.clone(),
+                                &event
+                            );
+                            let _ = self.tx_ui.send(event).await;
+                        }
                         ClawMessage::Abort => {
                             if let Some(handle) = current_turn.take() {
                                 handle.abort();
@@ -444,7 +480,7 @@ impl ClawSession {
                         }
                         ClawMessage::TurnFinished => {
                             current_turn = None;
-                            
+
                             let req = crate::engine::TransitionRequest {
                                 target_state: crate::engine::AgentStatus::Waiting,
                                 source: crate::engine::TriggerSource::System,
@@ -460,7 +496,7 @@ impl ClawSession {
                         ClawMessage::WakeSummaryComplete { result } => {
                             let mut state_lock = self.state.lock().await;
                             state_lock.status = crate::engine::AgentStatus::Waiting;
-                            
+
                             match result {
                                 Ok(summary) => {
                                     state_lock.context_quality = crate::engine::ContextQuality::Full;
@@ -473,7 +509,7 @@ impl ClawSession {
                                     state_lock.context_quality = crate::engine::ContextQuality::Degraded;
                                 }
                             }
-                            
+
                             let current_quality = state_lock.context_quality.clone();
                             let agent_name = self.name.clone();
                             drop(state_lock);
@@ -482,9 +518,9 @@ impl ClawSession {
                                 agent_name,
                                 status: crate::engine::AgentStatus::Waiting,
                             }).await;
-                            
+
                             crate::registry::workspace::global_workspace().await.set_pane_quality(self.pane_id.clone(), Some(current_quality)).await;
-                            
+
                             // Let the router know this background task is done
                             let _ = self.tx_self.send(ClawMessage::TurnFinished).await;
                         }
@@ -656,8 +692,12 @@ impl ClawSession {
                                         let session_type = if self.pinned { "pinned" } else { "normal" };
                                         boxxy_telemetry::track_session_resume(session_type).await;
 
+                                        let settings = boxxy_preferences::Settings::load();
+                                        let claw_model = settings.claw_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+                                        let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+
                                         self.send_ui(ClawEngineEvent::SystemMessage {
-                                                text: "Session resumed.".to_string(),
+                                                text: format!("Claw: {}\nDreams: {}", claw_model, memory_model),
                                             })
                                             .await;
 
@@ -722,7 +762,7 @@ impl ClawSession {
                                 let _ = store.clear_claw_events(&self.session_id).await;
                             }
                             drop(db_guard);
-                            
+
                             self.clear_ui_history().await;
 
                             // 3. Update Workspace Radar
@@ -748,6 +788,21 @@ impl ClawSession {
                                     total_tokens: 0,
                                 })
                                 .await;
+
+                            let settings = boxxy_preferences::Settings::load();
+                            let claw_model = settings.claw_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+                            let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+
+                            let event = ClawEngineEvent::SystemMessage {
+                                text: format!("Claw: {}\nDreams: {}", claw_model, memory_model),
+                            };
+                            crate::engine::persist_visual_event(
+                                self.db.clone(),
+                                self.session_id.clone(),
+                                self.pane_id.clone(),
+                                &event
+                            );
+                            let _ = self.tx_ui.send(event).await;
                         }
                         ClawMessage::Reload => {
                             info!("Reloading Claw Session state...");
@@ -1216,7 +1271,7 @@ impl ClawSession {
                         }
                         ClawMessage::SubscriptionEvent { event } => {
                             let mut state_lock = self.state.lock().await;
-                            
+
                             // Handle external sleep requests
                             if let crate::engine::ClawEvent::Custom { name, .. } = &event {
                                 if name == "request_sleep" && state_lock.status != crate::engine::AgentStatus::Sleep {

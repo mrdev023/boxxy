@@ -1,6 +1,6 @@
+use boxxy_db::Db;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use boxxy_db::Db;
 
 pub async fn summarize_wake_delta(
     db_cell: Arc<Mutex<Option<Db>>>,
@@ -12,23 +12,33 @@ pub async fn summarize_wake_delta(
     if let Some(db) = db_guard.as_ref() {
         let ts = sleep_timestamp.unwrap_or(0);
         let mut summary_result = Err("No events found or DB error.".to_string());
-        
-        if let Ok(events) = boxxy_db::store::Store::new(db.pool()).get_claw_events(&session_id).await {
+
+        if let Ok(events) = boxxy_db::store::Store::new(db.pool())
+            .get_claw_events(&session_id)
+            .await
+        {
             let mut recent_commands = Vec::new();
             for evt in events {
                 // TODO: Add timestamp filtering when db allows it
                 if let Ok(parsed) = serde_json::from_str::<crate::engine::PersistentClawRow>(&evt) {
-                    if let crate::engine::PersistentClawRow::Command { command, exit_code, .. } = parsed {
+                    if let crate::engine::PersistentClawRow::Command {
+                        command, exit_code, ..
+                    } = parsed
+                    {
                         recent_commands.push(format!("$ {} (exit: {})", command, exit_code));
                     }
                 }
             }
 
             if recent_commands.is_empty() {
-                summary_result = Ok("No notable terminal commands executed while sleeping.".to_string());
+                summary_result =
+                    Ok("No notable terminal commands executed while sleeping.".to_string());
             } else if recent_commands.len() <= 3 {
                 // Too small to waste an LLM call on, just summarize manually
-                summary_result = Ok(format!("User ran a few commands while you slept:\n{}", recent_commands.join("\n")));
+                summary_result = Ok(format!(
+                    "User ran a few commands while you slept:\n{}",
+                    recent_commands.join("\n")
+                ));
             } else {
                 // It's a large delta, we need an LLM to digest it
                 let settings = boxxy_preferences::Settings::load();
@@ -46,7 +56,10 @@ pub async fn summarize_wake_delta(
                 let raw_history = recent_commands.join("\n");
                 // Truncate to roughly 10k tokens (40k chars) to prevent blowing up the context window
                 let truncated_history = if raw_history.len() > 40000 {
-                    format!("...[truncated]...\n{}", &raw_history[raw_history.len() - 40000..])
+                    format!(
+                        "...[truncated]...\n{}",
+                        &raw_history[raw_history.len() - 40000..]
+                    )
                 } else {
                     raw_history
                 };
@@ -59,8 +72,10 @@ pub async fn summarize_wake_delta(
 
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(30),
-                    agent.prompt(&format!("Raw Terminal History:\n{}", truncated_history))
-                ).await {
+                    agent.prompt(&format!("Raw Terminal History:\n{}", truncated_history)),
+                )
+                .await
+                {
                     Ok(Ok((summary, _))) => {
                         summary_result = Ok(summary.trim().to_string());
                     }
@@ -73,9 +88,17 @@ pub async fn summarize_wake_delta(
                 }
             }
         }
-        
-        let _ = tx_self.send(crate::engine::ClawMessage::WakeSummaryComplete { result: summary_result }).await;
+
+        let _ = tx_self
+            .send(crate::engine::ClawMessage::WakeSummaryComplete {
+                result: summary_result,
+            })
+            .await;
     } else {
-        let _ = tx_self.send(crate::engine::ClawMessage::WakeSummaryComplete { result: Err("DB not connected".to_string()) }).await;
+        let _ = tx_self
+            .send(crate::engine::ClawMessage::WakeSummaryComplete {
+                result: Err("DB not connected".to_string()),
+            })
+            .await;
     }
 }

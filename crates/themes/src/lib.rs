@@ -48,7 +48,9 @@ pub fn copy_background_image(src_path: &Path) -> Option<String> {
 
 pub fn delete_background_image(path: &str) {
     if let Ok(path) = Path::new(path).canonicalize() {
-        if let Some(config_dir) = get_schemes_dir().and_then(|p| p.parent().map(|p| p.join("backgrounds"))) {
+        if let Some(config_dir) =
+            get_schemes_dir().and_then(|p| p.parent().map(|p| p.join("backgrounds")))
+        {
             if let Ok(config_dir) = config_dir.canonicalize() {
                 // Ensure we only delete files within our backgrounds directory
                 if path.starts_with(config_dir) {

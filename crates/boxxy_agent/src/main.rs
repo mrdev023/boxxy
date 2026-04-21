@@ -3,7 +3,7 @@ use std::os::unix::io::{FromRawFd, OwnedFd};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use tokio::net::UnixStream;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::broadcast;
 use zbus::connection::Builder;
 
@@ -34,10 +34,10 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         boxxy_telemetry::init_db().await;
         boxxy_telemetry::init().await;
-        
+
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
         let mut shutdown_rx = shutdown_rx_maintenance;
-        
+
         loop {
             tokio::select! {
                 _ = interval.tick() => {
@@ -90,9 +90,18 @@ async fn main() -> Result<()> {
 
     let _conn = Builder::unix_stream(stream)
         .p2p()
-        .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Pty", PtySubsystem::new(state.clone()))?
-        .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Claw", ClawSubsystem::new(state.clone()))?
-        .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Maintenance", MaintenanceSubsystem::new(state.clone()))?
+        .serve_at(
+            "/dev/boxxy/BoxxyTerminal/Agent/Pty",
+            PtySubsystem::new(state.clone()),
+        )?
+        .serve_at(
+            "/dev/boxxy/BoxxyTerminal/Agent/Claw",
+            ClawSubsystem::new(state.clone()),
+        )?
+        .serve_at(
+            "/dev/boxxy/BoxxyTerminal/Agent/Maintenance",
+            MaintenanceSubsystem::new(state.clone()),
+        )?
         .build()
         .await
         .context("Failed to build zbus connection")?;
@@ -104,7 +113,8 @@ async fn main() -> Result<()> {
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
     }
 
-    let mut sigterm = signal(SignalKind::terminate()).context("Failed to set up SIGTERM handler")?;
+    let mut sigterm =
+        signal(SignalKind::terminate()).context("Failed to set up SIGTERM handler")?;
     let mut sighup = signal(SignalKind::hangup()).context("Failed to set up SIGHUP handler")?;
 
     match monitor_fd.and_then(|fd| {
@@ -115,35 +125,33 @@ async fn main() -> Result<()> {
             })
             .ok()
     }) {
-        Some(afd) => {
-            loop {
-                tokio::select! {
-                    _ = sigterm.recv() => {
-                        log::debug!("SIGTERM received, shutting down.");
-                        break;
-                    }
-                    _ = sighup.recv() => {
-                        log::debug!("SIGHUP received, shutting down.");
-                        break;
-                    }
-                    guard = afd.readable() => {
-                        match guard {
-                            Ok(g) if g.ready().is_read_closed() => {
-                                log::debug!("Socket closed, shutting down.");
-                                break;
-                            }
-                            Ok(mut g) => {
-                                g.clear_ready();
-                            }
-                            Err(_) => {
-                                log::debug!("Socket error, shutting down.");
-                                break;
-                            }
+        Some(afd) => loop {
+            tokio::select! {
+                _ = sigterm.recv() => {
+                    log::debug!("SIGTERM received, shutting down.");
+                    break;
+                }
+                _ = sighup.recv() => {
+                    log::debug!("SIGHUP received, shutting down.");
+                    break;
+                }
+                guard = afd.readable() => {
+                    match guard {
+                        Ok(g) if g.ready().is_read_closed() => {
+                            log::debug!("Socket closed, shutting down.");
+                            break;
+                        }
+                        Ok(mut g) => {
+                            g.clear_ready();
+                        }
+                        Err(_) => {
+                            log::debug!("Socket error, shutting down.");
+                            break;
                         }
                     }
                 }
             }
-        }
+        },
         None => {
             tokio::select! {
                 _ = sigterm.recv() => log::debug!("SIGTERM received, shutting down."),

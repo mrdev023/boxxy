@@ -31,7 +31,7 @@ pub(super) fn setup_claw(
     if let Some(intent) = spawn_intent {
         let tx = claw_sender.clone();
         let inner_clone = inner.clone();
-        
+
         // Wait for PID to ensure PTY is ready
         gtk::glib::spawn_future_local(async move {
             let mut check_count = 0;
@@ -41,7 +41,8 @@ pub(super) fn setup_claw(
                     break;
                 }
                 check_count += 1;
-                if check_count > 50 { // Timeout after 5 seconds
+                if check_count > 50 {
+                    // Timeout after 5 seconds
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -212,7 +213,7 @@ pub(super) fn setup_claw(
                 boxxy_claw::engine::ClawEngineEvent::SessionStateChanged { status, .. } => {
                     *session_status.borrow_mut() = status.clone();
                     inner_clone.borrow().msg_bar.set_status(status.clone());
-                    
+
                     if let Some(indicator) = &inner_clone.borrow().claw_indicator {
                         indicator.set_mode(status.clone());
                     }
@@ -468,11 +469,10 @@ pub(super) fn setup_claw(
                     *agent_name_for_events.borrow_mut() = agent_name.clone();
 
                     let status = session_status.borrow().clone();
-                    inner_clone.borrow().msg_bar.update_ui(
-                        status,
-                        *pinned,
-                        *web_search_enabled,
-                    );
+                    inner_clone
+                        .borrow()
+                        .msg_bar
+                        .update_ui(status, *pinned, *web_search_enabled);
                     total_tokens_for_events.set(*total_tokens);
                 }
                 boxxy_claw::engine::ClawEngineEvent::PinStatusChanged(pinned) => {
@@ -539,7 +539,7 @@ pub(super) fn setup_claw(
                     });
                 }
                 boxxy_claw::engine::ClawEngineEvent::SystemMessage { text } => {
-                    boxxy_claw::ui::add_diagnosis_row(&claw_store_events, id.clone(), None, text);
+                    boxxy_claw::ui::add_system_message_row(&claw_store_events, id.clone(), text);
                 }
                 boxxy_claw::engine::ClawEngineEvent::RequestScrollback {
                     max_lines,

@@ -34,7 +34,8 @@ pub fn setup_agents_page(
         builder.object("enable_auto_dreaming_switch").unwrap();
 
     let group_agent_general: adw::PreferencesGroup = builder.object("group_agent_general").unwrap();
-    let group_agent_dreaming: adw::PreferencesGroup = builder.object("group_agent_dreaming").unwrap();
+    let group_agent_dreaming: adw::PreferencesGroup =
+        builder.object("group_agent_dreaming").unwrap();
     let group_agent_toolbox: adw::PreferencesGroup = builder.object("group_agent_toolbox").unwrap();
 
     // Initialize values
@@ -239,6 +240,8 @@ pub fn setup_agents_page(
         group_agent_dreaming.set_visible(ag_dream);
         group_agent_toolbox.set_visible(ag3 || ag4 || ag5 || ag6 || ag_search || ag_os || ag7);
 
-        group_agent_general.is_visible() || group_agent_dreaming.is_visible() || group_agent_toolbox.is_visible()
+        group_agent_general.is_visible()
+            || group_agent_dreaming.is_visible()
+            || group_agent_toolbox.is_visible()
     })
 }

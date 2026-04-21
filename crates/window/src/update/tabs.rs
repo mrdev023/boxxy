@@ -99,11 +99,11 @@ pub fn new_tab_with_intent(inner: &mut AppWindowInner, intent: Option<String>) {
     let palette = parsed
         .as_ref()
         .map(|p| if is_dark { p.dark } else { p.light });
-controller.update_settings(inner.current_settings.clone(), palette);
-controller.set_claw_active(inner.current_settings.claw_on_by_default);
+    controller.update_settings(inner.current_settings.clone(), palette);
+    controller.set_claw_active(inner.current_settings.claw_on_by_default);
 
-let widget = controller.widget();
-let page = inner.tab_view.append(widget);
+    let widget = controller.widget();
+    let page = inner.tab_view.append(widget);
     page.set_title("Terminal");
 
     // Auto-coloring

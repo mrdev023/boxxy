@@ -118,7 +118,10 @@ impl CompletionProvider for ResumeCompletionProvider {
                     .get_recent_active_sessions(10)
                     .await
                     .unwrap_or_default();
-                log::debug!("ResumeCompletionProvider fetched {} sessions from DB.", res.len());
+                log::debug!(
+                    "ResumeCompletionProvider fetched {} sessions from DB.",
+                    res.len()
+                );
                 for s in &res {
                     log::debug!("  - Session: {} (Title: {:?})", s.id, s.title);
                 }

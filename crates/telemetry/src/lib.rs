@@ -4,10 +4,10 @@ use opentelemetry::metrics::{Meter, MeterProvider as _};
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
+use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OnceCell};
 use uuid::Uuid;
-use serde_json::json;
 
 lazy_static! {
     static ref SESSION_ID: String = Uuid::new_v4().to_string();
@@ -29,7 +29,7 @@ pub async fn init_db() {
     if !settings.enable_telemetry {
         return;
     }
-    
+
     if DB.get().is_none() {
         if let Ok(db) = boxxy_db::Db::new().await {
             let _ = DB.set(db);
@@ -56,9 +56,10 @@ pub async fn init() {
         .with_http()
         .with_protocol(Protocol::HttpJson)
         .with_endpoint(endpoint)
-        .with_headers(std::collections::HashMap::from([
-            ("apikey".to_string(), api_key.to_string()),
-        ]))
+        .with_headers(std::collections::HashMap::from([(
+            "apikey".to_string(),
+            api_key.to_string(),
+        )]))
         .with_temporality(Temporality::Delta)
         .build()
         .expect("Failed to create OTLP exporter");
@@ -118,7 +119,9 @@ pub async fn flush_journal() {
     let state = match &*state_lock {
         Some(state) => state,
         None => {
-            log::warn!("Telemetry: flush_journal aborted - OTel state not initialized (METRICS_STATE is None).");
+            log::warn!(
+                "Telemetry: flush_journal aborted - OTel state not initialized (METRICS_STATE is None)."
+            );
             return;
         }
     };
@@ -138,7 +141,10 @@ pub async fn flush_journal() {
             break;
         }
 
-        log::debug!("Telemetry: Processing {} events from journal...", rows.len());
+        log::debug!(
+            "Telemetry: Processing {} events from journal...",
+            rows.len()
+        );
 
         let mut processed_ids = Vec::new();
 
@@ -156,7 +162,9 @@ pub async fn flush_journal() {
             if let Some(obj) = attrs_val.as_object() {
                 for (k, v) in obj {
                     let val = match v {
-                        serde_json::Value::String(s) => opentelemetry::Value::String(s.clone().into()),
+                        serde_json::Value::String(s) => {
+                            opentelemetry::Value::String(s.clone().into())
+                        }
                         serde_json::Value::Number(n) => {
                             if let Some(i) = n.as_i64() {
                                 opentelemetry::Value::I64(i)
@@ -172,10 +180,15 @@ pub async fn flush_journal() {
             }
 
             let counter = state.meter.f64_counter(name.clone()).build();
-            
+
             // DEBUG: Print the exact data being handed to OTel
-            log::debug!("TELEMETRY_DEBUG_JSON: metric={} value={} attrs={}", name, value, attr_json);
-            
+            log::debug!(
+                "TELEMETRY_DEBUG_JSON: metric={} value={} attrs={}",
+                name,
+                value,
+                attr_json
+            );
+
             counter.add(*value, &otel_attrs);
             processed_ids.push(*id);
         }
@@ -183,7 +196,10 @@ pub async fn flush_journal() {
         // 2. Force OTel flush to the network
         log::debug!("Telemetry: Flushed to OTel SDK, forcing network export...");
         if let Err(e) = state.provider.force_flush() {
-            log::error!("Telemetry network flush failed: {:?}. Data stays in journal.", e);
+            log::error!(
+                "Telemetry network flush failed: {:?}. Data stays in journal.",
+                e
+            );
             break; // Network failed, stop looping and keep remaining data for next attempt
         }
 
@@ -191,10 +207,17 @@ pub async fn flush_journal() {
         if !processed_ids.is_empty() {
             let query = format!(
                 "DELETE FROM telemetry_journal WHERE id IN ({})",
-                processed_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+                processed_ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
             );
             let _ = sqlx::query(&query).execute(db.pool()).await;
-            log::debug!("Telemetry: Successfully exported and cleared {} events.", processed_ids.len());
+            log::debug!(
+                "Telemetry: Successfully exported and cleared {} events.",
+                processed_ids.len()
+            );
         }
     }
 }
@@ -203,7 +226,7 @@ async fn record_to_journal(name: &str, value: f64, attributes: serde_json::Value
     if let Some(db) = DB.get() {
         let attr_str = attributes.to_string();
         let _ = sqlx::query(
-            "INSERT INTO telemetry_journal (metric_name, value, attributes_json) VALUES (?, ?, ?)"
+            "INSERT INTO telemetry_journal (metric_name, value, attributes_json) VALUES (?, ?, ?)",
         )
         .bind(name)
         .bind(value)
@@ -215,7 +238,7 @@ async fn record_to_journal(name: &str, value: f64, attributes: serde_json::Value
 
 pub async fn track_event(name: &str, value: f64, attributes: Vec<KeyValue>) {
     let state_lock = METRICS_STATE.lock().await;
-    
+
     let install_id = if let Some(state) = &*state_lock {
         state.install_id.clone()
     } else {
@@ -232,7 +255,7 @@ pub async fn track_event(name: &str, value: f64, attributes: Vec<KeyValue>) {
     for attr in &attributes {
         journal_attrs[attr.key.as_str()] = json!(attr.value.to_string());
     }
-    
+
     // We strictly write to SQLite here. The background boxxy-agent process
     // will drain this table and push it to OTel safely in the background.
     record_to_journal(name, value, journal_attrs).await;
@@ -329,7 +352,7 @@ mod tests {
 
         // 2. Verify they are in the database directly
         let rows: Vec<(i32, String, f64, String)> = sqlx::query_as(
-            "SELECT id, metric_name, value, attributes_json FROM telemetry_journal ORDER BY id ASC"
+            "SELECT id, metric_name, value, attributes_json FROM telemetry_journal ORDER BY id ASC",
         )
         .fetch_all(db.pool())
         .await

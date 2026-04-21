@@ -89,14 +89,15 @@ impl Db {
     async fn apply_migrations(&self, from_version: i32) -> Result<()> {
         if from_version < 9 {
             log::info!("Migrating database to version 9 (Dreaming support)...");
-            
+
             // Add last_dream_at to sessions
             let column_exists: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='last_dream_at'"
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='last_dream_at'",
             )
             .fetch_one(&self.pool)
             .await
-            .unwrap_or(0) > 0;
+            .unwrap_or(0)
+                > 0;
 
             if !column_exists {
                 sqlx::query("ALTER TABLE sessions ADD COLUMN last_dream_at DATETIME")
@@ -113,9 +114,11 @@ impl Db {
             .unwrap_or(0) > 0;
 
             if !column_exists {
-                sqlx::query("ALTER TABLE interactions ADD COLUMN processing_state TEXT DEFAULT 'raw'")
-                    .execute(&self.pool)
-                    .await?;
+                sqlx::query(
+                    "ALTER TABLE interactions ADD COLUMN processing_state TEXT DEFAULT 'raw'",
+                )
+                .execute(&self.pool)
+                .await?;
             }
         }
         Ok(())
@@ -303,11 +306,11 @@ impl Db {
 
         let db = Self { pool };
         db.initialize_schema().await?;
-        
+
         sqlx::query(&format!("PRAGMA user_version = {CURRENT_SCHEMA_VERSION}"))
             .execute(&db.pool)
             .await?;
-            
+
         Ok(db)
     }
 

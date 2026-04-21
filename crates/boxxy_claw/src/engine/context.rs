@@ -1,5 +1,5 @@
-use log::debug;
 use crate::utils::load_prompt_fallback;
+use log::debug;
 
 /// Scans the config directory for characters to build the session context.
 pub fn load_session_context() -> String {

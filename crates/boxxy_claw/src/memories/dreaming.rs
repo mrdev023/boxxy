@@ -1,13 +1,13 @@
+use boxxy_ai_core::{AiCredentials, create_agent};
 use boxxy_db::Db;
 use boxxy_db::store::Store;
 use boxxy_model_selection::ModelProvider;
-use boxxy_ai_core::{AiCredentials, create_agent};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use log::{info, debug};
 use directories::ProjectDirs;
+use log::debug;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct DreamOrchestrator {
     db: Arc<Mutex<Option<Db>>>,
@@ -16,12 +16,20 @@ pub struct DreamOrchestrator {
 }
 
 impl DreamOrchestrator {
-    pub fn new(db: Arc<Mutex<Option<Db>>>, creds: AiCredentials, memory_model: Option<ModelProvider>) -> Self {
-        Self { db, creds, memory_model }
+    pub fn new(
+        db: Arc<Mutex<Option<Db>>>,
+        creds: AiCredentials,
+        memory_model: Option<ModelProvider>,
+    ) -> Self {
+        Self {
+            db,
+            creds,
+            memory_model,
+        }
     }
 
     pub async fn run_cycle(&self) -> anyhow::Result<()> {
-        info!("🧠 Starting Dream Cycle...");
+        debug!("🧠 Starting Dream Cycle...");
 
         // Phase 1: Ingestion
         let interactions = {
@@ -39,14 +47,23 @@ impl DreamOrchestrator {
             return Ok(());
         }
 
-        info!("Dreaming about {} interactions...", interactions.len());
+        debug!("Dreaming about {} interactions...", interactions.len());
 
         // Phase 2: Scoring & Promotion (LLM)
         let mut fact_candidates = Vec::new();
         let mut patterns = Vec::new();
-        
-        let interactions_text = interactions.iter()
-            .map(|i| format!("[ID: {}][Session: {}][Path: {}] {}", i.id, i.session_id, i.project_path.as_deref().unwrap_or("global"), i.content))
+
+        let interactions_text = interactions
+            .iter()
+            .map(|i| {
+                format!(
+                    "[ID: {}][Session: {}][Path: {}] {}",
+                    i.id,
+                    i.session_id,
+                    i.project_path.as_deref().unwrap_or("global"),
+                    i.content
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n---\n");
 
@@ -65,22 +82,35 @@ impl DreamOrchestrator {
             - 'patterns': array of strings describing observed behaviors \
             - 'conflicts': array of { 'issue': string, 'details': string } \
             \
-            CRITICAL: Be extremely selective. Only extract information that is truly durable and useful for future context. Avoid transient state."
+            CRITICAL: Be extremely selective. Only extract information that is truly durable and useful for future context. Avoid transient state.",
         );
 
-        let prompt = format!("Consolidate these interactions into permanent memories and patterns:\n\n{}", interactions_text);
+        let prompt = format!(
+            "Consolidate these interactions into permanent memories and patterns:\n\n{}",
+            interactions_text
+        );
 
-        let (response, _) = agent.prompt(&prompt).await.map_err(|e| anyhow::anyhow!("LLM Error: {:?}", e))?;
+        let (response, _) = agent
+            .prompt(&prompt)
+            .await
+            .map_err(|e| anyhow::anyhow!("LLM Error: {:?}", e))?;
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response) {
             if let Some(facts) = json.get("facts").and_then(|f| f.as_array()) {
                 for fact in facts {
                     if let (Some(key), Some(content)) = (
                         fact.get("key").and_then(|k| k.as_str()),
-                        fact.get("content").and_then(|c| c.as_str())
+                        fact.get("content").and_then(|c| c.as_str()),
                     ) {
-                        let path = fact.get("project_path").and_then(|p| p.as_str()).unwrap_or("global");
-                        fact_candidates.push((key.to_string(), path.to_string(), content.to_string()));
+                        let path = fact
+                            .get("project_path")
+                            .and_then(|p| p.as_str())
+                            .unwrap_or("global");
+                        fact_candidates.push((
+                            key.to_string(),
+                            path.to_string(),
+                            content.to_string(),
+                        ));
                     }
                 }
             }
@@ -91,10 +121,11 @@ impl DreamOrchestrator {
                     }
                 }
             }
-            
+
             // Phase 3: REM (Promotion & Diary)
             let interaction_ids: Vec<i64> = interactions.iter().map(|i| i.id).collect();
-            let mut session_ids: Vec<String> = interactions.iter().map(|i| i.session_id.clone()).collect();
+            let mut session_ids: Vec<String> =
+                interactions.iter().map(|i| i.session_id.clone()).collect();
             session_ids.sort();
             session_ids.dedup();
 
@@ -102,17 +133,23 @@ impl DreamOrchestrator {
                 let db_guard = self.db.lock().await;
                 if let Some(db) = db_guard.as_ref() {
                     let store = Store::new(db.pool());
-                    
+
                     // Promote facts
                     for (key, path, content) in fact_candidates {
-                        let path_opt = if path == "global" { None } else { Some(path.as_str()) };
-                        let _ = store.add_memory(&key, path_opt, &content, Some("dreamed"), true, false).await;
-                        info!("Dreaming promoted Fact: {} -> {}", key, content);
+                        let path_opt = if path == "global" {
+                            None
+                        } else {
+                            Some(path.as_str())
+                        };
+                        let _ = store
+                            .add_memory(&key, path_opt, &content, Some("dreamed"), true, false)
+                            .await;
+                        debug!("Dreaming promoted Fact: {} -> {}", key, content);
                     }
 
                     // Mark interactions as dreamed
                     let _ = store.mark_interactions_as_dreamed(&interaction_ids).await;
-                    
+
                     // Update session dream timestamps
                     for sid in session_ids {
                         let _ = store.update_session_dream_timestamp(&sid).await;
@@ -122,12 +159,12 @@ impl DreamOrchestrator {
 
             // Sync MEMORY.md
             let _ = crate::memories::db::sync_memories_to_markdown(self.db.clone()).await;
-            
+
             // Update DREAMS.md
             self.append_to_dream_diary(&patterns).await?;
         }
 
-        info!("Dream Cycle complete.");
+        debug!("Dream Cycle complete.");
         Ok(())
     }
 

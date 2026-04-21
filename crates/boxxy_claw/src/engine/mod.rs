@@ -1,7 +1,9 @@
 pub mod agent;
+pub mod agent_config;
 pub mod context;
 pub mod dispatcher;
 pub mod fsm;
+pub mod history_utils;
 pub mod session;
 pub mod summarization;
 pub mod tools;
@@ -49,9 +51,7 @@ pub enum ClawMessage {
         state: AgentStatus,
     },
     /// Fired when the Dreamer finishes summarizing a Hard Wake delta.
-    WakeSummaryComplete {
-        result: Result<String, String>,
-    },
+    WakeSummaryComplete { result: Result<String, String> },
     /// A command finished in the terminal. Used for auto-diagnosis and tracking tool executions.
     CommandFinished {
         exit_code: i32,
@@ -116,18 +116,15 @@ pub enum ClawMessage {
     /// Cancel a specific scheduled task.
     CancelTask { task_id: uuid::Uuid },
     /// An event from the internal EventBus has occurred.
-    SubscriptionEvent {
-        event: ClawEvent,
-    },
+    SubscriptionEvent { event: ClawEvent },
     /// A delegated async task has completed.
-    TaskCompletedEvent {
-        task_id: uuid::Uuid,
-        result: String,
-    },
+    TaskCompletedEvent { task_id: uuid::Uuid, result: String },
     /// Explicitly abort the current turn and clear the queue.
     Abort,
     /// Internal message sent when a background turn finishes.
     TurnFinished,
+    /// Sent when preferences change. Informs the session to evaluate a hot-swap.
+    SettingsInvalidated,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -141,10 +138,7 @@ pub enum SpawnLocation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ClawEvent {
     /// A process exited in a specific pane.
-    ProcessExited {
-        pane_id: String,
-        exit_code: i32,
-    },
+    ProcessExited { pane_id: String, exit_code: i32 },
     /// A specific regex matched the terminal output of a pane.
     OutputMatch {
         pane_id: String,
@@ -199,6 +193,7 @@ mod imp {
                         }
                         PersistentClawRow::ToolCall { result, .. } => result.to_value(),
                         PersistentClawRow::Command { command, .. } => command.to_value(),
+                        PersistentClawRow::SystemMessage { content, .. } => content.to_value(),
                     }
                 }
                 _ => unimplemented!(),
@@ -281,6 +276,10 @@ pub enum PersistentClawRow {
     Command {
         command: String,
         exit_code: i32,
+    },
+    SystemMessage {
+        pane_id: String,
+        content: String,
     },
 }
 
@@ -404,6 +403,10 @@ impl PersistentClawRow {
                     })
                 }
             }
+            ClawEngineEvent::SystemMessage { text } => Some(PersistentClawRow::SystemMessage {
+                pane_id,
+                content: text.clone(),
+            }),
             _ => None,
         }
     }

@@ -285,7 +285,6 @@ impl AppWindow {
 
         let initial_claw_active = current_settings.claw_on_by_default;
 
-
         let inner = AppWindowInner {
             window: window.clone(),
             tabs: Vec::new(),

@@ -94,12 +94,16 @@ impl Tool for MemoryStoreTool {
                     drop(db_guard);
                     let _ = crate::memories::db::sync_memories_to_markdown(self.db.clone()).await;
                     let result = format!("Successfully stored memory: {}", args.key);
-                    self.approval.report_tool_result(Self::NAME.to_string(), result.clone()).await;
+                    self.approval
+                        .report_tool_result(Self::NAME.to_string(), result.clone())
+                        .await;
                     Ok(result)
                 }
                 Err(e) => {
                     let result = format!("Error storing memory: {}", e);
-                    self.approval.report_tool_result(Self::NAME.to_string(), result.clone()).await;
+                    self.approval
+                        .report_tool_result(Self::NAME.to_string(), result.clone())
+                        .await;
                     Ok(result)
                 }
             }
@@ -163,12 +167,16 @@ impl Tool for MemoryDeleteTool {
                     drop(db_guard);
                     let _ = crate::memories::db::sync_memories_to_markdown(self.db.clone()).await;
                     let result = format!("Successfully deleted memory: {}", args.key);
-                    self.approval.report_tool_result(Self::NAME.to_string(), result.clone()).await;
+                    self.approval
+                        .report_tool_result(Self::NAME.to_string(), result.clone())
+                        .await;
                     Ok(result)
                 }
                 Err(e) => {
                     let result = format!("Error deleting memory: {}", e);
-                    self.approval.report_tool_result(Self::NAME.to_string(), result.clone()).await;
+                    self.approval
+                        .report_tool_result(Self::NAME.to_string(), result.clone())
+                        .await;
                     Ok(result)
                 }
             }

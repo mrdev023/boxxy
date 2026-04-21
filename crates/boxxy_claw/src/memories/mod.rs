@@ -5,4 +5,4 @@ pub mod hygiene;
 pub mod tools;
 
 pub use dreaming::DreamOrchestrator;
-pub use tools::{MemoryStoreTool, MemoryDeleteTool};
+pub use tools::{MemoryDeleteTool, MemoryStoreTool};

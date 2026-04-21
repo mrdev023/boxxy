@@ -1,6 +1,6 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashSet;
 
 #[derive(Clone)]
 pub struct AgentState {

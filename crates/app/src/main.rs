@@ -130,22 +130,22 @@ fn main() {
             // Wait for 10 seconds after the window is visible before starting Phase 1.
             // This ensures the GTK UI is fully rendered and the user has already begun their work.
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            
+
             let settings = boxxy_preferences::Settings::load();
             if settings.enable_auto_dreaming {
                 if let Ok(db) = boxxy_db::Db::new().await {
                     let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(Some(db)));
-                    
+
                     let mut creds = boxxy_ai_core::AiCredentials::default();
                     creds.api_keys = settings.api_keys.clone();
                     creds.ollama_url = settings.ollama_base_url.clone();
-                    
+
                     let orchestrator = boxxy_claw::memories::DreamOrchestrator::new(
                         db_arc,
                         creds,
-                        settings.memory_model.clone()
+                        settings.memory_model.clone(),
                     );
-                    
+
                     if let Err(e) = orchestrator.run_cycle().await {
                         log::error!("Dream Cycle failed: {:?}", e);
                     }

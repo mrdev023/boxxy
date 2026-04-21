@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use zbus::proxy;
 use zbus::zvariant::{OwnedFd, Type};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Type)]
 pub struct SpawnOptions {

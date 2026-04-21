@@ -13,20 +13,16 @@ pub struct GlobalModelSelectorDialog {
 }
 
 impl GlobalModelSelectorDialog {
-    pub fn new<F1, F2, F3>(
+    pub fn new<F>(
         init_ai: Option<ModelProvider>,
         init_claw: Option<ModelProvider>,
         init_memory: Option<ModelProvider>,
         ollama_url: String,
         api_keys: std::collections::HashMap<String, String>,
-        on_ai_change: F1,
-        on_claw_change: F2,
-        on_memory_change: F3,
+        on_done: F,
     ) -> Self
     where
-        F1: Fn(Option<ModelProvider>) + 'static,
-        F2: Fn(Option<ModelProvider>) + 'static,
-        F3: Fn(Option<ModelProvider>) + 'static,
+        F: Fn(Option<ModelProvider>, Option<ModelProvider>, Option<ModelProvider>) + 'static,
     {
         let dialog = libadwaita::Dialog::builder()
             .title("Models Selection")
@@ -40,19 +36,16 @@ impl GlobalModelSelectorDialog {
         stack.set_vhomogeneous(true);
 
         let ai_chat_selector =
-            SingleModelSelector::new(init_ai, ollama_url.clone(), api_keys.clone(), on_ai_change);
+            SingleModelSelector::new(init_ai, ollama_url.clone(), api_keys.clone(), |_| {});
         let claw_selector = SingleModelSelector::new(
             init_claw.clone(),
             ollama_url.clone(),
             api_keys.clone(),
-            on_claw_change,
+            |_| {},
         );
 
         let mem_initial = init_memory.or(init_claw);
-        let memory_selector =
-            SingleModelSelector::new(mem_initial, ollama_url, api_keys, move |new_prov| {
-                on_memory_change(new_prov);
-            });
+        let memory_selector = SingleModelSelector::new(mem_initial, ollama_url, api_keys, |_| {});
 
         let build_tab = |selector: &SingleModelSelector, help_text: &str| -> gtk::Box {
             let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -115,7 +108,15 @@ impl GlobalModelSelectorDialog {
         container.append(&close_btn);
 
         let d_clone = dialog.clone();
+        let ai_sel = ai_chat_selector.clone();
+        let claw_sel = claw_selector.clone();
+        let mem_sel = memory_selector.clone();
         close_btn.connect_clicked(move |_| {
+            on_done(
+                ai_sel.get_current_provider(),
+                claw_sel.get_current_provider(),
+                mem_sel.get_current_provider(),
+            );
             d_clone.close();
         });
 

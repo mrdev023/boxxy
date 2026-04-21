@@ -2,11 +2,11 @@ pub mod attachment;
 pub mod autocomplete;
 pub mod history;
 
+use boxxy_claw::engine::AgentStatus;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use boxxy_claw::engine::AgentStatus;
 
 pub use attachment::{Attachment, AttachmentManager};
 
@@ -298,7 +298,13 @@ impl MsgBarComponent {
 
     pub fn set_status(&self, status: AgentStatus) {
         // Reset everything
-        for cls in ["status-active", "status-sleep", "status-error", "accent", "warning"] {
+        for cls in [
+            "status-active",
+            "status-sleep",
+            "status-error",
+            "accent",
+            "warning",
+        ] {
             self.claw_toggle.remove_css_class(cls);
             self.sleep_toggle.remove_css_class(cls);
         }
@@ -306,7 +312,8 @@ impl MsgBarComponent {
         match status {
             AgentStatus::Waiting | AgentStatus::Working | AgentStatus::Locking { .. } => {
                 self.claw_toggle.add_css_class("status-active");
-                self.sleep_toggle.set_tooltip_text(Some("Sleep Mode (Passive Observer)"));
+                self.sleep_toggle
+                    .set_tooltip_text(Some("Sleep Mode (Passive Observer)"));
                 self.sleep_state.set(false);
             }
             AgentStatus::Sleep => {
@@ -314,7 +321,8 @@ impl MsgBarComponent {
                 // and the sleep icon gets the active color (accent/green).
                 self.claw_toggle.add_css_class("status-sleep");
                 self.sleep_toggle.add_css_class("status-active");
-                self.sleep_toggle.set_tooltip_text(Some("Wake up (Resume from Sleep)"));
+                self.sleep_toggle
+                    .set_tooltip_text(Some("Wake up (Resume from Sleep)"));
                 self.sleep_state.set(true);
             }
             AgentStatus::Faulted { .. } => {
@@ -348,7 +356,7 @@ impl MsgBarComponent {
         let active = status != AgentStatus::Off;
         self.claw_state.set(active);
         self.set_status(status);
-        
+
         self.pin_state.set(pinned);
         self.web_search_state.set(web_search);
 

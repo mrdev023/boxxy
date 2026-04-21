@@ -1,5 +1,5 @@
-use boxxy_db::Db;
 use crate::utils::load_prompt_fallback;
+use boxxy_db::Db;
 use boxxy_db::store::Store;
 use boxxy_model_selection::ModelProvider;
 use log::{debug, info};

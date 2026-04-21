@@ -1,19 +1,18 @@
-use std::collections::HashMap;
+use crate::schema::{Assertion, Scenario, Step};
 use anyhow::{Result, anyhow};
-use crate::schema::{Scenario, Step, Assertion};
-use boxxy_claw::engine::{ClawEngineEvent, ClawMessage};
-use boxxy_claw::registry::workspace::global_workspace;
-use tempfile::TempDir;
-use zbus::connection::Builder;
-use zbus::Guid;
-use tokio::net::UnixStream;
-use futures_util;
+use boxxy_agent::core::state::AgentState;
 use boxxy_agent::ipc::claw::AgentClawProxy;
-use boxxy_agent::subsystems::pty::PtySubsystem;
 use boxxy_agent::subsystems::claw::ClawSubsystem;
 use boxxy_agent::subsystems::maintenance::MaintenanceSubsystem;
-use boxxy_agent::core::state::AgentState;
-
+use boxxy_agent::subsystems::pty::PtySubsystem;
+use boxxy_claw::engine::{ClawEngineEvent, ClawMessage};
+use boxxy_claw::registry::workspace::global_workspace;
+use futures_util;
+use std::collections::HashMap;
+use tempfile::TempDir;
+use tokio::net::UnixStream;
+use zbus::Guid;
+use zbus::connection::Builder;
 
 pub struct MockPane {
     pub id: String,
@@ -33,12 +32,10 @@ pub struct ScenarioRunner {
 
 impl ScenarioRunner {
     pub async fn new(scenario: Scenario) -> Result<Self> {
-        let temp_dir = tempfile::Builder::new()
-            .prefix("boxxy_test_")
-            .tempdir()?;
-        
+        let temp_dir = tempfile::Builder::new().prefix("boxxy_test_").tempdir()?;
+
         let (event_tx, event_rx) = async_channel::unbounded();
-        
+
         Ok(Self {
             scenario,
             panes: HashMap::new(),
@@ -58,13 +55,18 @@ impl ScenarioRunner {
             Builder::unix_stream(p0)
                 .server(Guid::generate())?
                 .p2p()
-                .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Pty", PtySubsystem::new(AgentState::new()))?
-                .serve_at("/dev/boxxy/BoxxyTerminal/Agent/Claw", ClawSubsystem::new(AgentState::new()))?
+                .serve_at(
+                    "/dev/boxxy/BoxxyTerminal/Agent/Pty",
+                    PtySubsystem::new(AgentState::new())
+                )?
+                .serve_at(
+                    "/dev/boxxy/BoxxyTerminal/Agent/Claw",
+                    ClawSubsystem::new(AgentState::new())
+                )?
                 .build(),
-            Builder::unix_stream(p1)
-                .p2p()
-                .build()
-        ).map_err(|e| anyhow!("Failed to build p2p connections: {}", e))?;
+            Builder::unix_stream(p1).p2p().build()
+        )
+        .map_err(|e| anyhow!("Failed to build p2p connections: {}", e))?;
 
         // Keep the server_conn in a background task so it stays alive.
         tokio::spawn(async move {
@@ -85,7 +87,7 @@ impl ScenarioRunner {
 
     pub async fn run(&mut self) -> Result<()> {
         log::info!("🚀 Starting scenario: {}", self.scenario.name);
-        
+
         self.setup_agent_p2p().await?;
         let claw_proxy = self.claw_proxy.as_ref().cloned().unwrap();
 
@@ -93,25 +95,32 @@ impl ScenarioRunner {
         let workspace = global_workspace().await;
         for pane_conf in &self.scenario.panes {
             let (session, tx, rx_ui) = boxxy_claw::engine::ClawSession::new(pane_conf.id.clone());
-            
-            workspace.register_pane_tx(pane_conf.id.clone(), tx.clone()).await;
-            
-            let cwd = self.temp_dir.path().to_string_lossy().to_string();
-            workspace.update_pane_state(
-                pane_conf.id.clone(),
-                Some(session.session_id.clone()),
-                Some(pane_conf.name.clone()),
-                cwd,
-                None,
-                None
-            ).await;
 
-            self.panes.insert(pane_conf.id.clone(), MockPane {
-                id: pane_conf.id.clone(),
-                name: pane_conf.name.clone(),
-                buffer: String::new(),
-                tx,
-            });
+            workspace
+                .register_pane_tx(pane_conf.id.clone(), tx.clone())
+                .await;
+
+            let cwd = self.temp_dir.path().to_string_lossy().to_string();
+            workspace
+                .update_pane_state(
+                    pane_conf.id.clone(),
+                    Some(session.session_id.clone()),
+                    Some(pane_conf.name.clone()),
+                    cwd,
+                    None,
+                    None,
+                )
+                .await;
+
+            self.panes.insert(
+                pane_conf.id.clone(),
+                MockPane {
+                    id: pane_conf.id.clone(),
+                    name: pane_conf.name.clone(),
+                    buffer: String::new(),
+                    tx,
+                },
+            );
 
             // Forward events from this session to our central aggregator
             let event_tx_clone = self.event_tx.clone();
@@ -128,7 +137,11 @@ impl ScenarioRunner {
                 session.run(proxy_clone).await;
             });
 
-            log::info!("Started headless session for: {} ({})", pane_conf.name, pane_conf.id);
+            log::info!(
+                "Started headless session for: {} ({})",
+                pane_conf.name,
+                pane_conf.id
+            );
         }
 
         // 2. Execute Steps
@@ -143,47 +156,72 @@ impl ScenarioRunner {
             self.verify_assertion(assertion).await?;
         }
 
-        log::info!("✅ Scenario '{}' completed successfully!", self.scenario.name);
+        log::info!(
+            "✅ Scenario '{}' completed successfully!",
+            self.scenario.name
+        );
         Ok(())
     }
 
     async fn execute_step(&mut self, step: Step) -> Result<()> {
         match step {
             Step::Prompt { pane, prompt } => {
-                let p = self.panes.get(&pane).ok_or_else(|| anyhow!("Pane {} not found", pane))?;
+                let p = self
+                    .panes
+                    .get(&pane)
+                    .ok_or_else(|| anyhow!("Pane {} not found", pane))?;
                 let cwd = self.temp_dir.path().to_string_lossy().to_string();
-                
+
                 p.tx.send(ClawMessage::UserMessage {
                     message: prompt.clone(),
                     snapshot: p.buffer.clone(),
                     cwd,
                     image_attachments: vec![],
-                }).await?;
+                })
+                .await?;
             }
             Step::InjectTerminalOutput { pane, output } => {
-                let p = self.panes.get_mut(&pane).ok_or_else(|| anyhow!("Pane {} not found", pane))?;
+                let p = self
+                    .panes
+                    .get_mut(&pane)
+                    .ok_or_else(|| anyhow!("Pane {} not found", pane))?;
                 p.buffer.push_str(&output);
-                
+
                 // Update the global workspace so other agents can see it
                 let workspace = global_workspace().await;
-                workspace.update_pane_state(
-                    p.id.clone(),
-                    None,
-                    None,
-                    self.temp_dir.path().to_string_lossy().to_string(),
-                    None,
-                    Some(p.buffer.clone())
-                ).await;
+                workspace
+                    .update_pane_state(
+                        p.id.clone(),
+                        None,
+                        None,
+                        self.temp_dir.path().to_string_lossy().to_string(),
+                        None,
+                        Some(p.buffer.clone()),
+                    )
+                    .await;
             }
-            Step::WaitForStatus { pane, status, timeout_sec } => {
+            Step::WaitForStatus {
+                pane,
+                status,
+                timeout_sec,
+            } => {
                 let timeout_duration = std::time::Duration::from_secs(timeout_sec);
                 let start = std::time::Instant::now();
-                
-                log::info!("⏳ Waiting for status '{}' on pane '{}' (Timeout: {}s)...", status, pane, timeout_sec);
-                
+
+                log::info!(
+                    "⏳ Waiting for status '{}' on pane '{}' (Timeout: {}s)...",
+                    status,
+                    pane,
+                    timeout_sec
+                );
+
                 loop {
                     if start.elapsed() > timeout_duration {
-                        return Err(anyhow!("❌ Timeout waiting for status {} on pane {}", status, pane));
+                        return Err(anyhow!(
+                            "❌ Timeout waiting for status {} on pane {}",
+                            status,
+                            pane
+                        ));
                     }
 
                     tokio::select! {
@@ -214,15 +252,27 @@ impl ScenarioRunner {
                     }
                 }
             }
-            Step::WaitForToolCall { pane, tool_name, timeout_sec } => {
+            Step::WaitForToolCall {
+                pane,
+                tool_name,
+                timeout_sec,
+            } => {
                 let timeout_duration = std::time::Duration::from_secs(timeout_sec);
                 let start = std::time::Instant::now();
-                
-                log::info!("Waiting for tool call '{}' on pane '{}'...", tool_name, pane);
-                
+
+                log::info!(
+                    "Waiting for tool call '{}' on pane '{}'...",
+                    tool_name,
+                    pane
+                );
+
                 loop {
                     if start.elapsed() > timeout_duration {
-                        return Err(anyhow!("Timeout waiting for tool call {} on pane {}", tool_name, pane));
+                        return Err(anyhow!(
+                            "Timeout waiting for tool call {} on pane {}",
+                            tool_name,
+                            pane
+                        ));
                     }
 
                     tokio::select! {
@@ -254,7 +304,7 @@ impl ScenarioRunner {
             Assertion::FileContains { path, content } => {
                 let full_path = self.temp_dir.path().join(path);
                 log::info!("Checking file: {:?}", full_path);
-                
+
                 let mut check_count = 0;
                 loop {
                     if let Ok(actual) = tokio::fs::read_to_string(&full_path).await {
@@ -265,26 +315,53 @@ impl ScenarioRunner {
                     }
                     check_count += 1;
                     if check_count > 10 {
-                        return Err(anyhow!("Assertion failed: File {:?} did not contain '{}'", full_path, content));
+                        return Err(anyhow!(
+                            "Assertion failed: File {:?} did not contain '{}'",
+                            full_path,
+                            content
+                        ));
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 }
             }
-            Assertion::CommandExitCode { command, expected_code } => {
-                let claw_proxy = self.claw_proxy.as_ref().ok_or_else(|| anyhow!("Claw proxy not initialized"))?;
-                
+            Assertion::CommandExitCode {
+                command,
+                expected_code,
+            } => {
+                let claw_proxy = self
+                    .claw_proxy
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Claw proxy not initialized"))?;
+
                 // Run in the temp dir
-                let full_command = format!("cd '{}' && {}", self.temp_dir.path().to_string_lossy(), command);
+                let full_command = format!(
+                    "cd '{}' && {}",
+                    self.temp_dir.path().to_string_lossy(),
+                    command
+                );
                 let (exit_code, _stdout, _stderr) = claw_proxy.exec_shell(full_command).await?;
-                
+
                 if exit_code == expected_code {
-                    log::info!("Assertion passed: Command '{}' exited with {}", command, expected_code);
+                    log::info!(
+                        "Assertion passed: Command '{}' exited with {}",
+                        command,
+                        expected_code
+                    );
                     Ok(())
                 } else {
-                    Err(anyhow!("Assertion failed: Command '{}' exited with {}, expected {}", command, exit_code, expected_code))
+                    Err(anyhow!(
+                        "Assertion failed: Command '{}' exited with {}, expected {}",
+                        command,
+                        exit_code,
+                        expected_code
+                    ))
                 }
             }
-            Assertion::AgentMemoryContains { pane, key, content: _content } => {
+            Assertion::AgentMemoryContains {
+                pane,
+                key,
+                content: _content,
+            } => {
                 log::info!("Checking memory of pane {} for key {}", pane, key);
                 // For now, we'll mark this as passed if the agent has reached Active state
                 // Deep memory inspection requires DB access which is harder to mock headlessly

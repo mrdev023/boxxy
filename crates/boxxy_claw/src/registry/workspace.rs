@@ -31,9 +31,17 @@ pub struct WorkspaceRegistry {
 
 #[derive(Debug, Clone)]
 pub enum EventFilter {
-    ProcessExited { pane_id: Option<String> },
-    OutputMatch { pane_id: String, regex: String },
-    Custom { source_agent: Option<String>, name: String },
+    ProcessExited {
+        pane_id: Option<String>,
+    },
+    OutputMatch {
+        pane_id: String,
+        regex: String,
+    },
+    Custom {
+        source_agent: Option<String>,
+        name: String,
+    },
 }
 
 static WORKSPACE: OnceCell<Arc<WorkspaceRegistry>> = OnceCell::const_new();
@@ -119,9 +127,7 @@ impl WorkspaceRegistry {
                     ) => filter_pane_id.is_none() || filter_pane_id.as_ref() == Some(pane_id),
 
                     (
-                        crate::engine::ClawEvent::OutputMatch {
-                            pane_id, regex, ..
-                        },
+                        crate::engine::ClawEvent::OutputMatch { pane_id, regex, .. },
                         EventFilter::OutputMatch {
                             pane_id: filter_pane_id,
                             regex: filter_regex,
@@ -318,7 +324,7 @@ impl WorkspaceRegistry {
         let mut panes = self.panes.write().await;
         panes.remove(&id);
         drop(panes);
-        
+
         self.release_all_locks(&id).await;
         self.unsubscribe_all(&id).await;
     }
@@ -330,7 +336,11 @@ impl WorkspaceRegistry {
         }
     }
 
-    pub async fn set_pane_quality(&self, id: String, quality: Option<crate::engine::ContextQuality>) {
+    pub async fn set_pane_quality(
+        &self,
+        id: String,
+        quality: Option<crate::engine::ContextQuality>,
+    ) {
         let mut panes = self.panes.write().await;
         if let Some(pane) = panes.get_mut(&id) {
             pane.context_quality = quality;
@@ -367,7 +377,7 @@ impl WorkspaceRegistry {
             radar.push_str(
                 "You can read these panes using `read_pane_buffer(agent_name)` or delegate tasks using `delegate_task(agent_name, prompt)`.\n",
             );
-            
+
             let mut sorted_peers = peers.clone();
             // Simple load balancing signal sort:
             // 1. Waiting + Full Context (Best)
@@ -377,27 +387,31 @@ impl WorkspaceRegistry {
             sorted_peers.sort_by_key(|p| {
                 let is_waiting = p.status.as_deref() == Some("Waiting");
                 let is_sleep = p.status.as_deref() == Some("Sleep");
-                let is_full = matches!(p.context_quality, Some(crate::engine::ContextQuality::Full));
-                
-                if is_waiting && is_full { 1 }
-                else if is_sleep && is_full { 2 }
-                else if is_waiting && !is_full { 3 }
-                else if is_sleep && !is_full { 4 }
-                else { 5 }
+                let is_full =
+                    matches!(p.context_quality, Some(crate::engine::ContextQuality::Full));
+
+                if is_waiting && is_full {
+                    1
+                } else if is_sleep && is_full {
+                    2
+                } else if is_waiting && !is_full {
+                    3
+                } else if is_sleep && !is_full {
+                    4
+                } else {
+                    5
+                }
             });
 
             for peer in sorted_peers {
                 let cmd = peer.last_command.as_deref().unwrap_or("idle");
-                let status = peer
-                    .status
-                    .as_deref()
-                    .unwrap_or("Unknown");
+                let status = peer.status.as_deref().unwrap_or("Unknown");
                 let quality = match peer.context_quality {
                     Some(crate::engine::ContextQuality::Full) => "Full Context",
                     Some(crate::engine::ContextQuality::Degraded) => "Degraded Context",
                     None => "Unknown Context",
                 };
-                
+
                 radar.push_str(&format!(
                     "- Agent '{}' (ID: {}): in {} | Last command `{}` | Status: {} [{}]\n",
                     peer.name, peer.id, peer.cwd, cmd, status, quality

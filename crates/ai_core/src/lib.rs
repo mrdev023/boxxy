@@ -341,7 +341,11 @@ pub fn create_agent(
             BoxxyAgentInner::OpenAi(builder.build())
         }
         ModelProvider::OpenRouter(model_name) => {
-            let key = creds.api_keys.get("OpenRouter").cloned().unwrap_or_default();
+            let key = creds
+                .api_keys
+                .get("OpenRouter")
+                .cloned()
+                .unwrap_or_default();
             let client = rig::providers::openai::Client::builder()
                 .api_key(key.trim())
                 .base_url("https://openrouter.ai/api/v1")

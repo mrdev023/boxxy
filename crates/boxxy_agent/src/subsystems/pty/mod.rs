@@ -1,8 +1,8 @@
-use crate::ipc::pty::SpawnOptions;
 use crate::core::state::AgentState;
+use crate::ipc::pty::SpawnOptions;
 use nix::fcntl::OFlag;
-use nix::pty::{grantpt, posix_openpt, ptsname, unlockpt, PtyMaster};
-use nix::unistd::{getuid, User};
+use nix::pty::{PtyMaster, grantpt, posix_openpt, ptsname, unlockpt};
+use nix::unistd::{User, getuid};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use zbus::fdo;
 use zbus::interface;
@@ -255,15 +255,16 @@ impl PtySubsystem {
                                     if parts.len() > 1 {
                                         if let Ok(ppid) = parts[1].parse::<u32>() {
                                             let cmdline_path = format!("/proc/{}/cmdline", p);
-                                            let full_name = if let Ok(cmdline) = std::fs::read(&cmdline_path) {
-                                                let cmd = String::from_utf8_lossy(&cmdline)
-                                                    .replace('\0', " ")
-                                                    .trim()
-                                                    .to_string();
-                                                if cmd.is_empty() { name } else { cmd }
-                                            } else {
-                                                name
-                                            };
+                                            let full_name =
+                                                if let Ok(cmdline) = std::fs::read(&cmdline_path) {
+                                                    let cmd = String::from_utf8_lossy(&cmdline)
+                                                        .replace('\0', " ")
+                                                        .trim()
+                                                        .to_string();
+                                                    if cmd.is_empty() { name } else { cmd }
+                                                } else {
+                                                    name
+                                                };
                                             all_procs.push((p, ppid, full_name));
                                         }
                                     }
@@ -315,10 +316,18 @@ impl PtySubsystem {
 
         unsafe {
             if let Some(tg) = tpgid {
-                log::debug!("Signaling foreground process group {} with signal {}", tg, signal);
+                log::debug!(
+                    "Signaling foreground process group {} with signal {}",
+                    tg,
+                    signal
+                );
                 libc::kill(-(tg as i32), signal);
             }
-            log::debug!("Signaling shell process group {} with signal {}", pid, signal);
+            log::debug!(
+                "Signaling shell process group {} with signal {}",
+                pid,
+                signal
+            );
             if libc::kill(-(pid as i32), signal) != 0 {
                 // Ignore error if shell is already dead
             }

@@ -1,4 +1,4 @@
-use crate::engine::fsm::state::{AgentStatus, TriggerSource, TransitionRequest};
+use crate::engine::fsm::state::{AgentStatus, TransitionRequest, TriggerSource};
 
 pub struct FsmRouter;
 
@@ -24,11 +24,11 @@ impl FsmRouter {
 
         // 2. Lock Integrity
         if matches!(current_status, AgentStatus::Locking { .. }) {
-            if matches!(
-                req.target_state,
-                AgentStatus::Sleep | AgentStatus::Off
-            ) {
-                return Err(format!("Rejected transition to {:?} while Locking", req.target_state));
+            if matches!(req.target_state, AgentStatus::Sleep | AgentStatus::Off) {
+                return Err(format!(
+                    "Rejected transition to {:?} while Locking",
+                    req.target_state
+                ));
             }
         }
 
@@ -39,7 +39,10 @@ impl FsmRouter {
         ) {
             if matches!(
                 req.target_state,
-                AgentStatus::Waiting | AgentStatus::Faulted { .. } | AgentStatus::Sleep | AgentStatus::Off
+                AgentStatus::Waiting
+                    | AgentStatus::Faulted { .. }
+                    | AgentStatus::Sleep
+                    | AgentStatus::Off
             ) {
                 return Ok(FsmAction::AbortCurrentTurn);
             }

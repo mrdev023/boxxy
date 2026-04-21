@@ -190,6 +190,16 @@ impl ModelProvider {
             ModelProvider::OpenRouter(_) => "OpenRouter",
         }
     }
+
+    pub fn format_label(&self) -> String {
+        match self {
+            ModelProvider::Gemini(model, _) => format!("Google {}", model),
+            ModelProvider::Ollama(model) => format!("Ollama {}", model),
+            ModelProvider::Anthropic(model) => format!("Anthropic {}", model),
+            ModelProvider::OpenAi(model, _) => format!("OpenAI {}", model),
+            ModelProvider::OpenRouter(model) => format!("OpenRouter {}", model),
+        }
+    }
 }
 
 impl Default for ModelProvider {

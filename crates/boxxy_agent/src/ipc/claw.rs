@@ -7,7 +7,8 @@ use zbus::proxy;
 )]
 pub trait AgentClaw {
     async fn exec_shell(&self, command: String) -> zbus::Result<(i32, String, String)>;
-    async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> zbus::Result<String>;
+    async fn read_file(&self, path: String, start_line: u32, end_line: u32)
+    -> zbus::Result<String>;
     async fn write_file(&self, path: String, content: String) -> zbus::Result<()>;
     async fn list_directory(&self, path: String) -> zbus::Result<Vec<(String, bool, u64)>>;
     async fn delete_file(&self, path: String) -> zbus::Result<()>;

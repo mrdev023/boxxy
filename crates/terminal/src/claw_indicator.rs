@@ -180,9 +180,7 @@ impl ClawIndicator {
         badge_box.set_valign(gtk::Align::Center);
         badge_box.set_height_request(20);
 
-        let badge_label = gtk::Label::builder()
-            .valign(gtk::Align::Center)
-            .build();
+        let badge_label = gtk::Label::builder().valign(gtk::Align::Center).build();
         badge_box.append(&badge_label);
 
         let clock_icon = gtk::Image::builder()

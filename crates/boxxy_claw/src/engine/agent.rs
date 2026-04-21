@@ -1,16 +1,16 @@
-use crate::utils::load_prompt_fallback;
 use crate::engine::ClawEngineEvent;
 use crate::engine::session::SessionState;
+use crate::engine::tools::set_state::SetAgentStateTool;
 use crate::engine::tools::skills::ActivateSkillTool;
+use crate::engine::tools::summon_headless::SummonHeadlessWorkerTool;
 use crate::engine::tools::tasks::{CancelTaskTool, ListTasksTool, ScheduleTaskTool};
 use crate::engine::tools::terminal::TerminalCommandTool;
 use crate::engine::tools::workspace::{
-    AbortAgentTaskTool, CloseAgentTool, DelegateTaskAsyncTool, DelegateTaskTool, ListActiveAgentsTool,
-    ReadPaneTool, SendKeystrokesTool, SetGlobalIntentTool, SpawnAgentTool,
+    AbortAgentTaskTool, CloseAgentTool, DelegateTaskAsyncTool, DelegateTaskTool,
+    ListActiveAgentsTool, ReadPaneTool, SendKeystrokesTool, SetGlobalIntentTool, SpawnAgentTool,
 };
-use crate::engine::tools::set_state::SetAgentStateTool;
-use crate::engine::tools::summon_headless::SummonHeadlessWorkerTool;
 use crate::engine::tools::{ClawApprovalHandler, SysShellTool};
+use crate::utils::load_prompt_fallback;
 use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_core_toolbox::{
     FileDeleteTool, FileReadTool, FileWriteTool, GetClipboardTool, GetSystemInfoTool,
@@ -25,12 +25,14 @@ use rig::providers::ollama;
 use rig::providers::openai::responses_api::ResponsesCompletionModel;
 use serde_json::json;
 
+use crate::engine::agent_config::AgentConfig;
 use boxxy_ai_core::{AiCredentials, ModelContextHook};
 
 #[derive(Clone)]
 pub struct ClawAgent {
     inner: ClawAgentInner,
     preamble: String,
+    pub(crate) config: AgentConfig,
 }
 
 #[derive(Clone)]
@@ -48,6 +50,10 @@ enum ClawAgentInner {
 }
 
 impl ClawAgent {
+    pub fn matches_config(&self, candidate: &AgentConfig) -> bool {
+        &self.config == candidate
+    }
+
     pub async fn chat(
         &self,
         prompt: &str,
@@ -184,29 +190,23 @@ impl ClawAgent {
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_claw_agent(
-    provider: &Option<ModelProvider>,
+    config: &AgentConfig,
     creds: &AiCredentials,
-    system_prompt: &str,
     claw_proxy: &AgentClawProxy<'static>,
     current_dir: &str,
     tx_ui: async_channel::Sender<ClawEngineEvent>,
     state: std::sync::Arc<tokio::sync::Mutex<SessionState>>,
     db: std::sync::Arc<tokio::sync::Mutex<Option<boxxy_db::Db>>>,
-    settings: &boxxy_preferences::Settings,
     session_id: String,
     pane_id: String,
-    web_search_enabled: bool,
-) -> ClawAgent {
-    let provider = match provider {
+    mcp_handle: Option<std::sync::Arc<boxxy_mcp::manager::McpClientManager>>,
+) -> anyhow::Result<ClawAgent> {
+    let provider = match &config.model {
         Some(p) => p,
         None => {
-            return ClawAgent {
-                inner: ClawAgentInner::Error(
-                    "No Claw model selected. Please configure your models in Settings -> APIs -> Models Selection."
-                        .to_string(),
-                ),
-                preamble: system_prompt.to_string(),
-            }
+            return Err(anyhow::anyhow!(
+                "No Claw model selected. Please configure your models in Settings -> APIs -> Models Selection."
+            ));
         }
     };
 
@@ -321,7 +321,7 @@ pub async fn create_claw_agent(
     ];
 
     // Conditional Core Toolbox tools
-    if settings.enable_file_tools {
+    if config.file_tools_enabled {
         tools.push(Box::new(FileReadTool {
             proxy: claw_proxy.clone(),
             current_dir: current_dir.to_string(),
@@ -344,27 +344,27 @@ pub async fn create_claw_agent(
         }));
     }
 
-    if settings.enable_system_tools {
+    if config.system_tools_enabled {
         tools.push(Box::new(GetSystemInfoTool {
             proxy: claw_proxy.clone(),
             approval: approval_handler.clone(),
         }));
     }
 
-    if settings.enable_dangerous_tools {
+    if config.dangerous_tools_enabled {
         tools.push(Box::new(KillProcessTool {
             proxy: claw_proxy.clone(),
             approval: approval_handler.clone(),
         }));
     }
 
-    if settings.enable_web_tools {
+    if config.web_tools_enabled {
         tools.push(Box::new(HttpFetchTool {
             approval: approval_handler.clone(),
         }));
     }
 
-    if web_search_enabled && settings.enable_web_search {
+    if config.web_search_local_enabled && config.web_search_master_enabled {
         let tavily_key = creds.api_keys.get("Tavily").cloned().unwrap_or_default();
         if !tavily_key.is_empty() {
             tools.push(Box::new(boxxy_core_toolbox::WebSearchTool {
@@ -373,7 +373,7 @@ pub async fn create_claw_agent(
         }
     }
 
-    if settings.enable_clipboard_tools {
+    if config.clipboard_tools_enabled {
         tools.push(Box::new(GetClipboardTool {
             proxy: claw_proxy.clone(),
             approval: approval_handler.clone(),
@@ -385,11 +385,13 @@ pub async fn create_claw_agent(
     }
 
     // --- Inject MCP Tools ---
-    let mcp_manager = boxxy_mcp::manager::global_manager().await;
+    let mcp_manager = if let Some(mcp) = mcp_handle {
+        mcp
+    } else {
+        boxxy_mcp::manager::global_manager().await
+    };
     // Always sync the latest configs before building tools
-    mcp_manager
-        .update_configs(settings.mcp_servers.clone())
-        .await;
+    mcp_manager.update_configs(config.mcp_servers.clone()).await;
     let mut mcp_tools = mcp_manager.build_rig_tools().await;
     tools.append(&mut mcp_tools);
 
@@ -399,7 +401,11 @@ pub async fn create_claw_agent(
     }
 
     // --- Inject Location & Time Context ---
-    let mut final_preamble = system_prompt.to_string();
+    let mut final_preamble = config.preamble.clone();
+
+    // We only inject OS context if it's currently globally enabled in boxxy_preferences::Settings.
+    // We could add this to AgentConfig, but let's query the live settings for now
+    let settings = boxxy_preferences::Settings::load();
     if settings.enable_os_context {
         // Trigger fetch (it's cached)
         boxxy_ai_core::utils::fetch_location_context().await;
@@ -407,10 +413,7 @@ pub async fn create_claw_agent(
         let now = chrono::Local::now();
         let time_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let mut context_block = format!(
-            "\n\n[ENVIRONMENT CONTEXT]\nTime: {}",
-            time_str
-        );
+        let mut context_block = format!("\n\n[ENVIRONMENT CONTEXT]\nTime: {}", time_str);
 
         if let Some(loc) = boxxy_ai_core::utils::get_location_context() {
             context_block.push_str(&format!(
@@ -500,7 +503,11 @@ pub async fn create_claw_agent(
             )
         }
         ModelProvider::OpenRouter(model_name) => {
-            let key = creds.api_keys.get("OpenRouter").cloned().unwrap_or_default();
+            let key = creds
+                .api_keys
+                .get("OpenRouter")
+                .cloned()
+                .unwrap_or_default();
             let client = rig::providers::openai::Client::builder()
                 .api_key(key.trim())
                 .base_url("https://openrouter.ai/api/v1")
@@ -521,8 +528,9 @@ pub async fn create_claw_agent(
         }
     };
 
-    ClawAgent {
+    Ok(ClawAgent {
         inner,
         preamble: final_preamble,
-    }
+        config: config.clone(),
+    })
 }

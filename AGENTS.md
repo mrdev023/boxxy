@@ -74,6 +74,7 @@ Agents possess full **System & Environment Authority**:
   - **Phase 1 (Light Sleep):** Ingests raw interaction logs from the SQLite database.
   - **Phase 2 (Deep Sleep):** A dedicated LLM parses the logs, extracting durable facts (OS, hardware, preferred tools) and behavioral patterns, resolving semantic conflicts before promoting them to long-term memory.
   - **Phase 3 (REM):** Syncs insights to `MEMORY.md` and generates a human-readable `DREAMS.md` log. This process runs in a detached Tokio task 10 seconds after startup to ensure zero UI latency.
+- **Concurrency-Safe Hot-Swapping**: Users can change AI providers (e.g. Gemini to Claude), update API keys, or toggle tool authorizations in Settings at any time. Active sessions will safely drop and transparently rebuild their underlying agents on the next turn, retaining conversation history and automatically sanitizing incompatible payload formats without crashing the pane.
 - **Cross-Model Continuity**: Cumulative session analytics (Total Tokens) are persisted in the database, allowing users to switch LLM providers (e.g., Gemini to Claude) while maintaining a continuous record of the session's overall cost and context depth.
 - **Soft Clear Pattern**: Clicking "Clear Screen" in the sidebar marks a session-specific timestamp. Subsequent restorations only show history generated after that point, providing a clean visual state while keeping the underlying data safe.
 - **Clipboard Management**: Securely read and write to the system clipboard with user approval.

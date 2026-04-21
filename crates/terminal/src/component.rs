@@ -710,6 +710,13 @@ impl TerminalComponent {
         }
     }
 
+    pub fn notify_settings_invalidated(&self) {
+        let inner = self.inner.borrow();
+        for pane in inner.panes.values() {
+            pane.controller.notify_settings_invalidated();
+        }
+    }
+
     pub fn update_settings(&self, settings: Settings, palette: Option<Palette>) {
         let mut inner = self.inner.borrow_mut();
 

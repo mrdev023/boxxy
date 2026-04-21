@@ -1,5 +1,5 @@
 use crate::engine::{AgentStatus, ClawEngineEvent, ClawEvent};
-use crate::registry::workspace::{global_workspace, EventFilter};
+use crate::registry::workspace::{EventFilter, global_workspace};
 use boxxy_core_toolbox::ApprovalHandler;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
@@ -68,15 +68,27 @@ impl Tool for SubscribeToPaneTool {
         let target_pane_id = workspace.resolve_pane_id_by_name(&args.agent_name).await;
 
         let filter = match args.event_type.as_str() {
-            "process_exit" => EventFilter::ProcessExited { pane_id: target_pane_id },
+            "process_exit" => EventFilter::ProcessExited {
+                pane_id: target_pane_id,
+            },
             "output_match" => {
                 if let (Some(target_id), Some(re)) = (target_pane_id, args.regex) {
-                    EventFilter::OutputMatch { pane_id: target_id, regex: re }
+                    EventFilter::OutputMatch {
+                        pane_id: target_id,
+                        regex: re,
+                    }
                 } else {
-                    return Ok(SubscribeOutput { message: "Error: 'output_match' requires a valid agent_name and regex.".to_string() });
+                    return Ok(SubscribeOutput {
+                        message: "Error: 'output_match' requires a valid agent_name and regex."
+                            .to_string(),
+                    });
                 }
             }
-            _ => return Ok(SubscribeOutput { message: format!("Error: Unknown event_type '{}'", args.event_type) }),
+            _ => {
+                return Ok(SubscribeOutput {
+                    message: format!("Error: Unknown event_type '{}'", args.event_type),
+                });
+            }
         };
 
         workspace.subscribe(self.pane_id.clone(), filter).await;
@@ -87,16 +99,27 @@ impl Tool for SubscribeToPaneTool {
             state.status = AgentStatus::Sleep;
             let agent_name = state.agent_name.clone();
 
-            let _ = self.tx_ui.send(ClawEngineEvent::SessionStateChanged {
-                agent_name,
-                status: AgentStatus::Sleep,
-            }).await;
+            let _ = self
+                .tx_ui
+                .send(ClawEngineEvent::SessionStateChanged {
+                    agent_name,
+                    status: AgentStatus::Sleep,
+                })
+                .await;
         }
 
         let res = SubscribeOutput {
-            message: format!("Successfully subscribed to '{}' events from '{}'. You are now suspended until this event occurs.", args.event_type, args.agent_name),
+            message: format!(
+                "Successfully subscribed to '{}' events from '{}'. You are now suspended until this event occurs.",
+                args.event_type, args.agent_name
+            ),
         };
-        self.approval.report_tool_result(Self::NAME.to_string(), serde_json::to_string(&res).unwrap_or_default()).await;
+        self.approval
+            .report_tool_result(
+                Self::NAME.to_string(),
+                serde_json::to_string(&res).unwrap_or_default(),
+            )
+            .await;
         Ok(res)
     }
 }
@@ -147,25 +170,49 @@ impl Tool for AcquireLockTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let workspace = global_workspace().await;
-        match workspace.acquire_lock(self.pane_id.clone(), args.resource.clone()).await {
+        match workspace
+            .acquire_lock(self.pane_id.clone(), args.resource.clone())
+            .await
+        {
             Ok(_) => {
                 let agent_name = {
                     let state = self.state.lock().await;
                     state.agent_name.clone()
                 };
 
-                let _ = self.tx_ui.send(ClawEngineEvent::SessionStateChanged {
-                    agent_name,
-                    status: AgentStatus::Locking { resource: args.resource.clone() },
-                }).await;
+                let _ = self
+                    .tx_ui
+                    .send(ClawEngineEvent::SessionStateChanged {
+                        agent_name,
+                        status: AgentStatus::Locking {
+                            resource: args.resource.clone(),
+                        },
+                    })
+                    .await;
 
-                let res = LockOutput { success: true, message: format!("Successfully locked '{}'.", args.resource) };
-                self.approval.report_tool_result(Self::NAME.to_string(), serde_json::to_string(&res).unwrap_or_default()).await;
+                let res = LockOutput {
+                    success: true,
+                    message: format!("Successfully locked '{}'.", args.resource),
+                };
+                self.approval
+                    .report_tool_result(
+                        Self::NAME.to_string(),
+                        serde_json::to_string(&res).unwrap_or_default(),
+                    )
+                    .await;
                 Ok(res)
-            },
+            }
             Err(e) => {
-                let res = LockOutput { success: false, message: e };
-                self.approval.report_tool_result(Self::NAME.to_string(), serde_json::to_string(&res).unwrap_or_default()).await;
+                let res = LockOutput {
+                    success: false,
+                    message: e,
+                };
+                self.approval
+                    .report_tool_result(
+                        Self::NAME.to_string(),
+                        serde_json::to_string(&res).unwrap_or_default(),
+                    )
+                    .await;
                 Ok(res)
             }
         }
@@ -205,20 +252,33 @@ impl Tool for ReleaseLockTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let workspace = global_workspace().await;
-        workspace.release_lock(self.pane_id.clone(), args.resource.clone()).await;
+        workspace
+            .release_lock(self.pane_id.clone(), args.resource.clone())
+            .await;
 
         let agent_name = {
             let state = self.state.lock().await;
             state.agent_name.clone()
         };
 
-        let _ = self.tx_ui.send(ClawEngineEvent::SessionStateChanged {
-            agent_name,
-            status: AgentStatus::Waiting,
-        }).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::SessionStateChanged {
+                agent_name,
+                status: AgentStatus::Waiting,
+            })
+            .await;
 
-        let res = LockOutput { success: true, message: format!("Released lock on '{}'.", args.resource) };
-        self.approval.report_tool_result(Self::NAME.to_string(), serde_json::to_string(&res).unwrap_or_default()).await;
+        let res = LockOutput {
+            success: true,
+            message: format!("Released lock on '{}'.", args.resource),
+        };
+        self.approval
+            .report_tool_result(
+                Self::NAME.to_string(),
+                serde_json::to_string(&res).unwrap_or_default(),
+            )
+            .await;
         Ok(res)
     }
 }
@@ -245,7 +305,8 @@ impl Tool for PublishEventTool {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Publish a custom event to the workspace event bus. \
-            Other agents subscribed to this event name will be notified.".to_string(),
+            Other agents subscribed to this event name will be notified."
+                .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -270,14 +331,18 @@ impl Tool for PublishEventTool {
         };
 
         let workspace = global_workspace().await;
-        workspace.publish_event(ClawEvent::Custom {
-            source_agent: agent_name,
-            name: args.event_name.clone(),
-            payload: args.payload,
-        }).await;
+        workspace
+            .publish_event(ClawEvent::Custom {
+                source_agent: agent_name,
+                name: args.event_name.clone(),
+                payload: args.payload,
+            })
+            .await;
 
         let res = format!("Successfully published event '{}'.", args.event_name);
-        self.approval.report_tool_result(Self::NAME.to_string(), res.clone()).await;
+        self.approval
+            .report_tool_result(Self::NAME.to_string(), res.clone())
+            .await;
         Ok(res)
     }
 }
@@ -333,12 +398,20 @@ impl Tool for AwaitTasksTool {
         }
         drop(state);
 
-        let _ = self.tx_ui.send(ClawEngineEvent::SessionStateChanged {
-            agent_name,
-            status: AgentStatus::Sleep,
-        }).await;        
-        let res = format!("Suspending to await {} tasks. You will be woken up once they complete.", args.task_ids.len());
-        self.approval.report_tool_result(Self::NAME.to_string(), res.clone()).await;
+        let _ = self
+            .tx_ui
+            .send(ClawEngineEvent::SessionStateChanged {
+                agent_name,
+                status: AgentStatus::Sleep,
+            })
+            .await;
+        let res = format!(
+            "Suspending to await {} tasks. You will be woken up once they complete.",
+            args.task_ids.len()
+        );
+        self.approval
+            .report_tool_result(Self::NAME.to_string(), res.clone())
+            .await;
         Ok(res)
     }
 }
@@ -388,27 +461,34 @@ impl Tool for OrchestrateAgentTool {
         let workspace = global_workspace().await;
         if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
             let msg = match args.action.as_str() {
-                "suspend" => crate::engine::ClawMessage::SubscriptionEvent { 
-                    // Sending a dummy event to a non-suspended agent 
+                "suspend" => crate::engine::ClawMessage::SubscriptionEvent {
+                    // Sending a dummy event to a non-suspended agent
                     // is a way to trigger the suspension check if we add a 'force' flag,
                     // but for now let's just use it to send a signal.
-                    event: crate::engine::ClawEvent::Custom { 
+                    event: crate::engine::ClawEvent::Custom {
                         source_agent: "System".to_string(),
                         name: "request_sleep".to_string(),
-                        payload: "External sleep request".to_string()
-                    }
+                        payload: "External sleep request".to_string(),
+                    },
                 },
                 "cancel" => crate::engine::ClawMessage::CancelPending,
                 _ => return Ok(format!("Unknown action '{}'", args.action)),
             };
 
             let _ = tx.send(msg).await;
-            let res = format!("Successfully sent '{}' command to '{}'.", args.action, args.agent_name);
-            self.approval.report_tool_result(Self::NAME.to_string(), res.clone()).await;
+            let res = format!(
+                "Successfully sent '{}' command to '{}'.",
+                args.action, args.agent_name
+            );
+            self.approval
+                .report_tool_result(Self::NAME.to_string(), res.clone())
+                .await;
             Ok(res)
         } else {
             let res = format!("Agent '{}' not found.", args.agent_name);
-            self.approval.report_tool_result(Self::NAME.to_string(), res.clone()).await;
+            self.approval
+                .report_tool_result(Self::NAME.to_string(), res.clone())
+                .await;
             Ok(res)
         }
     }

@@ -382,10 +382,12 @@ impl Tool for DelegateTaskAsyncTool {
             tokio::spawn(async move {
                 if let Ok(result) = reply_rx.await {
                     if let Some(tx) = tx_self {
-                        let _ = tx.send(crate::engine::ClawMessage::TaskCompletedEvent {
-                            task_id,
-                            result,
-                        }).await;
+                        let _ = tx
+                            .send(crate::engine::ClawMessage::TaskCompletedEvent {
+                                task_id,
+                                result,
+                            })
+                            .await;
                     }
                 }
             });
@@ -705,7 +707,10 @@ impl Tool for AbortAgentTaskTool {
         if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
             let _ = tx.send(crate::engine::ClawMessage::Abort).await;
             Ok(AbortAgentOutput {
-                message: format!("Successfully sent ABORT signal to agent '{}'.", args.agent_name),
+                message: format!(
+                    "Successfully sent ABORT signal to agent '{}'.",
+                    args.agent_name
+                ),
             })
         } else {
             Ok(AbortAgentOutput {

@@ -98,7 +98,7 @@ impl SingleModelSelector {
         model_label.add_css_class("dim-label");
         let model_list = gtk::StringList::new(&[]);
         let model_dropdown = gtk::DropDown::new(Some(model_list.clone()), None::<&gtk::Expression>);
-        
+
         let model_entry = gtk::Entry::builder()
             .placeholder_text("e.g. anthropic/claude-3.5-sonnet")
             .visible(false)
@@ -141,7 +141,8 @@ impl SingleModelSelector {
             } else {
                 String::new()
             },
-            last_selected_openrouter_model: if let Some(ModelProvider::OpenRouter(ref m)) = initial {
+            last_selected_openrouter_model: if let Some(ModelProvider::OpenRouter(ref m)) = initial
+            {
                 m.clone()
             } else {
                 String::new()
@@ -188,7 +189,11 @@ impl SingleModelSelector {
                     }
 
                     let new_prov = if prov_def.name() == "OpenRouter" {
-                        prov_def.create_model_provider(m_idx, Some(inner.model_entry.text().to_string()), Some(t_idx))
+                        prov_def.create_model_provider(
+                            m_idx,
+                            Some(inner.model_entry.text().to_string()),
+                            Some(t_idx),
+                        )
                     } else {
                         prov_def.create_model_provider(m_idx, m_name, Some(t_idx))
                     };
@@ -237,7 +242,7 @@ impl SingleModelSelector {
                 }
             }
         });
-        
+
         model_entry.connect_changed({
             let update_state = Rc::clone(&update_state);
             let s_clone = self_.clone();
@@ -388,7 +393,9 @@ impl SingleModelSelector {
                     inner.model_entry.set_visible(true);
                     inner.options_vbox.set_visible(false); // No thinking dropdown for OpenRouter yet
                     if !inner.last_selected_openrouter_model.is_empty() {
-                        inner.model_entry.set_text(&inner.last_selected_openrouter_model);
+                        inner
+                            .model_entry
+                            .set_text(&inner.last_selected_openrouter_model);
                     }
                     inner.updating = false;
                     should_update = true;
@@ -539,7 +546,7 @@ impl SingleModelSelector {
 
                 let is_ollama = prov_name == "Ollama";
                 let is_openrouter = prov_name == "OpenRouter";
-                
+
                 if is_openrouter {
                     inner.model_dropdown.set_visible(false);
                     inner.model_entry.set_visible(true);

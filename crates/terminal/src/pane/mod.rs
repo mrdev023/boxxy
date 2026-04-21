@@ -98,8 +98,8 @@ impl Drop for PaneInner {
     fn drop(&mut self) {
         if let Some(pid) = self.pid {
             // When a terminal pane is closed, we must ensure all child processes are killed.
-            // Since the agent daemon outlives the UI, simply closing the PTY master FD 
-            // might not be enough if the child (like mpv) ignores SIGHUP or if the 
+            // Since the agent daemon outlives the UI, simply closing the PTY master FD
+            // might not be enough if the child (like mpv) ignores SIGHUP or if the
             // agent is still holding the slave FD open.
             log::info!("PaneInner dropping, killing process group for PID {}", pid);
             glib::spawn_future_local(async move {
@@ -249,7 +249,10 @@ impl TerminalPaneComponent {
                             cb_msg(PaneOutput::ClawStateChanged(
                                 id_msg.clone(),
                                 true,
-                                matches!(*session_status_for_msg.borrow(), boxxy_claw::engine::AgentStatus::Sleep),
+                                matches!(
+                                    *session_status_for_msg.borrow(),
+                                    boxxy_claw::engine::AgentStatus::Sleep
+                                ),
                             ));
                             let tx = tx_msg.clone();
                             glib::spawn_future_local(async move {
@@ -313,7 +316,7 @@ impl TerminalPaneComponent {
                                 status = boxxy_claw::engine::AgentStatus::Off;
                                 *session_status_for_active.borrow_mut() = status.clone();
                             }
-                            
+
                             inner_arc.borrow().msg_bar.update_ui(
                                 status.clone(),
                                 is_pinned_for_active.get(),
@@ -326,7 +329,10 @@ impl TerminalPaneComponent {
                         cb_toggle(PaneOutput::ClawStateChanged(
                             id_toggle.clone(),
                             active,
-                            matches!(*session_status_for_active.borrow(), boxxy_claw::engine::AgentStatus::Sleep),
+                            matches!(
+                                *session_status_for_active.borrow(),
+                                boxxy_claw::engine::AgentStatus::Sleep
+                            ),
                         ));
                         let tx = tx_claw_toggle.clone();
                         if active {
@@ -341,7 +347,10 @@ impl TerminalPaneComponent {
                     }
                 },
                 move |sleep| {
-                    let currently_sleeping = matches!(*session_status_for_sleep.borrow(), boxxy_claw::engine::AgentStatus::Sleep);
+                    let currently_sleeping = matches!(
+                        *session_status_for_sleep.borrow(),
+                        boxxy_claw::engine::AgentStatus::Sleep
+                    );
                     if currently_sleeping != sleep {
                         let new_status = if sleep {
                             boxxy_claw::engine::AgentStatus::Sleep
@@ -349,7 +358,7 @@ impl TerminalPaneComponent {
                             boxxy_claw::engine::AgentStatus::Waiting
                         };
                         *session_status_for_sleep.borrow_mut() = new_status.clone();
-                        
+
                         if let Some(inner_arc) = inner_weak_for_sleep
                             .borrow()
                             .as_ref()
@@ -897,12 +906,15 @@ impl TerminalPaneComponent {
     }
 
     pub fn is_sleep(&self) -> bool {
-        matches!(*self.session_status.borrow(), boxxy_claw::engine::AgentStatus::Sleep)
+        matches!(
+            *self.session_status.borrow(),
+            boxxy_claw::engine::AgentStatus::Sleep
+        )
     }
 
     pub fn set_session_status(&self, status: boxxy_claw::engine::AgentStatus) {
         *self.session_status.borrow_mut() = status.clone();
-        
+
         self.msg_bar.set_status(status.clone());
         self.claw_indicator.set_mode(status);
     }
@@ -933,11 +945,8 @@ impl TerminalPaneComponent {
         *self.session_status.borrow_mut() = status.clone();
 
         // Sync MsgBar toggle state
-        self.msg_bar.update_ui(
-            status,
-            self.is_pinned.get(),
-            self.is_web_search.get(),
-        );
+        self.msg_bar
+            .update_ui(status, self.is_pinned.get(), self.is_web_search.get());
 
         // If turning ON, tell the session to Initialize
         let tx = self.claw_sender.clone();
@@ -966,6 +975,12 @@ impl TerminalPaneComponent {
                 .send(boxxy_claw::engine::ClawMessage::SoftClearHistory)
                 .await;
         });
+    }
+
+    pub fn notify_settings_invalidated(&self) {
+        let _ = self
+            .claw_sender
+            .try_send(boxxy_claw::engine::ClawMessage::SettingsInvalidated);
     }
 
     pub fn clear_claw_history(&self) {

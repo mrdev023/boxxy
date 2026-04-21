@@ -1,7 +1,7 @@
 use boxxy_db::Db;
 use boxxy_db::store::Store;
 use boxxy_model_selection::ModelProvider;
-use log::info;
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -60,7 +60,7 @@ pub async fn extract_implicit_memory(
                             false,
                         )
                         .await;
-                    info!(
+                    log::debug!(
                         "Background Observer extracted Fact for project {}: {} -> {}",
                         project_path, key, content
                     );

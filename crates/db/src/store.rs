@@ -271,9 +271,11 @@ impl<'a> Store<'a> {
     }
 
     pub async fn seed_all_raw_interactions(&self) -> Result<()> {
-        sqlx::query("UPDATE interactions SET processing_state = 'seeded' WHERE processing_state = 'raw'")
-            .execute(self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE interactions SET processing_state = 'seeded' WHERE processing_state = 'raw'",
+        )
+        .execute(self.pool)
+        .await?;
         Ok(())
     }
 
@@ -294,7 +296,10 @@ impl<'a> Store<'a> {
         // SQLite has a limit on parameters, but for dream batches it should be fine.
         let query = format!(
             "UPDATE interactions SET processing_state = 'dreamed' WHERE id IN ({})",
-            ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+            ids.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
         );
 
         sqlx::query(&query).execute(self.pool).await?;
@@ -572,7 +577,11 @@ mod tests {
             .await
             .unwrap();
 
-        let memory = store.get_memory_by_key(key, Some(project_path)).await.unwrap().expect("Memory should exist");
+        let memory = store
+            .get_memory_by_key(key, Some(project_path))
+            .await
+            .unwrap()
+            .expect("Memory should exist");
         assert_eq!(memory.key, key);
         assert_eq!(memory.project_path, project_path);
         assert_eq!(memory.content, content);
@@ -588,21 +597,39 @@ mod tests {
 
         let key = "upsert_fact";
         let project_path = "/tmp/test";
-        
+
         // Initial insert
         store
-            .add_memory(key, Some(project_path), "Initial content", None, false, false)
+            .add_memory(
+                key,
+                Some(project_path),
+                "Initial content",
+                None,
+                false,
+                false,
+            )
             .await
             .unwrap();
 
         // Upsert with new content and verified status
         store
-            .add_memory(key, Some(project_path), "Updated content", Some("new_cat"), true, true)
+            .add_memory(
+                key,
+                Some(project_path),
+                "Updated content",
+                Some("new_cat"),
+                true,
+                true,
+            )
             .await
             .unwrap();
 
-        let memory = store.get_memory_by_key(key, Some(project_path)).await.unwrap().expect("Memory should exist");
-        
+        let memory = store
+            .get_memory_by_key(key, Some(project_path))
+            .await
+            .unwrap()
+            .expect("Memory should exist");
+
         // Ensure properties are updated
         assert_eq!(memory.content, "Updated content");
         assert_eq!(memory.category.as_deref(), Some("new_cat"));
@@ -621,28 +648,56 @@ mod tests {
 
         // Insert a verified memory (searchable)
         store
-            .add_memory("verified_fact", None, "Rust is a fast and memory-safe language.", None, true, false)
+            .add_memory(
+                "verified_fact",
+                None,
+                "Rust is a fast and memory-safe language.",
+                None,
+                true,
+                false,
+            )
             .await
             .unwrap();
 
         // Insert an unverified memory (not searchable by default)
         store
-            .add_memory("unverified_fact", None, "Rust might be from space.", None, false, false)
+            .add_memory(
+                "unverified_fact",
+                None,
+                "Rust might be from space.",
+                None,
+                false,
+                false,
+            )
             .await
             .unwrap();
-            
+
         // Insert a pinned memory (not searchable by default via search_memories)
         store
-            .add_memory("pinned_fact", None, "Rust is oxidized iron.", None, true, true)
+            .add_memory(
+                "pinned_fact",
+                None,
+                "Rust is oxidized iron.",
+                None,
+                true,
+                true,
+            )
             .await
             .unwrap();
 
         // Search for "Rust"
         let results = store.search_memories("Rust", None, 10).await.unwrap();
-        
-        assert_eq!(results.len(), 1, "Only the verified, unpinned memory should be returned in search");
+
+        assert_eq!(
+            results.len(),
+            1,
+            "Only the verified, unpinned memory should be returned in search"
+        );
         assert_eq!(results[0].key, "verified_fact");
-        assert_eq!(results[0].content, "Rust is a fast and memory-safe language.");
+        assert_eq!(
+            results[0].content,
+            "Rust is a fast and memory-safe language."
+        );
     }
 
     #[tokio::test]
@@ -669,8 +724,14 @@ mod tests {
         let store = Store::new(db.pool());
 
         // Insert some history
-        let id1 = store.insert_msgbar_history("hello world", "[]").await.unwrap();
-        let id2 = store.insert_msgbar_history("testing 123", "[{\"type\": \"image\"}]").await.unwrap();
+        let id1 = store
+            .insert_msgbar_history("hello world", "[]")
+            .await
+            .unwrap();
+        let id2 = store
+            .insert_msgbar_history("testing 123", "[{\"type\": \"image\"}]")
+            .await
+            .unwrap();
 
         // Retrieve history
         let recent = store.get_recent_msgbar_history(10).await.unwrap();
@@ -678,15 +739,18 @@ mod tests {
         assert_eq!(recent[0].id, id1);
         assert_eq!(recent[0].text, "hello world");
         assert_eq!(recent[0].attachments_json, "[]");
-        
+
         assert_eq!(recent[1].id, id2);
         assert_eq!(recent[1].text, "testing 123");
         assert_eq!(recent[1].attachments_json, "[{\"type\": \"image\"}]");
 
         // Prune history
         // Insert a 3rd message
-        store.insert_msgbar_history("message 3", "[]").await.unwrap();
-        
+        store
+            .insert_msgbar_history("message 3", "[]")
+            .await
+            .unwrap();
+
         // threshold 3, target 1 (keep 1) -> deletes 2
         store.prune_msgbar_history(3, 1).await.unwrap();
 
@@ -704,47 +768,73 @@ mod tests {
         let session_name = "Session 1";
 
         // Create session
-        store.create_session(session_id, session_name).await.unwrap();
+        store
+            .create_session(session_id, session_name)
+            .await
+            .unwrap();
 
         // Get session
-        let session = store.get_session(session_id).await.unwrap().expect("Session should exist");
+        let session = store
+            .get_session(session_id)
+            .await
+            .unwrap()
+            .expect("Session should exist");
         assert_eq!(session.id, session_id);
         assert_eq!(session.name, session_name);
         assert_eq!(session.title, None);
         assert_eq!(session.pinned, false);
 
         // Upsert state
-        store.upsert_session_state(
-            session_id,
-            session_name,
-            "Updated Title",
-            "[\"history\"]",
-            "[\"tasks\"]",
-            "Agent X",
-            "/tmp/cwd",
-            "model_1",
-            true, // pinned
-            42,
-        ).await.unwrap();
+        store
+            .upsert_session_state(
+                session_id,
+                session_name,
+                "Updated Title",
+                "[\"history\"]",
+                "[\"tasks\"]",
+                "Agent X",
+                "/tmp/cwd",
+                "model_1",
+                true, // pinned
+                42,
+            )
+            .await
+            .unwrap();
 
         // Verify update
-        let updated = store.get_session(session_id).await.unwrap().expect("Session should exist");
+        let updated = store
+            .get_session(session_id)
+            .await
+            .unwrap()
+            .expect("Session should exist");
         assert_eq!(updated.title.as_deref(), Some("Updated Title"));
         assert_eq!(updated.pinned, true);
         assert_eq!(updated.total_tokens, 42);
 
         // UI History / Claw Events
-        store.add_claw_event(session_id, "{\"event\": 1}").await.unwrap();
-        store.add_claw_event(session_id, "{\"event\": 2}").await.unwrap();
+        store
+            .add_claw_event(session_id, "{\"event\": 1}")
+            .await
+            .unwrap();
+        store
+            .add_claw_event(session_id, "{\"event\": 2}")
+            .await
+            .unwrap();
 
         let events = store.get_claw_events(session_id).await.unwrap();
         assert_eq!(events.len(), 2);
         assert_eq!(events[0], "{\"event\": 1}");
-        
+
         // Debug raw DB state
-        let raw_sessions: Vec<(String, bool)> = sqlx::query_as("SELECT id, pinned FROM sessions").fetch_all(store.pool).await.unwrap();
+        let raw_sessions: Vec<(String, bool)> = sqlx::query_as("SELECT id, pinned FROM sessions")
+            .fetch_all(store.pool)
+            .await
+            .unwrap();
         println!("RAW SESSIONS: {:?}", raw_sessions);
-        let raw_events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM claw_events").fetch_one(store.pool).await.unwrap();
+        let raw_events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM claw_events")
+            .fetch_one(store.pool)
+            .await
+            .unwrap();
         println!("RAW EVENTS COUNT: {}", raw_events);
 
         // Recent active sessions (since pinned = true, it should appear)
@@ -756,12 +846,15 @@ mod tests {
 
         // Mark cleared
         store.mark_session_cleared(session_id).await.unwrap();
-        
+
         // Sleep to ensure the timestamp advances before inserting the next event
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        
+
         // add event after clear
-        store.add_claw_event(session_id, "{\"event\": 3}").await.unwrap();
+        store
+            .add_claw_event(session_id, "{\"event\": 3}")
+            .await
+            .unwrap();
         let events_after = store.get_claw_events(session_id).await.unwrap();
         assert_eq!(events_after.len(), 1);
         assert_eq!(events_after[0], "{\"event\": 3}");
@@ -778,28 +871,40 @@ mod tests {
         let store = Store::new(db.pool());
 
         let session_id = "sess_interactions";
-        store.create_session(session_id, "Int Session").await.unwrap();
+        store
+            .create_session(session_id, "Int Session")
+            .await
+            .unwrap();
 
         let embedding = vec![0.1f32, 0.2, 0.3];
 
-        let id1 = store.add_interaction(
-            session_id,
-            Some("/proj/A"),
-            "Explaining how Rust traits work",
-            Some("meta1"),
-            Some(&embedding),
-        ).await.unwrap();
+        let id1 = store
+            .add_interaction(
+                session_id,
+                Some("/proj/A"),
+                "Explaining how Rust traits work",
+                Some("meta1"),
+                Some(&embedding),
+            )
+            .await
+            .unwrap();
 
-        let id2 = store.add_interaction(
-            session_id,
-            Some("/proj/B"),
-            "Configuring a web server",
-            None,
-            None,
-        ).await.unwrap();
+        let id2 = store
+            .add_interaction(
+                session_id,
+                Some("/proj/B"),
+                "Configuring a web server",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
 
         // get recent
-        let recent_a = store.get_recent_interactions_by_path("/proj/A", 10).await.unwrap();
+        let recent_a = store
+            .get_recent_interactions_by_path("/proj/A", 10)
+            .await
+            .unwrap();
         assert_eq!(recent_a.len(), 1);
         assert_eq!(recent_a[0].id, id1);
 
@@ -807,15 +912,21 @@ mod tests {
         store.touch_interaction(id2).await.unwrap();
 
         // fts search
-        let results = store.search_interactions("Rust", Some("/proj/A"), 10).await.unwrap();
+        let results = store
+            .search_interactions("Rust", Some("/proj/A"), 10)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].content, "Explaining how Rust traits work");
 
         // embeddings
-        let embeddings = store.get_all_embeddings_for_session(session_id).await.unwrap();
+        let embeddings = store
+            .get_all_embeddings_for_session(session_id)
+            .await
+            .unwrap();
         assert_eq!(embeddings.len(), 1);
         assert_eq!(embeddings[0].id, id1);
-        
+
         let parsed = Interaction::parse_embedding(embeddings[0].embedding.clone()).unwrap();
         assert_eq!(parsed, embedding);
     }
@@ -844,16 +955,30 @@ mod tests {
         };
 
         // Sync (Insert)
-        store.sync_skills(&[skill1.clone(), skill2.clone()]).await.unwrap();
+        store
+            .sync_skills(&[skill1.clone(), skill2.clone()])
+            .await
+            .unwrap();
 
         // Also do a direct query to see if it's in the FTS table
-        let raw_fts: Vec<(i64, String, String)> = sqlx::query_as("SELECT rowid, name, content FROM skills_fts").fetch_all(store.pool).await.unwrap();
+        let raw_fts: Vec<(i64, String, String)> =
+            sqlx::query_as("SELECT rowid, name, content FROM skills_fts")
+                .fetch_all(store.pool)
+                .await
+                .unwrap();
         println!("RAW FTS BEFORE SEARCH: {:?}", raw_fts);
-        
-        let match_test: Vec<(i64,)> = sqlx::query_as("SELECT rowid FROM skills_fts WHERE skills_fts MATCH 'Rust'").fetch_all(store.pool).await.unwrap();
+
+        let match_test: Vec<(i64,)> =
+            sqlx::query_as("SELECT rowid FROM skills_fts WHERE skills_fts MATCH 'Rust'")
+                .fetch_all(store.pool)
+                .await
+                .unwrap();
         println!("MATCH TEST FOR 'Rust': {:?}", match_test);
 
-        let raw_skills: Vec<(String, String)> = sqlx::query_as("SELECT name, content FROM skills").fetch_all(store.pool).await.unwrap();
+        let raw_skills: Vec<(String, String)> = sqlx::query_as("SELECT name, content FROM skills")
+            .fetch_all(store.pool)
+            .await
+            .unwrap();
         println!("RAW SKILLS BEFORE SEARCH: {:?}", raw_skills);
 
         // Search
@@ -872,9 +997,13 @@ mod tests {
 
         let all_skills = store.search_skills("expert", 10).await.unwrap();
         println!("ALL SKILLS AFTER UPDATE: {:?}", all_skills);
-        
+
         // Also do a direct query to see if it's in the FTS table
-        let raw_fts: Vec<(i64, String, String)> = sqlx::query_as("SELECT rowid, name, content FROM skills_fts").fetch_all(store.pool).await.unwrap();
+        let raw_fts: Vec<(i64, String, String)> =
+            sqlx::query_as("SELECT rowid, name, content FROM skills_fts")
+                .fetch_all(store.pool)
+                .await
+                .unwrap();
         println!("RAW FTS: {:?}", raw_fts);
 
         assert_eq!(all_skills.len(), 1);
@@ -886,39 +1015,51 @@ mod tests {
     async fn test_dreaming_lifecycle() {
         let db = Db::new_in_memory().await.unwrap();
         let store = Store::new(db.pool());
-        
+
         let session_id = "sess_dream";
-        store.create_session(session_id, "Dream Session").await.unwrap();
-        
+        store
+            .create_session(session_id, "Dream Session")
+            .await
+            .unwrap();
+
         // 1. Insert interaction (defaults to 'raw')
-        let id1 = store.add_interaction(session_id, None, "I love rust", None, None).await.unwrap();
-        
+        let id1 = store
+            .add_interaction(session_id, None, "I love rust", None, None)
+            .await
+            .unwrap();
+
         // Check undreamed includes 'raw'
         let undreamed = store.get_undreamed_interactions().await.unwrap();
         assert_eq!(undreamed.len(), 1);
         assert_eq!(undreamed[0].processing_state.as_deref(), Some("raw"));
-        
+
         // 2. Mark as seeded
         store.mark_interactions_as_seeded(session_id).await.unwrap();
-        
+
         // Check undreamed includes 'seeded'
         let undreamed = store.get_undreamed_interactions().await.unwrap();
         assert_eq!(undreamed.len(), 1);
         assert_eq!(undreamed[0].processing_state.as_deref(), Some("seeded"));
-        
+
         // 3. Mark as dreamed
         store.mark_interactions_as_dreamed(&[id1]).await.unwrap();
-        
+
         // Check undreamed is now empty
         let undreamed = store.get_undreamed_interactions().await.unwrap();
         assert_eq!(undreamed.len(), 0);
-        
+
         // 4. Update session timestamp
-        store.update_session_dream_timestamp(session_id).await.unwrap();
-        
+        store
+            .update_session_dream_timestamp(session_id)
+            .await
+            .unwrap();
+
         // Add another raw interaction
-        let _id2 = store.add_interaction(session_id, None, "I love cargo", None, None).await.unwrap();
-        
+        let _id2 = store
+            .add_interaction(session_id, None, "I love cargo", None, None)
+            .await
+            .unwrap();
+
         // 5. Global seed all
         store.seed_all_raw_interactions().await.unwrap();
         let undreamed = store.get_undreamed_interactions().await.unwrap();

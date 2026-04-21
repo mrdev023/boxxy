@@ -49,7 +49,7 @@ impl TabContextMenu {
 
         popover.add_css_class("menu");
         popover.set_parent(tab_bar);
-        
+
         let on_menu_closed_rc = Rc::new(on_menu_closed);
         popover.connect_closed({
             let cb = on_menu_closed_rc.clone();

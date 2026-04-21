@@ -1,16 +1,13 @@
 use crate::engine::{
-    session::SessionState,
-    ClawEngineEvent, ClawMessage, persist_visual_event,
-    context::{retrieve_memories},
-    summarization::turn::summarize_and_store,
-    dispatcher::extract_command_and_clean,
-    PersistentClawRow, TaskStatus, TaskType,
+    ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
+    context::retrieve_memories, dispatcher::extract_command_and_clean, persist_visual_event,
+    session::SessionState, summarization::turn::summarize_and_store,
 };
 use crate::utils::load_prompt_fallback;
 use boxxy_agent::ipc::claw::AgentClawProxy;
-use rig::message::Message;
 use boxxy_db::Db;
 use log::info;
+use rig::message::Message;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 pub fn spawn_turn(
@@ -113,8 +110,13 @@ pub fn spawn_turn(
         // 3. Build Active Skills Text (Full Content)
         // We limit this to a maximum of 2 skills in full to save tokens.
         if !active_skills.is_empty() {
-            let skill_names: Vec<String> = active_skills.iter().map(|s| s.frontmatter.name.clone()).collect();
-            workspace.update_pane_skills(pane_id.clone(), skill_names).await;
+            let skill_names: Vec<String> = active_skills
+                .iter()
+                .map(|s| s.frontmatter.name.clone())
+                .collect();
+            workspace
+                .update_pane_skills(pane_id.clone(), skill_names)
+                .await;
 
             active_skills_text.push_str("\n--- ACTIVE SKILLS (FULL INSTRUCTIONS) ---\n");
             for skill in active_skills.iter().take(2) {
@@ -152,10 +154,8 @@ pub fn spawn_turn(
             toolbox_count += 1;
         }
 
-        let system_prompt_template = load_prompt_fallback(
-            "/dev/boxxy/BoxxyTerminal/prompts/claw.md",
-            "claw.md",
-        );
+        let system_prompt_template =
+            load_prompt_fallback("/dev/boxxy/BoxxyTerminal/prompts/claw.md", "claw.md");
 
         let system_prompt =
             system_prompt_template.replace("{{available_skills}}", &available_skills_text);
@@ -167,30 +167,99 @@ pub fn spawn_turn(
 
         // --- PHASE 3: PERSISTENT AGENT ---
         // We check if we already have an agent instance for this session.
-        // If not, or if the model changed, we create a new one.
-        let mut agent_opt = state_lock.persistent_agent.take();
+        // If not, or if the model changed, we create a new one safely.
 
-        if agent_opt.is_none() {
-            agent_opt = Some(
-                crate::engine::agent::create_claw_agent(
-                    &settings.claw_model,
-                    &creds,
-                    &system_prompt,
-                    &claw_proxy,
-                    &cwd_clone,
-                    tx_ui.clone(),
-                    state.clone(),
-                    db.clone(),
-                    &settings,
-                    session_id_clone.clone(),
-                    pane_id.clone(),
-                    state_lock.web_search_enabled,
-                )
-                .await,
+        let (agent_opt, current_config, needs_rebuild, mcp_handle) = {
+            let config = crate::engine::agent_config::AgentConfig::from_env(
+                &settings,
+                state_lock.web_search_enabled,
+                system_prompt.clone(),
             );
-        }
+            let needs_rebuild = state_lock
+                .persistent_agent
+                .as_ref()
+                .map(|a| !a.matches_config(&config))
+                .unwrap_or(true);
+            let mcp_changed = state_lock
+                .persistent_agent
+                .as_ref()
+                .map(|a| a.config.mcp_servers != config.mcp_servers)
+                .unwrap_or(true);
 
-        let agent = agent_opt.unwrap();
+            // Take ownership of agent out of state
+            let agent = state_lock.persistent_agent.take();
+            let mcp = if mcp_changed {
+                None
+            } else {
+                state_lock.mcp_handle.clone()
+            };
+
+            (agent, config, needs_rebuild, mcp)
+        };
+        // Lock drops here!
+        drop(state_lock);
+
+        let agent = if needs_rebuild {
+            {
+                let mut state_lock = state.lock().await;
+                let sanitized_history = crate::engine::history_utils::maybe_sanitize_history(
+                    &state_lock.history,
+                    agent_opt.as_ref().map(|a| &a.config),
+                    &current_config,
+                );
+                // Replace history in state if it was sanitized
+                if let std::borrow::Cow::Owned(sanitized) = sanitized_history {
+                    state_lock.history = sanitized;
+                }
+            }
+
+            match crate::engine::agent::create_claw_agent(
+                &current_config,
+                &creds,
+                &claw_proxy,
+                &cwd_clone,
+                tx_ui.clone(),
+                state.clone(),
+                db.clone(),
+                session_id_clone.clone(),
+                pane_id.clone(),
+                mcp_handle,
+            )
+            .await
+            {
+                Ok(new_agent) => new_agent,
+                Err(e) => {
+                    let event = ClawEngineEvent::SystemMessage {
+                        text: format!("⚠️ Failed to switch: {e}. Keeping previous agent."),
+                    };
+                    crate::engine::persist_visual_event(
+                        db.clone(),
+                        session_id_clone.clone(),
+                        pane_id.clone(),
+                        &event,
+                    );
+                    let _ = tx_ui.send(event).await;
+
+                    // Restore old agent and abort turn cleanly
+                    let mut state_lock = state.lock().await;
+                    state_lock.persistent_agent = agent_opt;
+
+                    let _ = tx_ui
+                        .send(ClawEngineEvent::AgentThinking {
+                            agent_name: agent_name.clone(),
+                            is_thinking: false,
+                        })
+                        .await;
+                    let _ = tx_self.send(ClawMessage::TurnFinished).await;
+                    return; // Abort turn
+                }
+            }
+        } else {
+            agent_opt.expect("agent_opt is Some when needs_rebuild is false")
+        };
+
+        // Re-acquire lock to process the snapshot hash since we need state
+        let mut state_lock = state.lock().await;
 
         // Clean snapshot: remove completely empty or whitespace-only lines
         let cleaned_snapshot: String = snapshot_clone
@@ -379,7 +448,11 @@ pub fn spawn_turn(
                     .unwrap_or_default();
 
                 // Count user messages to know when to generate a permanent LLM title
-                let user_msg_count = state_lock.history.iter().filter(|m| matches!(m, rig::message::Message::User { .. })).count();
+                let user_msg_count = state_lock
+                    .history
+                    .iter()
+                    .filter(|m| matches!(m, rig::message::Message::User { .. }))
+                    .count();
 
                 // Safely extract the Db clone before spawning to prevent race conditions with Deactivate/Evict
                 let db_val = {
@@ -446,14 +519,15 @@ pub fn spawn_turn(
                         let store = boxxy_db::store::Store::new(db_for_summary.pool());
                         let mut needs_title = false;
                         let mut current_title = String::new();
-                        
-                        if let Ok(Some(session)) = store.get_session(&session_id_for_summary).await {
+
+                        if let Ok(Some(session)) = store.get_session(&session_id_for_summary).await
+                        {
                             current_title = session.title.unwrap_or_default();
                             if current_title.trim().is_empty() {
                                 needs_title = true;
                             }
                         }
-                        
+
                         // Force a beautiful LLM title specifically when the user sends their VERY FIRST prompt.
                         // This overwrites any initial greeting fallbacks.
                         if user_msg_count == 1 {
@@ -461,7 +535,10 @@ pub fn spawn_turn(
                         } else if user_msg_count == 2 {
                             // If the second user message provides more context, and the first title was just a greeting, upgrade it.
                             let lower_title = current_title.to_lowercase();
-                            if lower_title.contains("greeting") || lower_title.contains("hello") || current_title.len() < 15 {
+                            if lower_title.contains("greeting")
+                                || lower_title.contains("hello")
+                                || current_title.len() < 15
+                            {
                                 needs_title = true;
                             }
                         }
@@ -470,27 +547,39 @@ pub fn spawn_turn(
                             let agent = boxxy_ai_core::create_agent(
                                 &title_model,
                                 &title_creds,
-                                "You are a conversation title generator. Summarize the user's prompt in 3 to 6 words. MUST BE UNDER 40 CHARACTERS. Output ONLY the raw title, no quotes, no punctuation. Capitalize it like a title."
+                                "You are a conversation title generator. Summarize the user's prompt in 3 to 6 words. MUST BE UNDER 40 CHARACTERS. Output ONLY the raw title, no quotes, no punctuation. Capitalize it like a title.",
                             );
                             if let Ok(res) = agent.prompt(&title_prompt).await {
-                                let generated_title = res.0.trim().trim_matches('"').trim_matches('\'').to_string();
+                                let generated_title = res
+                                    .0
+                                    .trim()
+                                    .trim_matches('"')
+                                    .trim_matches('\'')
+                                    .to_string();
                                 if !generated_title.is_empty() && generated_title != current_title {
-                                    let _ = sqlx::query("UPDATE sessions SET title = ? WHERE id = ?")
-                                        .bind(&generated_title)
-                                        .bind(&session_id_for_summary)
-                                        .execute(db_for_summary.pool())
-                                        .await;
+                                    let _ =
+                                        sqlx::query("UPDATE sessions SET title = ? WHERE id = ?")
+                                            .bind(&generated_title)
+                                            .bind(&session_id_for_summary)
+                                            .execute(db_for_summary.pool())
+                                            .await;
                                     current_title = generated_title;
                                 }
                             }
                         }
-                        
+
                         // Fallback if title is STILL empty (e.g. LLM failed)
                         if current_title.trim().is_empty() && !title_prompt.trim().is_empty() {
-                            let first_line = title_prompt.lines()
+                            let first_line = title_prompt
+                                .lines()
                                 .find(|l| !l.trim().is_empty())
                                 .unwrap_or("");
-                            let fallback = first_line.chars().take(40).collect::<String>().trim().to_string();
+                            let fallback = first_line
+                                .chars()
+                                .take(40)
+                                .collect::<String>()
+                                .trim()
+                                .to_string();
                             if !fallback.is_empty() {
                                 let _ = sqlx::query("UPDATE sessions SET title = ? WHERE id = ?")
                                     .bind(fallback)

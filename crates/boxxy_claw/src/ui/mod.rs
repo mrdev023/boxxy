@@ -20,14 +20,28 @@ impl BlockRenderer for ProcessListRenderer {
     ) -> gtk::Widget {
         if let ContentBlock::Custom { raw_payload, .. } = block {
             let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
-            if let Ok(processes) =
-                serde_json::from_str::<Vec<(u32, String, f64, u64, u64, u64)>>(raw_payload)
-            {
+
+            #[derive(serde::Deserialize)]
+            struct ProcessInfo {
+                pid: u32,
+                name: String,
+                cpu_usage: f64,
+                memory_bytes: u64,
+                read_bytes: u64,
+                written_bytes: u64,
+            }
+
+            #[derive(serde::Deserialize)]
+            struct ProcessListOutput {
+                processes: Vec<ProcessInfo>,
+            }
+
+            if let Ok(output) = serde_json::from_str::<ProcessListOutput>(raw_payload) {
                 let list_box = gtk::ListBox::new();
                 list_box.add_css_class("boxed-list");
                 list_box.set_selection_mode(gtk::SelectionMode::None);
 
-                for (pid, name, cpu, mem, read, write) in processes {
+                for info in output.processes {
                     let item_row = gtk::ListBoxRow::new();
                     let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
                     item_box.set_margin_top(4);
@@ -35,19 +49,23 @@ impl BlockRenderer for ProcessListRenderer {
                     item_box.set_margin_start(4);
                     item_box.set_margin_end(4);
 
-                    let pid_lbl = gtk::Label::new(Some(&format!("{pid}")));
+                    let pid_lbl = gtk::Label::new(Some(&format!("{}", info.pid)));
                     pid_lbl.set_width_chars(6);
                     item_box.append(&pid_lbl);
 
-                    let name_lbl = gtk::Label::new(Some(&name));
+                    let name_lbl = gtk::Label::new(Some(&info.name));
                     name_lbl.set_hexpand(true);
                     name_lbl.set_halign(gtk::Align::Start);
                     name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
                     item_box.append(&name_lbl);
 
                     // Only show disk I/O if there is any activity to avoid clutter
-                    if read > 0 || write > 0 {
-                        let io_str = format!("R:{}MB W:{}MB", read / 1_048_576, write / 1_048_576);
+                    if info.read_bytes > 0 || info.written_bytes > 0 {
+                        let io_str = format!(
+                            "R:{}MB W:{}MB",
+                            info.read_bytes / 1_048_576,
+                            info.written_bytes / 1_048_576
+                        );
                         let io_lbl = gtk::Label::new(Some(&io_str));
                         io_lbl.add_css_class("caption");
                         io_lbl.add_css_class("dim-label");
@@ -55,12 +73,12 @@ impl BlockRenderer for ProcessListRenderer {
                         item_box.append(&io_lbl);
                     }
 
-                    let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
+                    let cpu_lbl = gtk::Label::new(Some(&format!("{:.1}%", info.cpu_usage)));
                     cpu_lbl.add_css_class("caption");
                     cpu_lbl.add_css_class("dim-label");
                     item_box.append(&cpu_lbl);
 
-                    let mem_mb = mem / (1024 * 1024);
+                    let mem_mb = info.memory_bytes / (1024 * 1024);
                     let mem_lbl = gtk::Label::new(Some(&format!("{mem_mb}MB")));
                     mem_lbl.add_css_class("caption");
                     mem_lbl.add_css_class("dim-label");
@@ -71,8 +89,61 @@ impl BlockRenderer for ProcessListRenderer {
                 }
                 vbox.append(&list_box);
             } else {
-                let error_lbl = gtk::Label::new(Some("Failed to parse process list."));
-                vbox.append(&error_lbl);
+                // Try old schema just in case (tuples)
+                if let Ok(processes) =
+                    serde_json::from_str::<Vec<(u32, String, f64, u64, u64, u64)>>(raw_payload)
+                {
+                    let list_box = gtk::ListBox::new();
+                    list_box.add_css_class("boxed-list");
+                    list_box.set_selection_mode(gtk::SelectionMode::None);
+
+                    for (pid, name, cpu, mem, read, write) in processes {
+                        let item_row = gtk::ListBoxRow::new();
+                        let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                        item_box.set_margin_top(4);
+                        item_box.set_margin_bottom(4);
+                        item_box.set_margin_start(4);
+                        item_box.set_margin_end(4);
+
+                        let pid_lbl = gtk::Label::new(Some(&format!("{pid}")));
+                        pid_lbl.set_width_chars(6);
+                        item_box.append(&pid_lbl);
+
+                        let name_lbl = gtk::Label::new(Some(&name));
+                        name_lbl.set_hexpand(true);
+                        name_lbl.set_halign(gtk::Align::Start);
+                        name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                        item_box.append(&name_lbl);
+
+                        if read > 0 || write > 0 {
+                            let io_str =
+                                format!("R:{}MB W:{}MB", read / 1_048_576, write / 1_048_576);
+                            let io_lbl = gtk::Label::new(Some(&io_str));
+                            io_lbl.add_css_class("caption");
+                            io_lbl.add_css_class("dim-label");
+                            io_lbl.set_margin_end(6);
+                            item_box.append(&io_lbl);
+                        }
+
+                        let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
+                        cpu_lbl.add_css_class("caption");
+                        cpu_lbl.add_css_class("dim-label");
+                        item_box.append(&cpu_lbl);
+
+                        let mem_mb = mem / (1024 * 1024);
+                        let mem_lbl = gtk::Label::new(Some(&format!("{mem_mb}MB")));
+                        mem_lbl.add_css_class("caption");
+                        mem_lbl.add_css_class("dim-label");
+                        item_box.append(&mem_lbl);
+
+                        item_row.set_child(Some(&item_box));
+                        list_box.append(&item_row);
+                    }
+                    vbox.append(&list_box);
+                } else {
+                    let error_lbl = gtk::Label::new(Some("Failed to parse process list."));
+                    vbox.append(&error_lbl);
+                }
             }
             vbox.upcast()
         } else {
@@ -465,8 +536,25 @@ pub fn create_claw_message_list() -> (gtk::ListView, gtk::gio::ListStore) {
             .item()
             .and_downcast::<crate::engine::ClawRowObject>()
         {
+            // Reset state that might be changed by specific variants
+            icon.set_visible(true);
+            pane_lbl.set_visible(true);
+            title.remove_css_class("accent");
+            vbox.remove_css_class("system-message");
+
             let row = obj.get_row();
             match row {
+                crate::engine::PersistentClawRow::SystemMessage { content, .. } => {
+                    icon.set_visible(false);
+                    pane_lbl.set_visible(false);
+                    title.set_label("Models");
+                    title.add_css_class("accent");
+                    vbox.add_css_class("system-message");
+
+                    viewer.set_content(&content);
+                    viewer.widget().set_visible(true);
+                    cmd_label.set_visible(false);
+                }
                 crate::engine::PersistentClawRow::Diagnosis {
                     pane_id,
                     agent_name,
@@ -610,6 +698,15 @@ pub fn create_claw_message_list() -> (gtk::ListView, gtk::gio::ListStore) {
     list_view.add_css_class("virtual-history");
 
     (list_view, list_store)
+}
+
+pub fn add_system_message_row(list: &gtk::gio::ListStore, pane_id: String, text: &str) {
+    list.append(&crate::engine::ClawRowObject::new(
+        crate::engine::PersistentClawRow::SystemMessage {
+            pane_id,
+            content: text.to_string(),
+        },
+    ));
 }
 
 pub fn add_diagnosis_row(
