@@ -33,7 +33,7 @@ pub enum TerminalEventKind {
     Osc133B,
     Osc133C,
     Osc133D(String, Option<i32>),
-    ClawEvent(String, boxxy_claw::engine::ClawEngineEvent),
+    ClawEvent(String, boxxy_claw_protocol::ClawEngineEvent),
     FocusClawSidebar,
     PaneFocused(String),
     ForegroundProcessChanged(String),
@@ -62,7 +62,7 @@ pub enum PaneOutput {
     Osc133B(String),
     Osc133C(String),
     Osc133D(String, Option<i32>),
-    ClawEvent(String, boxxy_claw::engine::ClawEngineEvent),
+    ClawEvent(String, boxxy_claw_protocol::ClawEngineEvent),
     FocusClawSidebar(String),
     ForegroundProcessChanged(String, String), // id, process_name
     Notification(String, String),             // id, message

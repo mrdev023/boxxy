@@ -1,35 +1,47 @@
-use log::debug;
+use log::{debug, warn};
+use std::path::PathBuf;
 
-pub fn load_prompt_fallback(resource_path: &str, filename: &str) -> String {
-    // 1. Try GResource (Standard UI path)
-    if let Ok(data) =
-        gtk4::gio::resources_lookup_data(resource_path, gtk4::gio::ResourceLookupFlags::NONE)
-    {
-        if let Ok(content) = String::from_utf8(data.to_vec()) {
+pub fn load_prompt_fallback(_resource_path: &str, filename: &str) -> String {
+    // Since the engine may run in the host daemon, we cannot depend on GResource/GTK.
+    // We prioritize local files in the filesystem.
+
+    // 1. Try standard installation path
+    if let Some(home) = home::home_dir() {
+        let home: PathBuf = home;
+        let install_path = home.join(".local/share/boxxy-terminal/prompts").join(filename);
+        if let Ok(content) = std::fs::read_to_string(&install_path) {
+            debug!("Loaded prompt from install path: {:?}", install_path);
             return content;
         }
     }
 
-    // 2. Try Local File Fallback (Headless/Testing path)
-    // We assume we are running from the workspace root or can find resources/prompts/
-    // We check several possible locations to be robust.
+    // 2. Try Local File Fallback (Development/Testing path)
     let possible_roots = vec![
-        std::path::PathBuf::from("."),
-        std::path::PathBuf::from("..").join(".."),
-        std::env::current_dir().unwrap_or_default(),
+        PathBuf::from("."),
+        PathBuf::from("resources/prompts"),
+        PathBuf::from("../../resources/prompts"),
+        std::env::current_dir().unwrap_or_default().join("resources/prompts"),
     ];
 
     for root in possible_roots {
-        let fallback_path = root.join("resources").join("prompts").join(filename);
+        let fallback_path = if root.is_dir() && !root.to_string_lossy().contains("prompts") {
+             root.join("resources").join("prompts").join(filename)
+        } else {
+             root.join(filename)
+        };
+        
         if let Ok(content) = std::fs::read_to_string(&fallback_path) {
             debug!("Loaded prompt from fallback file: {:?}", fallback_path);
             return content;
         }
     }
 
-    // 3. Last resort: built-in defaults or panic
-    panic!(
-        "CRITICAL: Failed to load prompt resource {} or find fallback file {}",
-        resource_path, filename
-    );
+    // 3. Last resort: Hardcoded minimal fallback to prevent crash
+    warn!("CRITICAL: Failed to find prompt file {}. Using minimal built-in fallback.", filename);
+    
+    if filename == "claw.md" {
+        return "You are Boxxy, a helpful AI assistant. Available skills: {{available_skills}}".to_string();
+    }
+
+    format!("Fallback content for {}", filename)
 }

@@ -6,9 +6,8 @@ pub mod tasks;
 pub mod terminal;
 pub mod workspace;
 
-use crate::engine::ClawEngineEvent;
+use crate::engine::{ClawEngineEvent, ClawEnvironment};
 use crate::engine::session::SessionState;
-use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_core_toolbox::ApprovalHandler;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
@@ -242,7 +241,7 @@ pub struct SysShellOutput {
 
 /// Tool for executing host-level commands via `boxxy-agent` IPC
 pub struct SysShellTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub current_dir: String,
     pub approval: Arc<ClawApprovalHandler>,
 }
@@ -282,7 +281,7 @@ impl Tool for SysShellTool {
                 args.command
             )
         };
-        match self.proxy.exec_shell(command).await {
+        match self.env.exec_shell(command).await {
             Ok((exit_code, stdout, stderr)) => {
                 let out = SysShellOutput {
                     stdout,
@@ -297,7 +296,7 @@ impl Tool for SysShellTool {
                     .await;
                 Ok(out)
             }
-            Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
         }
     }
 }

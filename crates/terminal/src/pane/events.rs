@@ -1,3 +1,4 @@
+use boxxy_claw_protocol::ClawMessage;
 use super::PaneInner;
 use crate::PaneOutput;
 use boxxy_vte::terminal::TerminalWidget;
@@ -11,7 +12,7 @@ pub(super) fn wire_terminal_events(
     inner: &Rc<RefCell<PaneInner>>,
     progress_bar: &gtk::ProgressBar,
     is_claw_active: &Rc<Cell<bool>>,
-    claw_sender: &async_channel::Sender<boxxy_claw::engine::ClawMessage>,
+    claw_sender: &async_channel::Sender<ClawMessage>,
     callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
     id: String,
 ) {
@@ -128,7 +129,7 @@ pub(super) fn wire_terminal_events(
             gtk::glib::spawn_future_local(async move {
                 if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                     let _ = tx
-                        .send(boxxy_claw::engine::ClawMessage::CommandFinished {
+                        .send(ClawMessage::CommandFinished {
                             exit_code: code,
                             snapshot,
                             cwd,

@@ -48,6 +48,13 @@ fn main() {
         boxxy_preferences::Settings::ensure_claw_skills();
     });
 
+    // Ensure the background agent is deployed and running on the host
+    tokio::spawn(async {
+        if let Err(e) = boxxy_window::agent_deployer::ensure_agent_running().await {
+            log::error!("Failed to ensure agent is running: {}", e);
+        }
+    });
+
     // Fetch API keys from host environment in the background
     tokio::spawn(async {
         let agent = boxxy_terminal::get_agent().await;
@@ -74,8 +81,21 @@ fn main() {
 
         if found_any {
             let settings = boxxy_preferences::Settings::load();
-            let _ = boxxy_preferences::SETTINGS_EVENT_BUS.send(settings);
+            let _ = boxxy_preferences::SETTINGS_EVENT_BUS.send(settings.clone());
         }
+
+        // Always push effective credentials to the daemon, whether env vars
+        // were found or not. The keys the user configures in Settings →
+        // APIs live only in `settings.json` and would never reach the
+        // daemon via the env-scan path. `get_effective_api_keys()` merges
+        // env overrides on top of the JSON-stored keys.
+        let settings = boxxy_preferences::Settings::load();
+        let _ = agent
+            .update_credentials(
+                settings.get_effective_api_keys(),
+                settings.ollama_base_url.clone(),
+            )
+            .await;
     });
 
     gstreamer::init().expect("Failed to initialize GStreamer.");
@@ -125,33 +145,9 @@ fn main() {
         let app_init = AppInit::new();
         AppWindow::new(app, app_init);
 
-        // --- Dreaming Trigger (Lazy & Non-Blocking) ---
-        tokio::spawn(async {
-            // Wait for 10 seconds after the window is visible before starting Phase 1.
-            // This ensures the GTK UI is fully rendered and the user has already begun their work.
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-            let settings = boxxy_preferences::Settings::load();
-            if settings.enable_auto_dreaming {
-                if let Ok(db) = boxxy_db::Db::new().await {
-                    let db_arc = std::sync::Arc::new(tokio::sync::Mutex::new(Some(db)));
-
-                    let mut creds = boxxy_ai_core::AiCredentials::default();
-                    creds.api_keys = settings.api_keys.clone();
-                    creds.ollama_url = settings.ollama_base_url.clone();
-
-                    let orchestrator = boxxy_claw::memories::DreamOrchestrator::new(
-                        db_arc,
-                        creds,
-                        settings.memory_model.clone(),
-                    );
-
-                    if let Err(e) = orchestrator.run_cycle().await {
-                        log::error!("Dream Cycle failed: {:?}", e);
-                    }
-                }
-            }
-        });
+        // Dream Cycle runs on the daemon side so niceness, battery, and
+        // ghost-mode gating all live on the host. See
+        // `boxxy_agent::daemon::dreaming::spawn_with_status`.
 
         let inspector_action = gio::SimpleAction::new("inspector", None);
         inspector_action.connect_activate(move |_, _| {

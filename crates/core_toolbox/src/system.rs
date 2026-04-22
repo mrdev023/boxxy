@@ -1,5 +1,5 @@
 use crate::ApprovalHandler;
-use boxxy_agent::ipc::claw::AgentClawProxy;
+use boxxy_claw_protocol::ClawEnvironment;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -50,9 +50,9 @@ pub struct GetSystemInfoOutput {
     pub disks: Vec<DiskInfo>,
 }
 
+/// Tool for retrieving detailed information about the host system.
 pub struct GetSystemInfoTool {
-    pub proxy: AgentClawProxy<'static>,
-    pub approval: Arc<dyn ApprovalHandler>,
+    pub env: Arc<dyn ClawEnvironment>,
 }
 
 impl Tool for GetSystemInfoTool {
@@ -75,24 +75,16 @@ impl Tool for GetSystemInfoTool {
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
-        match self.proxy.get_system_info().await {
+        match self.env.get_system_info().await {
             Ok(info_json) => {
                 let output: GetSystemInfoOutput =
                     serde_json::from_str(&info_json).map_err(|e| {
                         std::io::Error::other(format!("Failed to parse system info: {e}"))
                     })?;
 
-                // Report to UI for structured rendering
-                self.approval
-                    .report_tool_result(
-                        Self::NAME.to_string(),
-                        serde_json::to_string(&output).unwrap_or_default(),
-                    )
-                    .await;
-
                 Ok(output)
             }
-            Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
         }
     }
 }
@@ -118,7 +110,7 @@ pub struct ListProcessesOutput {
 }
 
 pub struct ListProcessesTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub approval: Arc<dyn ApprovalHandler>,
 }
 
@@ -142,7 +134,7 @@ impl Tool for ListProcessesTool {
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
-        match self.proxy.list_processes().await {
+        match self.env.list_processes().await {
             Ok(processes) => {
                 let output = ListProcessesOutput {
                     processes: processes
@@ -172,7 +164,7 @@ impl Tool for ListProcessesTool {
 
                 Ok(output)
             }
-            Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
         }
     }
 }
@@ -193,7 +185,7 @@ pub struct KillProcessOutput {
 }
 
 pub struct KillProcessTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub approval: Arc<dyn ApprovalHandler>,
 }
 
@@ -231,7 +223,7 @@ impl Tool for KillProcessTool {
 
         if approved {
             let signal = args.signal.unwrap_or(15);
-            match self.proxy.kill_process(args.pid, signal).await {
+            match self.env.kill_process(args.pid, signal).await {
                 Ok(()) => {
                     let out = KillProcessOutput {
                         success: true,
@@ -248,7 +240,7 @@ impl Tool for KillProcessTool {
                         .await;
                     Ok(out)
                 }
-                Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+                Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
             }
         } else {
             let out = KillProcessOutput {

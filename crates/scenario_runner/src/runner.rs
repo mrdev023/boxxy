@@ -1,12 +1,14 @@
 use crate::schema::{Assertion, Scenario, Step};
 use anyhow::{Result, anyhow};
+use boxxy_agent::claw::ClawSubsystem;
 use boxxy_agent::core::state::AgentState;
 use boxxy_agent::ipc::claw::AgentClawProxy;
-use boxxy_agent::subsystems::claw::ClawSubsystem;
-use boxxy_agent::subsystems::maintenance::MaintenanceSubsystem;
-use boxxy_agent::subsystems::pty::PtySubsystem;
-use boxxy_claw::engine::{ClawEngineEvent, ClawMessage};
+use boxxy_agent::maintenance::MaintenanceSubsystem;
+use boxxy_agent::pty::PtySubsystem;
+use boxxy_claw::engine::ClawSession;
 use boxxy_claw::registry::workspace::global_workspace;
+use boxxy_claw_protocol::*;
+use boxxy_terminal::agent_manager::DbusClawEnvironment;
 use futures_util;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -94,7 +96,7 @@ impl ScenarioRunner {
         // 1. Setup Panes and start Session Actors
         let workspace = global_workspace().await;
         for pane_conf in &self.scenario.panes {
-            let (session, tx, rx_ui) = boxxy_claw::engine::ClawSession::new(pane_conf.id.clone());
+            let (session, tx, rx_ui) = ClawSession::new(pane_conf.id.clone());
 
             workspace
                 .register_pane_tx(pane_conf.id.clone(), tx.clone())
@@ -134,7 +136,9 @@ impl ScenarioRunner {
             // Start the real Claw Session actor headlessly
             let proxy_clone = claw_proxy.clone();
             tokio::spawn(async move {
-                session.run(proxy_clone).await;
+                session
+                    .run(std::sync::Arc::new(DbusClawEnvironment::new(proxy_clone)))
+                    .await;
             });
 
             log::info!(

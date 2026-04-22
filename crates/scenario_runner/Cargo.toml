@@ -9,6 +9,8 @@ license.workspace = true
 anyhow.workspace = true
 async-channel.workspace = true
 boxxy-claw = { path = "../boxxy_claw" }
+boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
+boxxy-terminal = { path = "../terminal" }
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-core-toolbox = { path = "../core_toolbox" }
 boxxy-agent = { path = "../boxxy_agent" }

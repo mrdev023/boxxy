@@ -123,6 +123,12 @@ pub struct Settings {
     pub api_keys: std::collections::HashMap<String, String>,
     pub ollama_base_url: String,
     pub login_shell: bool,
+    /// When true, closing a pane detaches its shell into the daemon's
+    /// background instead of killing it. The shell keeps running and
+    /// its output is buffered into a 4 MB ring buffer so a future
+    /// session can reattach and see the tail. Default `false`.
+    #[serde(default)]
+    pub pty_persistence: bool,
     pub show_vte_grid: bool,
     pub custom_regex: String,
     pub image_preview_trigger: ImagePreviewTrigger,
@@ -178,6 +184,7 @@ impl Default for Settings {
             api_keys: std::collections::HashMap::new(),
             ollama_base_url: "http://localhost:11434".to_string(),
             login_shell: true,
+            pty_persistence: false,
             show_vte_grid: false,
             custom_regex: DEFAULT_FILE_REGEX.to_string(),
             image_preview_trigger: ImagePreviewTrigger::Click,
@@ -304,6 +311,31 @@ Instructions:\n\
 
         // Fallback for tests or uninitialized state
         Self::default()
+    }
+
+    /// Re-reads `settings.json` from disk and replaces the in-memory cache.
+    /// The daemon calls this when the UI process reports a save, so
+    /// cross-process settings changes (model selection, toggles, etc.)
+    /// take effect on the next turn without restarting the daemon.
+    pub fn reload() {
+        Self::init(); // cheap if already initialised
+
+        let mut fresh = Self::default();
+        if let Some(path) = Self::get_path()
+            && let Ok(content) = fs::read_to_string(path)
+        {
+            match serde_json::from_str::<Settings>(&content) {
+                Ok(s) => fresh = s,
+                Err(e) => {
+                    log::error!("Failed to reload settings: {}", e);
+                    return;
+                }
+            }
+        }
+
+        if let Some(cache) = SETTINGS_CACHE.get() {
+            *cache.write().unwrap() = fresh;
+        }
     }
 
     pub fn save(&self) {

@@ -12,29 +12,26 @@ workspace = true
 async-channel.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
-glib.workspace = true
-gtk4.workspace = true
-libadwaita.workspace = true
+chrono = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true }
 log.workspace = true
 rig-core.workspace = true
-tokio.workspace = true
-chrono.workspace = true
 directories.workspace = true
+home = { workspace = true }
 notify.workspace = true
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-core-toolbox = { path = "../core_toolbox" }
 boxxy-telemetry = { path = "../telemetry" }
-boxxy-agent = { path = "../boxxy_agent" }
+boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
 boxxy-mcp = { path = "../boxxy_mcp" }
 boxxy-model-selection = { path = "../model_selection" }
 boxxy-preferences = { path = "../preferences" }
 boxxy-db = { path = "../db" }
-boxxy-viewer = { path = "../viewer" }
-boxxy-core-widgets = { path = "../core_widgets" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
 thiserror = { workspace = true }
 sqlx = { workspace = true }
-uuid.workspace = true
-petname.workspace = true
+uuid = { workspace = true }
+petname = { workspace = true }

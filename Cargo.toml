@@ -13,8 +13,9 @@ members = [
     "crates/model_selection",
     "crates/boxxy_vte",
     "crates/boxxy_agent",
-    "crates/command_palette",
     "crates/boxxy_claw",
+    "crates/boxxy_claw_protocol",
+    "crates/boxxy_claw_ui",
     "crates/boxxy_msgbar",
     "crates/db",
     "crates/boxxy_bookmarks",
@@ -82,6 +83,7 @@ env_logger = "0.11.10"
 rig-core = "0.35.0"
 nix = { version = "0.31.2", features = ["process", "term", "fs", "signal", "ioctl", "user"] }
 zbus = { version = "5.14.0", features = ["tokio", "p2p"] }
+zvariant = "5.10.0"
 libc = "0.2"
 enumflags2 = "0.7"
 ashpd = { version = "0.13.9", features = ["flatpak", "open_uri"] }

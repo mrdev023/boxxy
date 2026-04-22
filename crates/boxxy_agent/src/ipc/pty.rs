@@ -9,6 +9,9 @@ pub struct SpawnOptions {
     pub env: Vec<(String, String)>,
     pub cols: u16,
     pub rows: u16,
+    /// UUID of the pane that owns this shell. Surfaces in
+    /// `list_detached_sessions()` so a reattach can target the right pane.
+    pub pane_id: String,
 }
 
 #[proxy(
@@ -26,6 +29,30 @@ pub trait AgentPty {
     async fn signal_process_group(&self, pid: u32, signal: i32) -> zbus::Result<()>;
     async fn set_foreground_tracking(&self, pid: u32, enabled: bool) -> zbus::Result<()>;
     async fn get_environment_variable(&self, name: String) -> zbus::Result<String>;
+
+    /// Toggles "keep the shell alive when the last viewer detaches".
+    /// When `false`, `detach()` SIGTERMs the process group; when `true`,
+    /// the daemon takes over the master FD and buffers output into a
+    /// 4 MB ring buffer. Defaults to `false` when a session is spawned.
+    async fn set_persistence(&self, pid: u32, enabled: bool) -> zbus::Result<()>;
+
+    /// Decrements the session's viewer count. On the last viewer:
+    ///   * persistence off → SIGTERM the process group (returns 0).
+    ///   * persistence on  → daemon activates its stored FD dup and
+    ///     starts buffering output into a 4 MB ring buffer (returns 1).
+    /// No FD parameter: the daemon has held its own dup of the master
+    /// since `spawn()`; it was idle until now.
+    async fn detach(&self, pid: u32) -> zbus::Result<u32>;
+
+    /// Returns `(pid, pane_id, idle_secs)` for every detached session
+    /// the daemon is currently hosting — powers a future "Detached
+    /// Sessions" UI view and the `boxxy-agent list-sessions` CLI.
+    async fn list_detached_sessions(&self) -> zbus::Result<Vec<(u32, String, u64)>>;
+
+    /// Reclaims a detached session. Returns `(replay_bytes, master_fd)`:
+    /// the UI feeds `replay_bytes` into its terminal to restore scrollback,
+    /// then resumes live reads on `master_fd`.
+    async fn reattach(&self, pid: u32) -> zbus::Result<(Vec<u8>, OwnedFd)>;
 
     #[zbus(signal)]
     async fn exited(&self, pid: u32, exit_code: i32) -> zbus::Result<()>;

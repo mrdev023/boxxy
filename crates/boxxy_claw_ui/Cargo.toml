@@ -1,0 +1,20 @@
+[package]
+name = "boxxy-claw-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk4.workspace = true
+libadwaita.workspace = true
+boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
+boxxy-viewer = { path = "../viewer" }
+boxxy-core-widgets = { path = "../core_widgets" }
+anyhow.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rig-core = { workspace = true }

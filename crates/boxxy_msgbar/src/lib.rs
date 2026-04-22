@@ -2,7 +2,7 @@ pub mod attachment;
 pub mod autocomplete;
 pub mod history;
 
-use boxxy_claw::engine::AgentStatus;
+use boxxy_claw_protocol::AgentStatus;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};

@@ -1,3 +1,4 @@
+use boxxy_claw_protocol::TaskType;
 use boxxy_preferences::Settings;
 use gtk4::gio;
 use libadwaita::prelude::*;
@@ -19,6 +20,22 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
     let mut pids = Vec::new();
     for tab in &inner.tabs {
         pids.extend(tab.controller.get_pids());
+    }
+
+    // Persistent-shells short-circuit: if the user has opted into
+    // "survive UI close", there's nothing to confirm. Shells detach via
+    // `PaneInner::drop`, AI tasks keep running in the daemon and notify
+    // on completion. The prompt exists only to warn that *work will be
+    // lost*; with persistence on, no work is.
+    //
+    // Uses the `inner: &mut AppWindowInner` parameter directly instead
+    // of re-borrowing `inner_ref`: the caller already holds a mutable
+    // borrow on the same RefCell, so any `inner_ref.borrow()` here
+    // panics with "RefCell already mutably borrowed".
+    if Settings::load().pty_persistence {
+        inner.force_close.set(true);
+        inner.window.close();
+        return;
     }
 
     let inner_clone = inner_ref.clone();
@@ -75,9 +92,9 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
 
         for (agent_name, task) in pending_tasks {
             let type_str = match task.task_type {
-                boxxy_claw::engine::TaskType::Notification => "Reminder",
-                boxxy_claw::engine::TaskType::Command => "Scheduled Command",
-                boxxy_claw::engine::TaskType::Query => "Scheduled Query",
+                TaskType::Notification => "Reminder",
+                TaskType::Command => "Scheduled Command",
+                TaskType::Query => "Scheduled Query",
             };
             let row = libadwaita::ActionRow::builder()
                 .title(&task.payload)
@@ -167,6 +184,17 @@ pub fn settings_changed(inner: &mut AppWindowInner, settings: Settings) {
         tab.controller.update_settings(settings.clone(), variant);
         tab.controller.notify_settings_invalidated();
     }
+
+    // Re-push credentials so the daemon's in-memory `core.state.api_keys`
+    // tracks any changes the user just made in Settings → APIs.
+    // (The engine also falls back to disk, but keeping the IPC state
+    // current avoids that fallback path on every turn.)
+    let effective_keys = settings.get_effective_api_keys();
+    let ollama_url = settings.ollama_base_url.clone();
+    gtk4::glib::spawn_future_local(async move {
+        let agent = boxxy_terminal::get_agent().await;
+        let _ = agent.update_credentials(effective_keys, ollama_url).await;
+    });
 
     if inner.sidebar_toolbar.width_request() != settings.ai_chat_width {
         inner

@@ -1,173 +1,180 @@
 use anyhow::{Context, Result};
-use std::os::unix::io::{FromRawFd, OwnedFd};
-use tokio::io::Interest;
-use tokio::io::unix::AsyncFd;
-use tokio::net::UnixStream;
-use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::broadcast;
-use zbus::connection::Builder;
+use boxxy_agent::daemon;
+use clap::{Parser, Subcommand};
+use log::info;
+use zbus::{Connection, proxy};
 
-use boxxy_agent::core::state::AgentState;
-use boxxy_agent::subsystems::claw::ClawSubsystem;
-use boxxy_agent::subsystems::maintenance::MaintenanceSubsystem;
-use boxxy_agent::subsystems::pty::PtySubsystem;
+#[derive(Parser, Debug)]
+#[command(name = "boxxy-agent", version, about = "Boxxy host-side maintenance daemon")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
 
-#[tokio::main]
-async fn main() -> Result<()> {
+    /// Run headlessly: spawn daemon and exit immediately.
+    #[arg(long)]
+    background: bool,
+
+    /// Skip the singleton check (for debugging only).
+    #[arg(long, hide = true)]
+    no_singleton: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Start the daemon (default).
+    Start,
+    /// Stop the running daemon gracefully.
+    Stop,
+    /// Restart the running daemon (self-upgrade).
+    Restart,
+    /// List PTY sessions the daemon has kept alive after the UI closed
+    /// (persistence must be enabled in Preferences → Advanced).
+    ListSessions,
+}
+
+/// Proxy for talking to the running daemon.
+#[proxy(
+    interface = "dev.boxxy.BoxxyTerminal.Agent",
+    default_service = "dev.boxxy.BoxxyAgent",
+    default_path = "/dev/boxxy/Agent"
+)]
+trait AgentControl {
+    async fn request_reload(&self) -> zbus::Result<()>;
+    async fn request_stop(&self) -> zbus::Result<()>;
+}
+
+/// Proxy for the PTY subsystem, used by `list-sessions`.
+#[proxy(
+    interface = "dev.boxxy.BoxxyTerminal.Agent.Pty",
+    default_service = "dev.boxxy.BoxxyAgent",
+    default_path = "/dev/boxxy/BoxxyTerminal/Agent/Pty"
+)]
+trait AgentPtyControl {
+    async fn list_detached_sessions(&self) -> zbus::Result<Vec<(u32, String, u64)>>;
+}
+
+fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .filter_module("zbus", log::LevelFilter::Warn)
         .filter_module("zvariant", log::LevelFilter::Warn)
         .filter_module("tracing", log::LevelFilter::Warn)
         .filter_module("sqlx", log::LevelFilter::Warn)
-        .filter_module("h2", log::LevelFilter::Warn)
-        .filter_module("hyper", log::LevelFilter::Warn)
-        .filter_module("reqwest", log::LevelFilter::Warn)
-        .filter_module("rustls", log::LevelFilter::Warn)
+        .filter_module("rig", log::LevelFilter::Warn)
         .init();
-    log::info!("Boxxy Agent starting...");
 
-    let state = AgentState::new();
-    let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
+    let cli = Cli::parse();
 
-    // Spawn background maintenance loop
-    let shutdown_rx_maintenance = shutdown_tx.subscribe();
-    tokio::spawn(async move {
-        boxxy_telemetry::init_db().await;
-        boxxy_telemetry::init().await;
+    // Handle subcommands that don't require the daemon to start
+    if let Some(cmd) = &cli.command {
+        match cmd {
+            Commands::Stop => {
+                return run_async(async {
+                    let conn = Connection::session().await?;
+                    let proxy = AgentControlProxy::new(&conn).await?;
+                    info!("Requesting daemon stop...");
+                    proxy.request_stop().await?;
+                    Ok(())
+                });
+            }
+            Commands::Restart => {
+                return run_async(async {
+                    let conn = Connection::session().await?;
+                    let proxy = AgentControlProxy::new(&conn).await?;
+                    info!("Requesting daemon restart...");
+                    proxy.request_reload().await?;
+                    Ok(())
+                });
+            }
+            Commands::ListSessions => {
+                return run_async(async {
+                    let conn = Connection::session().await?;
+                    let proxy = AgentPtyControlProxy::new(&conn).await?;
+                    let sessions = proxy.list_detached_sessions().await?;
+                    if sessions.is_empty() {
+                        println!("No detached PTY sessions.");
+                    } else {
+                        println!("{:>8}  {:>8}  {}", "PID", "IDLE_S", "PANE_ID");
+                        for (pid, pane_id, idle_secs) in sessions {
+                            println!("{:>8}  {:>8}  {}", pid, idle_secs, pane_id);
+                        }
+                    }
+                    Ok(())
+                });
+            }
+            Commands::Start => {}
+        }
+    }
 
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(600));
-        let mut shutdown_rx = shutdown_rx_maintenance;
+    if cli.background {
+        info!("Entering background mode...");
+        daemonize()?;
+    }
 
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    boxxy_telemetry::flush_journal().await;
+    // Hydrate the settings cache from disk BEFORE starting the runtime —
+    // the claw engine reads model selection from `Settings::load()`, which
+    // is backed by a process-global `OnceLock` cache. Without this init
+    // the daemon would always see the default Settings (no model selected),
+    // even though the UI process has correctly configured one.
+    boxxy_preferences::Settings::init();
+
+    // Now start the async runtime ONLY in the final daemon process
+    run_async(async move {
+        info!("Boxxy Agent starting (v{})...", env!("CARGO_PKG_VERSION"));
+
+        if !cli.no_singleton {
+            match daemon::singleton::try_claim_or_handoff().await? {
+                daemon::singleton::ClaimResult::Claimed => {
+                    info!("Singleton claimed — starting daemon");
                 }
-                _ = shutdown_rx.recv() => {
-                    log::debug!("Maintenance loop shutting down gracefully.");
-                    break;
+                daemon::singleton::ClaimResult::HandedOff => {
+                    info!("Existing daemon is up-to-date — exiting");
+                    return Ok(());
+                }
+                daemon::singleton::ClaimResult::Upgraded => {
+                    info!("Upgraded running daemon — exiting launcher");
+                    return Ok(());
                 }
             }
         }
-    });
 
-    let args: Vec<String> = std::env::args().collect();
-    let fd_arg = args.iter().find(|a| a.starts_with("--socket-fd="));
+        daemon::DaemonCore::run().await
+    })
+}
 
-    let stream = if let Some(fd_str) = fd_arg {
-        let fd_num: i32 = fd_str
-            .strip_prefix("--socket-fd=")
-            .unwrap()
-            .parse()
-            .context("Failed to parse --socket-fd")?;
-        log::info!("Using inherited FD: {}", fd_num);
-
-        let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd_num) };
-        std_stream
-            .set_nonblocking(true)
-            .context("Failed to set socket non-blocking")?;
-        UnixStream::from_std(std_stream).context("Failed to create tokio UnixStream from std")?
-    } else {
-        let socket_path = args
-            .get(1)
-            .context("Expected --socket-fd or socket path as first argument")?;
-        log::info!("Connecting to socket: {}", socket_path);
-        UnixStream::connect(socket_path)
-            .await
-            .with_context(|| format!("Failed to connect to socket: {}", socket_path))?
-    };
-
-    let monitor_fd: Option<OwnedFd> = {
-        use std::os::unix::io::AsRawFd;
-        let dup = unsafe { libc::dup(stream.as_raw_fd()) };
-        if dup >= 0 {
-            Some(unsafe { OwnedFd::from_raw_fd(dup) })
-        } else {
-            log::warn!("dup failed: {}", std::io::Error::last_os_error());
-            None
-        }
-    };
-
-    let _conn = Builder::unix_stream(stream)
-        .p2p()
-        .serve_at(
-            "/dev/boxxy/BoxxyTerminal/Agent/Pty",
-            PtySubsystem::new(state.clone()),
-        )?
-        .serve_at(
-            "/dev/boxxy/BoxxyTerminal/Agent/Claw",
-            ClawSubsystem::new(state.clone()),
-        )?
-        .serve_at(
-            "/dev/boxxy/BoxxyTerminal/Agent/Maintenance",
-            MaintenanceSubsystem::new(state.clone()),
-        )?
+/// Helper to run a future to completion using a new Tokio runtime.
+fn run_async<F: std::future::Future<Output = Result<()>>>(f: F) -> Result<()> {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
         .build()
-        .await
-        .context("Failed to build zbus connection")?;
+        .context("Failed to build Tokio runtime")?;
+    rt.block_on(f)
+}
 
-    log::info!("Boxxy Agent serving at /dev/boxxy/BoxxyTerminal/Agent/*");
-
-    #[cfg(target_os = "linux")]
-    unsafe {
-        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-    }
-
-    let mut sigterm =
-        signal(SignalKind::terminate()).context("Failed to set up SIGTERM handler")?;
-    let mut sighup = signal(SignalKind::hangup()).context("Failed to set up SIGHUP handler")?;
-
-    match monitor_fd.and_then(|fd| {
-        AsyncFd::with_interest(fd, Interest::READABLE)
-            .map_err(|e| {
-                log::warn!("Failed to set up socket monitor: {}", e);
-                e
-            })
-            .ok()
-    }) {
-        Some(afd) => loop {
-            tokio::select! {
-                _ = sigterm.recv() => {
-                    log::debug!("SIGTERM received, shutting down.");
-                    break;
-                }
-                _ = sighup.recv() => {
-                    log::debug!("SIGHUP received, shutting down.");
-                    break;
-                }
-                guard = afd.readable() => {
-                    match guard {
-                        Ok(g) if g.ready().is_read_closed() => {
-                            log::debug!("Socket closed, shutting down.");
-                            break;
-                        }
-                        Ok(mut g) => {
-                            g.clear_ready();
-                        }
-                        Err(_) => {
-                            log::debug!("Socket error, shutting down.");
-                            break;
+/// Double-fork + setsid so the process becomes a true daemon.
+/// MUST be called before starting any threads (including Tokio runtime).
+fn daemonize() -> Result<()> {
+    use nix::unistd::{fork, setsid, ForkResult};
+    
+    match unsafe { fork()? } {
+        ForkResult::Parent { .. } => std::process::exit(0),
+        ForkResult::Child => {
+            setsid()?;
+            match unsafe { fork()? } {
+                ForkResult::Parent { .. } => std::process::exit(0),
+                ForkResult::Child => {
+                    // Redirect standard FDs to /dev/null to be a well-behaved daemon
+                    use std::os::unix::io::AsRawFd;
+                    if let Ok(dev_null) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/null") {
+                        let fd = dev_null.as_raw_fd();
+                        unsafe {
+                            libc::dup2(fd, libc::STDIN_FILENO);
+                            libc::dup2(fd, libc::STDOUT_FILENO);
+                            libc::dup2(fd, libc::STDERR_FILENO);
                         }
                     }
                 }
             }
-        },
-        None => {
-            tokio::select! {
-                _ = sigterm.recv() => log::debug!("SIGTERM received, shutting down."),
-                _ = sighup.recv()  => log::debug!("SIGHUP received, shutting down."),
-            }
         }
     }
-
-    // Trigger graceful shutdown of subsystems
-    let _ = shutdown_tx.send(());
-
-    // Final Telemetry Flush before exit
-    log::debug!("Performing final telemetry flush...");
-    boxxy_telemetry::seed_dream().await;
-    boxxy_telemetry::flush_journal().await;
-    boxxy_telemetry::shutdown().await;
-
     Ok(())
 }

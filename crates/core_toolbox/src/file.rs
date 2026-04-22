@@ -1,6 +1,6 @@
 use crate::ApprovalHandler;
 use crate::utils::resolve_path;
-use boxxy_agent::ipc::claw::AgentClawProxy;
+use boxxy_claw_protocol::ClawEnvironment;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ pub struct FileReadOutput {
 }
 
 pub struct FileReadTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub current_dir: String,
     pub approval: Arc<dyn ApprovalHandler>,
 }
@@ -63,7 +63,7 @@ impl Tool for FileReadTool {
         let path = resolve_path(&self.current_dir, &args.path);
         let start_line = args.start_line.unwrap_or(0);
         let end_line = args.end_line.unwrap_or(0);
-        match self.proxy.read_file(path, start_line, end_line).await {
+        match self.env.read_file(path, start_line, end_line).await {
             Ok(content) => {
                 let out = FileReadOutput { content };
                 self.approval
@@ -74,7 +74,7 @@ impl Tool for FileReadTool {
                     .await;
                 Ok(out)
             }
-            Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
         }
     }
 }
@@ -99,7 +99,7 @@ pub struct ListDirectoryOutput {
 }
 
 pub struct ListDirectoryTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub current_dir: String,
     pub approval: Arc<dyn ApprovalHandler>,
 }
@@ -114,13 +114,13 @@ impl Tool for ListDirectoryTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "List the contents of a directory on the host system. Returns names, whether they are directories, and their sizes.".to_string(),
+            description: "List the contents of a directory on the host system. Use this to discover files and subdirectories.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "The path to list. Defaults to the current directory if not provided."
+                        "description": "The directory path to list (default: current directory)."
                     }
                 }
             }),
@@ -129,12 +129,10 @@ impl Tool for ListDirectoryTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
-        let path = args.path.unwrap_or_else(|| ".".to_string());
-        let full_path = resolve_path(&self.current_dir, &path);
-
-        match self.proxy.list_directory(full_path).await {
+        let path = resolve_path(&self.current_dir, &args.path.unwrap_or_default());
+        match self.env.list_directory(path).await {
             Ok(entries) => {
-                let out = ListDirectoryOutput {
+                let output = ListDirectoryOutput {
                     entries: entries
                         .into_iter()
                         .map(|(name, is_dir, size)| DirectoryEntry { name, is_dir, size })
@@ -143,12 +141,12 @@ impl Tool for ListDirectoryTool {
                 self.approval
                     .report_tool_result(
                         Self::NAME.to_string(),
-                        serde_json::to_string(&out).unwrap_or_default(),
+                        serde_json::to_string(&output).unwrap_or_default(),
                     )
                     .await;
-                Ok(out)
+                Ok(output)
             }
-            Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
         }
     }
 }
@@ -164,11 +162,10 @@ pub struct FileWriteArgs {
 #[derive(Serialize)]
 pub struct FileWriteOutput {
     pub success: bool,
-    pub message: String,
 }
 
 pub struct FileWriteTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub current_dir: String,
     pub approval: Arc<dyn ApprovalHandler>,
 }
@@ -183,7 +180,7 @@ impl Tool for FileWriteTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Propose to write or overwrite a file on the host system. This will prompt the user for approval.".to_string(),
+            description: "Write content to a file on the host system. This will overwrite any existing content. Always prompts the user for approval.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -193,7 +190,7 @@ impl Tool for FileWriteTool {
                     },
                     "content": {
                         "type": "string",
-                        "description": "The exact full content to write to the file. Do NOT use placeholders."
+                        "description": "The new content for the file."
                     }
                 },
                 "required": ["path", "content"]
@@ -204,7 +201,6 @@ impl Tool for FileWriteTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
         let path = resolve_path(&self.current_dir, &args.path);
-
         self.approval.set_thinking(false).await;
         let approved = self
             .approval
@@ -213,34 +209,12 @@ impl Tool for FileWriteTool {
         self.approval.set_thinking(true).await;
 
         if approved {
-            match self.proxy.write_file(path.clone(), args.content).await {
-                Ok(()) => {
-                    let out = FileWriteOutput {
-                        success: true,
-                        message: format!("Successfully wrote to {path}"),
-                    };
-                    self.approval
-                        .report_tool_result(
-                            Self::NAME.to_string(),
-                            serde_json::to_string(&out).unwrap_or_default(),
-                        )
-                        .await;
-                    Ok(out)
-                }
-                Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            match self.env.write_file(path, args.content).await {
+                Ok(_) => Ok(FileWriteOutput { success: true }),
+                Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
             }
         } else {
-            let out = FileWriteOutput {
-                success: false,
-                message: "[USER_EXPLICIT_REJECT]".to_string(),
-            };
-            self.approval
-                .report_tool_result(
-                    Self::NAME.to_string(),
-                    serde_json::to_string(&out).unwrap_or_default(),
-                )
-                .await;
-            Ok(out)
+            Ok(FileWriteOutput { success: false })
         }
     }
 }
@@ -255,11 +229,10 @@ pub struct FileDeleteArgs {
 #[derive(Serialize)]
 pub struct FileDeleteOutput {
     pub success: bool,
-    pub message: String,
 }
 
 pub struct FileDeleteTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub current_dir: String,
     pub approval: Arc<dyn ApprovalHandler>,
 }
@@ -274,8 +247,7 @@ impl Tool for FileDeleteTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Propose to delete a file on the host system. User must approve."
-                .to_string(),
+            description: "Delete a file from the host system. This action is permanent and prompts the user for approval.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -292,40 +264,17 @@ impl Tool for FileDeleteTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
         let path = resolve_path(&self.current_dir, &args.path);
-
         self.approval.set_thinking(false).await;
         let approved = self.approval.propose_file_delete(path.clone()).await;
         self.approval.set_thinking(true).await;
 
         if approved {
-            match self.proxy.delete_file(path.clone()).await {
-                Ok(()) => {
-                    let out = FileDeleteOutput {
-                        success: true,
-                        message: format!("Successfully deleted {path}"),
-                    };
-                    self.approval
-                        .report_tool_result(
-                            Self::NAME.to_string(),
-                            serde_json::to_string(&out).unwrap_or_default(),
-                        )
-                        .await;
-                    Ok(out)
-                }
-                Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            match self.env.delete_file(path).await {
+                Ok(_) => Ok(FileDeleteOutput { success: true }),
+                Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
             }
         } else {
-            let out = FileDeleteOutput {
-                success: false,
-                message: "[USER_EXPLICIT_REJECT]".to_string(),
-            };
-            self.approval
-                .report_tool_result(
-                    Self::NAME.to_string(),
-                    serde_json::to_string(&out).unwrap_or_default(),
-                )
-                .await;
-            Ok(out)
+            Ok(FileDeleteOutput { success: false })
         }
     }
 }

@@ -701,6 +701,12 @@
                                     <property name="subtitle" translatable="yes">Draw grid lines representing terminal cells.</property>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="pty_persistence_switch">
+                                    <property name="title" translatable="yes">Persistent Shells (Experimental)</property>
+                                    <property name="subtitle" translatable="yes">Keeps shells alive after closing the window. Detached sessions are currently only visible via the "boxxy-agent list-sessions" command — there is no reopen or reattach UI yet. Recommended only for testing.</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>

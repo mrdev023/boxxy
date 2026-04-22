@@ -2,9 +2,9 @@ use crate::engine::{
     ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
     context::load_session_context, context::retrieve_memories,
     dispatcher::extract_command_and_clean, persist_visual_event, turn::spawn_turn,
+    ClawEnvironment,
 };
 use crate::utils::load_prompt_fallback;
-use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_db::Db;
 use log::{debug, info};
 use rig::message::Message;
@@ -19,12 +19,17 @@ pub struct SessionState {
     pub pinned: bool,
     pub web_search_enabled: bool,
     pub total_tokens: u64,
+    pub tracked_pids: Arc<tokio::sync::RwLock<std::collections::HashSet<u32>>>,
+    pub api_keys: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
+    pub ollama_url: Arc<tokio::sync::RwLock<String>>,
     pub pending_terminal_reply: Option<tokio::sync::oneshot::Sender<Result<String, String>>>,
     pub pending_file_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_file_delete_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_kill_process_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_get_clipboard_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_set_clipboard_reply: Option<tokio::sync::oneshot::Sender<bool>>,
+    pub pending_scrollbacks: std::collections::HashMap<uuid::Uuid, tokio::sync::oneshot::Sender<String>>,
+    pub pending_delegations: std::collections::HashMap<uuid::Uuid, tokio::sync::oneshot::Sender<String>>,
     pub history: Vec<Message>,
     pub pending_lazy_diagnosis: Option<(String, String, String)>,
     pub persistent_agent: Option<crate::engine::agent::ClawAgent>,
@@ -91,12 +96,17 @@ impl ClawSession {
                 pinned: false,
                 web_search_enabled: settings.enable_web_search,
                 total_tokens: 0,
+                tracked_pids: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
+                api_keys: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+                ollama_url: Arc::new(tokio::sync::RwLock::new(String::new())),
                 pending_terminal_reply: None,
                 pending_file_reply: None,
                 pending_file_delete_reply: None,
                 pending_kill_process_reply: None,
                 pending_get_clipboard_reply: None,
                 pending_set_clipboard_reply: None,
+                pending_scrollbacks: std::collections::HashMap::new(),
+                pending_delegations: std::collections::HashMap::new(),
                 history: Vec::new(),
                 pending_lazy_diagnosis: None,
                 persistent_agent: None,
@@ -115,6 +125,21 @@ impl ClawSession {
         };
 
         (session, tx, rx_ui)
+    }
+
+    /// Overrides the session's auto-generated identity with values from the
+    /// daemon's persistent agent registry, so an agent's name and UUID survive
+    /// across UI restarts. Must be called before `start()`.
+    pub fn with_identity(mut self, agent_name: String, session_id: String) -> Self {
+        self.name = agent_name.clone();
+        self.session_id = session_id.clone();
+        // Synchronise the inner state. `try_lock` is safe here: the session
+        // hasn't been spawned yet, so there's no other owner of the lock.
+        if let Ok(mut state) = self.state.try_lock() {
+            state.agent_name = agent_name;
+            state.session_id = session_id;
+        }
+        self
     }
 
     pub fn new_headless(
@@ -148,9 +173,9 @@ impl ClawSession {
         (session, tx)
     }
 
-    pub fn start(self, claw_proxy: AgentClawProxy<'static>) {
+    pub fn start(self, env: Arc<dyn ClawEnvironment>) {
         tokio::spawn(async move {
-            self.run(claw_proxy).await;
+            self.run(env).await;
         });
     }
 
@@ -291,6 +316,7 @@ impl ClawSession {
                 | ClawMessage::KillProcessReply { .. }
                 | ClawMessage::GetClipboardReply { .. }
                 | ClawMessage::SetClipboardReply { .. }
+                | ClawMessage::ScrollbackReply { .. }
                 | ClawMessage::TaskCompletedEvent { .. }
                 | ClawMessage::CommandFinished { .. }
         )
@@ -337,7 +363,7 @@ impl ClawSession {
         }
     }
 
-    pub async fn run(mut self, claw_proxy: AgentClawProxy<'static>) {
+    pub async fn run(mut self, env: Arc<dyn ClawEnvironment>) {
         // LAZY LOADING: We don't initialize the DB or load skills until we receive a message.
         // This ensures BoxxyClaw doesn't consume memory/CPU if the user doesn't use the AI.
 
@@ -430,12 +456,39 @@ impl ClawSession {
                         ClawMessage::SettingsInvalidated => {
                             info!("[{}] Settings changed. Next turn will trigger a hot-swap.", self.name);
 
-                            let settings = boxxy_preferences::Settings::load();
-                            let claw_model = settings.claw_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
-                            let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
+                            // Snapshot the model labels *before* reload so we
+                            // can tell whether this change actually altered
+                            // the Claw/Dreams model selection. Any unrelated
+                            // setting (persistence toggle, font size, etc.)
+                            // should leave the sidebar alone — we used to
+                            // emit a "Models" row unconditionally, which
+                            // littered the history on every save.
+                            let before = boxxy_preferences::Settings::load();
+                            let model_label = |m: &Option<_>| -> String {
+                                m.as_ref()
+                                    .map(|p: &boxxy_model_selection::ModelProvider| p.format_label())
+                                    .unwrap_or_else(|| "Default".to_string())
+                            };
+                            let (old_claw, old_memory) =
+                                (model_label(&before.claw_model), model_label(&before.memory_model));
+
+                            // Cross-process settings sync: the UI writes
+                            // `settings.json` on save, but the daemon's in-memory
+                            // cache doesn't observe disk changes. Re-hydrate
+                            // from disk so the new model / toggles take effect.
+                            boxxy_preferences::Settings::reload();
+
+                            let after = boxxy_preferences::Settings::load();
+                            let (new_claw, new_memory) =
+                                (model_label(&after.claw_model), model_label(&after.memory_model));
+
+                            if new_claw == old_claw && new_memory == old_memory {
+                                // Non-model change (persistence, theme, ...) — no log entry.
+                                continue;
+                            }
 
                             let event = ClawEngineEvent::SystemMessage {
-                                text: format!("Claw: {}\nDreams: {}", claw_model, memory_model),
+                                text: format!("Claw: {new_claw}\nDreams: {new_memory}"),
                             };
                             crate::engine::persist_visual_event(
                                 self.db.clone(),
@@ -936,7 +989,7 @@ impl ClawSession {
                                     &session_ctx,
                                     cwd,
                                     false,
-                                    claw_proxy.clone(),
+                                    env.clone(),
                                     self.db.clone(),
                                     self.state.clone(),
                                     self.tx_ui.clone(),
@@ -971,7 +1024,7 @@ impl ClawSession {
                                     &session_ctx,
                                     cwd,
                                     false,
-                                    claw_proxy.clone(),
+                                    env.clone(),
                                     self.db.clone(),
                                     self.state.clone(),
                                     self.tx_ui.clone(),
@@ -1030,7 +1083,7 @@ impl ClawSession {
                                 &session_ctx,
                                 cwd,
                                 false,
-                                claw_proxy.clone(),
+                                env.clone(),
                                 self.db.clone(),
                                 self.state.clone(),
                                 self.tx_ui.clone(),
@@ -1156,7 +1209,7 @@ impl ClawSession {
                                     &session_ctx,
                                     cwd,
                                     false,
-                                    claw_proxy.clone(),
+                                    env.clone(),
                                     self.db.clone(),
                                     self.state.clone(),
                                     self.tx_ui.clone(),
@@ -1169,7 +1222,7 @@ impl ClawSession {
                         ClawMessage::DelegatedTask {
                             source_agent_name,
                             prompt,
-                            reply_tx,
+                            request_id,
                         } => {
                             if current_turn.is_some() {
                                 debug!(
@@ -1179,7 +1232,7 @@ impl ClawSession {
                                 backlog.push_back(ClawMessage::DelegatedTask {
                                     source_agent_name,
                                     prompt,
-                                    reply_tx,
+                                    request_id,
                                 });
                                 continue;
                             }
@@ -1205,15 +1258,15 @@ impl ClawSession {
                                 self.name.clone(),
                                 &full_prompt,
                                 &snapshot,
-                                &session_ctx,
+                                &self.session_context,
                                 current_dir.clone(),
                                 false,
-                                claw_proxy.clone(),
+                                env.clone(),
                                 self.db.clone(),
                                 self.state.clone(),
                                 self.tx_ui.clone(),
                                 self.tx_self.clone(),
-                                Some(reply_tx),
+                                Some(request_id),
                                 vec![],
                             ));
                         }
@@ -1311,7 +1364,7 @@ impl ClawSession {
                                     &session_ctx,
                                     current_dir.clone(),
                                     false,
-                                    claw_proxy.clone(),
+                                    env.clone(),
                                     self.db.clone(),
                                     self.state.clone(),
                                     self.tx_ui.clone(),
@@ -1321,9 +1374,27 @@ impl ClawSession {
                                 ));
                             }
                         }
+                        ClawMessage::ScrollbackReply { request_id, content } => {
+                            let mut state = self.state.lock().await;
+                            if let Some(tx) = state.pending_scrollbacks.remove(&request_id) {
+                                let _ = tx.send(content);
+                            }
+                        }
                         ClawMessage::TaskCompletedEvent { task_id, result } => {
                             let mut state_lock = self.state.lock().await;
+
+                            // If this was a direct tool delegation (oneshot), unblock it
+                            if let Some(tx) = state_lock.pending_delegations.remove(&task_id) {
+                                let _ = tx.send(result.clone());
+                            }
+
                             state_lock.awaiting_tasks.retain(|id| id != &task_id);
+
+                            for task in &mut state_lock.pending_tasks {
+                                if task.id == task_id {
+                                    task.status = TaskStatus::Completed;
+                                }
+                            }
 
                             if state_lock.status == crate::engine::AgentStatus::Sleep && state_lock.awaiting_tasks.is_empty() {
                                 drop(state_lock);
@@ -1351,7 +1422,7 @@ impl ClawSession {
                                     &session_ctx,
                                     current_dir.clone(),
                                     false,
-                                    claw_proxy.clone(),
+                                    env.clone(),
                                     self.db.clone(),
                                     self.state.clone(),
                                     self.tx_ui.clone(),

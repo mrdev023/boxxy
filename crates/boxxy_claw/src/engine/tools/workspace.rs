@@ -1,4 +1,8 @@
 use crate::engine::{ClawEngineEvent, SpawnLocation};
+use crate::registry::workspace::global_workspace;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct SpawnAgentArgs {
@@ -146,10 +150,6 @@ impl Tool for CloseAgentTool {
         })
     }
 }
-use crate::registry::workspace::global_workspace;
-use rig::completion::ToolDefinition;
-use rig::tool::Tool;
-use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct ReadPaneArgs {
@@ -257,10 +257,13 @@ impl Tool for DelegateTaskTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
+        let request_id = uuid::Uuid::new_v4();
 
-        let my_name = {
-            let state = self.state.lock().await;
-            state.agent_name.clone()
+        let (my_name, reply_rx) = {
+            let mut state = self.state.lock().await;
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            state.pending_delegations.insert(request_id, reply_tx);
+            (state.agent_name.clone(), reply_rx)
         };
 
         if args.agent_name.to_lowercase() == my_name.to_lowercase() {
@@ -270,12 +273,10 @@ impl Tool for DelegateTaskTool {
         }
 
         if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
-            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
             let req = crate::engine::ClawMessage::DelegatedTask {
                 source_agent_name: my_name,
                 prompt: args.prompt,
-                reply_tx,
+                request_id,
             };
 
             if let Err(e) = tx.send(req).await {
@@ -350,20 +351,20 @@ impl Tool for DelegateTaskAsyncTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
-        let task_id = uuid::Uuid::new_v4();
+        let request_id = uuid::Uuid::new_v4();
 
-        let my_name = {
-            let state = self.state.lock().await;
-            state.agent_name.clone()
+        let (my_name, reply_rx) = {
+            let mut state = self.state.lock().await;
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            state.pending_delegations.insert(request_id, reply_tx);
+            (state.agent_name.clone(), reply_rx)
         };
 
         if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
-            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
             let req = crate::engine::ClawMessage::DelegatedTask {
                 source_agent_name: my_name.clone(),
                 prompt: args.prompt,
-                reply_tx,
+                request_id,
             };
 
             if let Err(e) = tx.send(req).await {
@@ -384,7 +385,7 @@ impl Tool for DelegateTaskAsyncTool {
                     if let Some(tx) = tx_self {
                         let _ = tx
                             .send(crate::engine::ClawMessage::TaskCompletedEvent {
-                                task_id,
+                                task_id: request_id,
                                 result,
                             })
                             .await;
@@ -393,8 +394,8 @@ impl Tool for DelegateTaskAsyncTool {
             });
 
             Ok(DelegateTaskAsyncOutput {
-                task_id: task_id.to_string(),
-                message: format!("Task delegated successfully. Task ID: {}", task_id),
+                task_id: request_id.to_string(),
+                message: format!("Task delegated successfully. Task ID: {}", request_id),
             })
         } else {
             Ok(DelegateTaskAsyncOutput {
@@ -531,17 +532,16 @@ impl Tool for SendCommandToPaneTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
         let workspace = global_workspace().await;
+        let request_id = uuid::Uuid::new_v4();
 
         if let Some(tx) = workspace.get_pane_tx_by_name(&args.agent_name).await {
-            let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
-
             let req = crate::engine::ClawMessage::DelegatedTask {
                 source_agent_name: "Workspace Automation".to_string(),
                 prompt: format!(
                     "I am delegating a command to you. Please evaluate and propose the following command to the user for execution: `{}`",
                     args.command
                 ),
-                reply_tx,
+                request_id,
             };
 
             if let Err(e) = tx.send(req).await {

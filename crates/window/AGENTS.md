@@ -16,7 +16,8 @@ This crate follows a modular **Model-View-Update (MVU)** architecture:
     - **`update/window_state.rs`**: Persistence and global state updates.
 
 ## Key Features
-- **Task-Aware Closing Protection**: The `handle_close_request` dialog (in `update/window_state.rs`) prevents accidental loss of active work. It queries the `boxxy-agent` for running OS processes AND queries the `boxxy-claw` `WorkspaceRegistry` for active scheduled AI tasks (reminders/commands), displaying them all in a unified "Still Running" alert before closing a tab or window.
+- **Task-Aware Closing Protection**: The `handle_close_request` dialog (in `update/window_state.rs`) prevents accidental loss of active work. It queries the `boxxy-agent` for running OS processes AND queries the `boxxy-claw` `WorkspaceRegistry` for active scheduled AI tasks (reminders/commands), displaying them all in a unified "Still Running" alert before closing a tab or window. When the `pty_persistence` setting is on the dialog is skipped entirely — shells detach into the daemon via `PaneInner::drop` and AI tasks continue running with desktop-notification delivery on completion, so there's nothing to warn about.
+- **Credential Sync on Save**: Whenever the user saves preferences, `settings_changed` pushes `settings.get_effective_api_keys()` to the daemon via `update_credentials` so the daemon's in-memory state tracks the on-disk file without waiting for the engine's disk-fallback path.
 - **Task Indicators**: Automatically manages `adw::TabPage` indicators (e.g., displaying a `boxxy-running-symbolic` clock icon) when a tab contains an agent with pending scheduled tasks, driven by `TaskStatusChanged` events.
 - **Multi-Window Support**: Native support for splitting tabs across multiple windows.
 - **Advanced Sidebar**: Houses the AI Chat, Claw Logs, and Theme Selector using a unified `AdwOverlaySplitView`.

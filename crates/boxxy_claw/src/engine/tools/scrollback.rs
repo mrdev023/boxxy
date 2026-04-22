@@ -53,10 +53,12 @@ impl Tool for ReadScrollbackTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
+        let request_id = uuid::Uuid::new_v4();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
         let agent_name = {
-            let state = self.state.lock().await;
+            let mut state = self.state.lock().await;
+            state.pending_scrollbacks.insert(request_id, reply_tx);
             state.agent_name.clone()
         };
 
@@ -64,7 +66,7 @@ impl Tool for ReadScrollbackTool {
             agent_name,
             max_lines: args.max_lines,
             offset_lines: args.offset_lines,
-            reply: std::sync::Arc::new(tokio::sync::Mutex::new(Some(reply_tx))),
+            request_id,
         };
 
         if let Err(e) = self.tx_ui.send(req).await {

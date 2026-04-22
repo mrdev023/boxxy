@@ -1,11 +1,9 @@
 use crate::ApprovalHandler;
-use boxxy_agent::ipc::claw::AgentClawProxy;
+use boxxy_claw_protocol::ClawEnvironment;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-// --- GET CLIPBOARD ---
 
 #[derive(Deserialize)]
 pub struct GetClipboardArgs {}
@@ -15,8 +13,9 @@ pub struct GetClipboardOutput {
     pub text: String,
 }
 
+/// Tool for reading the current contents of the system clipboard.
 pub struct GetClipboardTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub approval: Arc<dyn ApprovalHandler>,
 }
 
@@ -30,7 +29,7 @@ impl Tool for GetClipboardTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Read the current text content of the system clipboard. This will prompt the user for permission.".to_string(),
+            description: "Read the current contents of the system clipboard. This requires explicit user approval.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {}
@@ -45,26 +44,15 @@ impl Tool for GetClipboardTool {
         self.approval.set_thinking(true).await;
 
         if approved {
-            match self.proxy.get_clipboard().await {
-                Ok(text) => {
-                    let out = GetClipboardOutput { text };
-                    self.approval
-                        .report_tool_result(
-                            Self::NAME.to_string(),
-                            serde_json::to_string(&out).unwrap_or_default(),
-                        )
-                        .await;
-                    Ok(out)
-                }
-                Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            match self.env.get_clipboard().await {
+                Ok(text) => Ok(GetClipboardOutput { text }),
+                Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
             }
         } else {
-            Err(std::io::Error::other("[USER_EXPLICIT_REJECT]"))
+            Err(std::io::Error::other("User rejected clipboard access."))
         }
     }
 }
-
-// --- SET CLIPBOARD ---
 
 #[derive(Deserialize)]
 pub struct SetClipboardArgs {
@@ -76,8 +64,9 @@ pub struct SetClipboardOutput {
     pub success: bool,
 }
 
+/// Tool for writing text to the system clipboard.
 pub struct SetClipboardTool {
-    pub proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
     pub approval: Arc<dyn ApprovalHandler>,
 }
 
@@ -91,7 +80,7 @@ impl Tool for SetClipboardTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Set the system clipboard to the provided text. This will prompt the user for permission.".to_string(),
+            description: "Write text to the system clipboard. This requires explicit user approval.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -112,28 +101,12 @@ impl Tool for SetClipboardTool {
         self.approval.set_thinking(true).await;
 
         if approved {
-            match self.proxy.set_clipboard(args.text).await {
-                Ok(()) => {
-                    let out = SetClipboardOutput { success: true };
-                    self.approval
-                        .report_tool_result(
-                            Self::NAME.to_string(),
-                            serde_json::to_string(&out).unwrap_or_default(),
-                        )
-                        .await;
-                    Ok(out)
-                }
-                Err(e) => Err(std::io::Error::other(format!("IPC Error: {e}"))),
+            match self.env.set_clipboard(args.text).await {
+                Ok(_) => Ok(SetClipboardOutput { success: true }),
+                Err(e) => Err(std::io::Error::other(format!("Environment Error: {e}"))),
             }
         } else {
-            let out = SetClipboardOutput { success: false };
-            self.approval
-                .report_tool_result(
-                    Self::NAME.to_string(),
-                    serde_json::to_string(&out).unwrap_or_default(),
-                )
-                .await;
-            Ok(out)
+            Ok(SetClipboardOutput { success: false })
         }
     }
 }

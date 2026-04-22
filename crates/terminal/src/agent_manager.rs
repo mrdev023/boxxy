@@ -1,262 +1,89 @@
 use anyhow::{Context, Result};
 use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_agent::ipc::pty::{AgentPtyProxy, SpawnOptions};
-use tokio::net::UnixStream;
-use zbus::connection::Builder;
+use boxxy_agent::ipc::AgentProxy;
+use boxxy_claw_protocol::{ClawMessage, ClawEngineEvent, ClawEnvironment};
+use zbus::Connection;
 use zbus::zvariant::OwnedFd;
+use futures_util::StreamExt;
+use serde_json;
 
 #[derive(Clone)]
 pub struct AgentManager {
+    agent_proxy: AgentProxy<'static>,
     proxy: AgentPtyProxy<'static>,
     claw_proxy: AgentClawProxy<'static>,
 }
 
 impl AgentManager {
     pub async fn new() -> Result<Self> {
-        if crate::is_flatpak() {
-            // Try host agent first
-            let (local_stream, remote_stream) = tokio::net::UnixStream::pair()?;
-            log::info!("Attempting to spawn host agent...");
-            if let Err(e) = Self::spawn_agent_on_host(&remote_stream).await {
-                log::warn!(
-                    "Failed to spawn host agent: {:?}. Will try sandbox fallback.",
-                    e
-                );
-            } else {
-                log::info!("Host agent spawned, waiting for connection...");
-            }
+        let conn = Connection::session().await.context("Failed to connect to Session Bus")?;
 
-            let host_proxy = match tokio::time::timeout(
-                std::time::Duration::from_millis(1500),
-                Self::connect_to_proxy(local_stream),
-            )
-            .await
-            {
-                Ok(Ok(proxies)) => {
-                    log::info!("Host agent connected successfully.");
-                    Some(proxies)
-                }
-                Ok(Err(e)) => {
-                    log::warn!("Host agent connection failed: {:?}", e);
-                    None
-                }
-                Err(e) => {
-                    log::warn!("Host agent connection timed out: {}", e);
-                    None
-                }
-            };
-
-            drop(remote_stream); // Now safe to drop
-
-            if let Some((proxy, claw_proxy)) = host_proxy {
-                return Ok(Self { proxy, claw_proxy });
-            }
-
-            log::warn!("Starting sandbox fallback agent...");
-            let (local_stream, remote_stream) = tokio::net::UnixStream::pair()?;
-            if let Err(e) = Self::spawn_agent_in_sandbox(&remote_stream) {
-                log::error!("Failed to spawn sandbox fallback agent: {:?}", e);
-            }
-            drop(remote_stream);
-
-            let (proxy, claw_proxy) = tokio::time::timeout(
-                std::time::Duration::from_millis(1500),
-                Self::connect_to_proxy(local_stream),
-            )
-            .await
-            .context("Sandbox fallback agent connection timed out")??;
-
-            log::info!("Sandbox fallback agent connected.");
-            Ok(Self { proxy, claw_proxy })
-        } else {
-            let (local_stream, remote_stream) = tokio::net::UnixStream::pair()?;
-            Self::spawn_agent_native(&remote_stream)?;
-            drop(remote_stream);
-
-            let (proxy, claw_proxy) = tokio::time::timeout(
-                std::time::Duration::from_millis(2000),
-                Self::connect_to_proxy(local_stream),
-            )
-            .await
-            .context("Native agent connection timed out")??;
-
-            Ok(Self { proxy, claw_proxy })
-        }
-    }
-
-    async fn connect_to_proxy(
-        stream: UnixStream,
-    ) -> Result<(AgentPtyProxy<'static>, AgentClawProxy<'static>)> {
-        let guid = zbus::Guid::generate();
-        let connection = Builder::unix_stream(stream)
-            .p2p()
-            .server(guid)?
+        let agent_proxy = AgentProxy::builder(&conn)
+            .destination("dev.boxxy.BoxxyAgent")?
             .build()
             .await
-            .context("Failed to establish P2P connection to agent")?;
+            .context("Failed to create AgentProxy on Session Bus")?;
 
-        let proxy = AgentPtyProxy::builder(&connection)
-            .destination("dev.boxxy.BoxxyTerminal.Agent")?
+        let proxy = AgentPtyProxy::builder(&conn)
+            .destination("dev.boxxy.BoxxyAgent")?
             .build()
             .await
-            .context("Failed to create AgentPtyProxy")?;
+            .context("Failed to create AgentPtyProxy on Session Bus")?;
 
-        let claw_proxy = AgentClawProxy::builder(&connection)
-            .destination("dev.boxxy.BoxxyTerminal.AgentClaw")?
+        let claw_proxy = AgentClawProxy::builder(&conn)
+            .destination("dev.boxxy.BoxxyAgent")?
             .build()
             .await
-            .context("Failed to create AgentClawProxy")?;
+            .context("Failed to create AgentClawProxy on Session Bus")?;
 
-        Ok((proxy, claw_proxy))
+        // Notify daemon that a client has connected
+        let _ = agent_proxy.notify_client_connected().await;
+
+        Ok(Self { agent_proxy, proxy, claw_proxy })
     }
 
-    /// Resolve the on-host path to boxxy-agent from /.flatpak-info.
-    fn find_agent_host_path() -> String {
-        let mut path = "/app/libexec/boxxy-agent".to_string();
-        if let Ok(contents) = std::fs::read_to_string("/.flatpak-info") {
-            for line in contents.lines() {
-                if let Some(app_path) = line.strip_prefix("app-path=") {
-                    path = format!("{}/libexec/boxxy-agent", app_path);
-                    break;
-                }
-            }
-        }
-        log::info!("Resolved host agent path: {}", path);
-        path
+    pub async fn disconnect(&self) {
+        let _ = self.agent_proxy.notify_client_disconnected().await;
     }
 
-    /// Spawn boxxy-agent on the HOST via `flatpak-spawn --host`.
-    ///
-    /// The agent binary is passed the inherited socket FD.
-    async fn spawn_agent_on_host(remote_stream: &UnixStream) -> Result<()> {
-        use std::os::unix::io::AsRawFd;
-        let fd = remote_stream.as_raw_fd();
-        let agent_path = Self::find_agent_host_path();
-        log::info!(
-            "Spawning host agent: {} via FD 3 (mapped from {})",
-            agent_path,
-            fd
-        );
-
-        let mut cmd = std::process::Command::new("flatpak-spawn");
-        cmd.args([
-            "--host",
-            "--watch-bus",
-            "--forward-fd=3",
-            &agent_path,
-            "--socket-fd=3",
-        ]);
-        cmd.stderr(std::process::Stdio::piped());
-
-        unsafe {
-            use std::os::unix::process::CommandExt;
-            cmd.pre_exec(move || {
-                // Map the socket FD to 3 so flatpak-spawn/agent can find it easily.
-                if libc::dup2(fd, 3) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                // Important: if fd was already 3, dup2 does nothing and FD_CLOEXEC remains set!
-                // We MUST explicitly clear FD_CLOEXEC on FD 3 so flatpak-spawn inherits it.
-                let flags = libc::fcntl(3, libc::F_GETFD);
-                if flags >= 0 {
-                    libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
-                }
-                Ok(())
-            });
-        }
-
-        let mut child = cmd.spawn().context("flatpak-spawn --host failed")?;
-
-        // Capture flatpak-spawn's stderr in the background so errors are visible in logs.
-        if let Some(stderr) = child.stderr.take() {
-            tokio::task::spawn_blocking(move || {
-                use std::io::BufRead;
-                for line in std::io::BufReader::new(stderr)
-                    .lines()
-                    .map_while(Result::ok)
-                {
-                    log::info!("[flatpak-spawn] {}", line);
-                }
-            });
-        }
-
+    pub async fn update_credentials(&self, api_keys: std::collections::HashMap<String, String>, ollama_url: String) -> Result<()> {
+        let _ : () = self.agent_proxy.update_credentials(api_keys, ollama_url).await
+            .context("Failed to update agent credentials")?;
         Ok(())
     }
 
-    /// Sandbox fallback: run boxxy-agent inside the Flatpak when host execution fails.
-    fn spawn_agent_in_sandbox(remote_stream: &UnixStream) -> Result<()> {
-        use std::os::unix::io::AsRawFd;
-        let fd = remote_stream.as_raw_fd();
-        let agent_path = "/app/libexec/boxxy-agent";
-
-        if !std::path::Path::new(agent_path).exists() {
-            anyhow::bail!("Sandbox agent executable not found at {}", agent_path);
-        }
-
-        let mut cmd = std::process::Command::new(agent_path);
-        cmd.arg("--socket-fd=3");
-
-        #[cfg(target_os = "linux")]
-        {
-            use std::os::unix::process::CommandExt;
-            unsafe {
-                cmd.pre_exec(move || {
-                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-                    if libc::dup2(fd, 3) < 0 {
-                        return Err(std::io::Error::last_os_error());
+    pub async fn create_claw_session(&self, pane_id: String) -> Result<(String, async_channel::Receiver<ClawEngineEvent>)> {
+        let session_id = self.agent_proxy.create_claw_session(pane_id).await
+            .context("Failed to create Claw session via Agent")?;
+            
+        let (tx, rx) = async_channel::unbounded();
+        
+        // Subscribe to events for this session
+        let mut stream = self.agent_proxy.receive_claw_event().await
+            .context("Failed to subscribe to Claw events")?;
+            
+        let session_id_filter = session_id.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = stream.next().await {
+                if let Ok(args) = msg.args() {
+                    if args.session_id == session_id_filter {
+                        if let Ok(event) = serde_json::from_str::<ClawEngineEvent>(&args.event_json) {
+                            let _ = tx.send(event).await;
+                        }
                     }
-                    let flags = libc::fcntl(3, libc::F_GETFD);
-                    if flags >= 0 {
-                        libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
-                    }
-                    Ok(())
-                });
+                }
             }
-        }
-
-        cmd.spawn().context("Failed to spawn sandbox agent")?;
-        Ok(())
+        });
+        
+        Ok((session_id, rx))
     }
 
-    /// Native build: spawn agent binary from the same directory as the UI.
-    fn spawn_agent_native(remote_stream: &UnixStream) -> Result<()> {
-        use std::os::unix::io::AsRawFd;
-        let fd = remote_stream.as_raw_fd();
-        let mut agent_path = std::env::current_exe()?;
-        agent_path.pop();
-        agent_path.push("boxxy-agent");
-
-        if !agent_path.exists() {
-            anyhow::bail!(
-                "boxxy-agent not found at {:?}. Please ensure it is built.",
-                agent_path
-            );
-        }
-
-        let mut cmd = std::process::Command::new(&agent_path);
-        cmd.arg("--socket-fd=3");
-
-        #[cfg(target_os = "linux")]
-        {
-            use std::os::unix::process::CommandExt;
-            unsafe {
-                cmd.pre_exec(move || {
-                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-                    if libc::dup2(fd, 3) < 0 {
-                        return Err(std::io::Error::last_os_error());
-                    }
-                    let flags = libc::fcntl(3, libc::F_GETFD);
-                    if flags >= 0 {
-                        libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
-                    }
-                    Ok(())
-                });
-            }
-        }
-
-        cmd.spawn()
-            .with_context(|| format!("Failed to spawn native agent at {:?}", agent_path))?;
-        Ok(())
+    pub async fn post_claw_message(&self, session_id: String, message: ClawMessage) -> Result<()> {
+        let message_json = serde_json::to_string(&message)
+            .context("Failed to serialize ClawMessage")?;
+        self.agent_proxy.post_claw_message(session_id, message_json).await
+            .context("Failed to post Claw message via Agent")
     }
 
     pub fn proxy(&self) -> &AgentPtyProxy<'static> {
@@ -321,5 +148,90 @@ impl AgentManager {
             .signal_process_group(pid, signal)
             .await
             .context("Agent signal_process_group failed")
+    }
+
+    pub async fn set_persistence(&self, pid: u32, enabled: bool) -> Result<()> {
+        self.proxy
+            .set_persistence(pid, enabled)
+            .await
+            .context("Agent set_persistence failed")
+    }
+
+    /// Returns the raw `DetachOutcome` code: 0=Terminated, 1=Detached,
+    /// 2=StillViewed, 3=DetachedUnbuffered, u32::MAX=Unknown.
+    pub async fn detach(&self, pid: u32) -> Result<u32> {
+        self.proxy
+            .detach(pid)
+            .await
+            .context("Agent detach failed")
+    }
+
+    pub async fn list_detached_sessions(&self) -> Result<Vec<(u32, String, u64)>> {
+        self.proxy
+            .list_detached_sessions()
+            .await
+            .context("Agent list_detached_sessions failed")
+    }
+
+    pub async fn reattach(&self, pid: u32) -> Result<(Vec<u8>, OwnedFd)> {
+        self.proxy
+            .reattach(pid)
+            .await
+            .context("Agent reattach failed")
+    }
+}
+
+/// Implementation of ClawEnvironment that forwards calls over D-Bus.
+/// Used by scenarios or UI-side code that still needs to run Claw sessions locally.
+pub struct DbusClawEnvironment {
+    proxy: AgentClawProxy<'static>,
+}
+
+impl DbusClawEnvironment {
+    pub fn new(proxy: AgentClawProxy<'static>) -> Self {
+        Self { proxy }
+    }
+}
+
+#[async_trait::async_trait]
+impl ClawEnvironment for DbusClawEnvironment {
+    async fn exec_shell(&self, command: String) -> Result<(i32, String, String)> {
+        self.proxy.exec_shell(command).await.context("D-Bus exec_shell failed")
+    }
+
+    async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> Result<String> {
+        self.proxy.read_file(path, start_line, end_line).await.context("D-Bus read_file failed")
+    }
+
+    async fn write_file(&self, path: String, content: String) -> Result<()> {
+        self.proxy.write_file(path, content).await.context("D-Bus write_file failed")
+    }
+
+    async fn list_directory(&self, path: String) -> Result<Vec<(String, bool, u64)>> {
+        self.proxy.list_directory(path).await.context("D-Bus list_directory failed")
+    }
+
+    async fn delete_file(&self, path: String) -> Result<()> {
+        self.proxy.delete_file(path).await.context("D-Bus delete_file failed")
+    }
+
+    async fn get_system_info(&self) -> Result<String> {
+        self.proxy.get_system_info().await.context("D-Bus get_system_info failed")
+    }
+
+    async fn list_processes(&self) -> Result<Vec<(u32, String, f64, u64, u64, u64)>> {
+        self.proxy.list_processes().await.context("D-Bus list_processes failed")
+    }
+
+    async fn kill_process(&self, pid: u32, signal: i32) -> Result<()> {
+        self.proxy.kill_process(pid, signal).await.context("D-Bus kill_process failed")
+    }
+
+    async fn get_clipboard(&self) -> Result<String> {
+        self.proxy.get_clipboard().await.context("D-Bus get_clipboard failed")
+    }
+
+    async fn set_clipboard(&self, text: String) -> Result<()> {
+        self.proxy.set_clipboard(text).await.context("D-Bus set_clipboard failed")
     }
 }

@@ -1,3 +1,4 @@
+use boxxy_claw_protocol::AgentStatus;
 use boxxy_preferences::Settings;
 use boxxy_themes::Palette;
 use gtk4 as gtk;
@@ -612,7 +613,7 @@ impl TerminalComponent {
     pub fn set_session_status_for_pane(
         &self,
         pane_id: &str,
-        status: boxxy_claw::engine::AgentStatus,
+        status: AgentStatus,
     ) -> bool {
         let inner = self.inner.borrow();
         if let Some(pane_data) = inner.panes.get(pane_id) {

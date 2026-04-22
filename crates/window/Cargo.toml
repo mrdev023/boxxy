@@ -15,6 +15,8 @@ boxxy-keybindings = { path = "../keybindings" }
 boxxy-themes = { path = "../themes" }
 boxxy-sidebar = { path = "../sidebar" }
 boxxy-claw = { path = "../boxxy_claw" }
+boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
+boxxy-claw-ui = { path = "../boxxy_claw_ui" }
 boxxy-bookmarks = { path = "../boxxy_bookmarks" }
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-model-selection = { path = "../model_selection" }
@@ -35,3 +37,6 @@ flate2.workspace = true
 sha2.workspace = true
 gstreamer.workspace = true
 rand = "0.10.0"
+zbus = { workspace = true }
+home = { workspace = true }
+ashpd = { workspace = true }

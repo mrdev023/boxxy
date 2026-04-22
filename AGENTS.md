@@ -55,7 +55,7 @@ Main UI Orchestrator using a modular MVU pattern. Manages the `AdwApplicationWin
 Manages the split-pane terminal environment. Features a deep modular architecture (`pane/`) handling UI, gestures, events, media previews, and Claw integration.
 
 ### 4. `boxxy-agent` (Binary/Library Crate)
-Host Privileged Daemon. Bypasses Flatpak sandboxing to handle PTY management and host-level system administration via D-Bus IPC. Utilizing a **Subsystem Architecture**, it strictly separates latency-sensitive terminal I/O from background maintenance and AI-driven host operations. It implements an `AgentMode` state machine allowing it to "shed" interactive components when the UI closes, maintaining a minimal (~3MB) ghost footprint for background tasks like telemetry journaling and "Flash-Dream" memory seeding on shutdown.
+Host-privileged daemon that sits between the sandboxed UI and the operating system. Exposes four D-Bus interfaces on the session bus (`Agent`, `Pty`, `Claw`, `Maintenance`) from a single process. Hosts `ClawSession` actors (per-pane AI reasoning), owns the PTY registry (viewer ref-count, persistence flag, 4 MB ring buffer per detached session, zombie-sweep on a 4 h TTL), and runs the background Dream Cycle at `niceness 19` gated on UPower + ghost-mode (see §"Memory Consolidation" below). Agent identity is persisted to disk (`$XDG_DATA_HOME/boxxy-terminal/agent-registry.json`) so a pane keeps the same petname across restarts. The binary also provides CLI subcommands — `start`, `stop`, `restart`, `list-sessions` — used by the UI's updater and for manual inspection.
 
 ### 5. `boxxy-claw` (Library Crate)
 Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID.
@@ -70,10 +70,11 @@ Agents function as a **Collaborative Swarm**:
 Agents possess full **System & Environment Authority**:
 - **Location & Time Context Injection**: Agents are implicitly aware of the user's geographic location (city, country, timezone) and precise local time without requiring tool calls, achieved via a silent background fetch (`ip-api.com`) and prompt injection. If disabled by the user, a strict `[PRIVACY POLICY]` is injected forbidding the agent from attempting to deduce location or time via shell commands.
 - **Persistent Interaction History**: Automatically saves visual events (diagnoses, suggestions, tool results) and **turn-based token usage** to the database. These are re-rendered instantly upon session restoration, ensuring zero context loss even for sidebar logs. Session titles are dynamically generated in the background using a dedicated LLM call summarizing the user's initial prompt.
-- **Memory Consolidation ("Dreaming")**: A background orchestration pipeline that combats context bloat.
+- **Memory Consolidation ("Dreaming")**: A background orchestration pipeline that combats context bloat. Lives on the daemon side so it outlives the UI and can be safety-gated.
   - **Phase 1 (Light Sleep):** Ingests raw interaction logs from the SQLite database.
   - **Phase 2 (Deep Sleep):** A dedicated LLM parses the logs, extracting durable facts (OS, hardware, preferred tools) and behavioral patterns, resolving semantic conflicts before promoting them to long-term memory.
-  - **Phase 3 (REM):** Syncs insights to `MEMORY.md` and generates a human-readable `DREAMS.md` log. This process runs in a detached Tokio task 10 seconds after startup to ensure zero UI latency.
+  - **Phase 3 (REM):** Syncs insights to `MEMORY.md` and generates a human-readable `DREAMS.md` log.
+  - **Safety envelope:** runs at `niceness 19`, pauses on battery (via UPower), pauses while any UI is attached (ghost-mode gate), honours the `enable_auto_dreaming` setting, warm-up delay of 10 s after daemon start, 15-minute cool-down between cycles. Current status is readable via `Maintenance.GetMaintenanceStatus()` on D-Bus (`idle`/`disabled`/`paused_on_battery`/`paused_ui_attached`/`running`).
 - **Concurrency-Safe Hot-Swapping**: Users can change AI providers (e.g. Gemini to Claude), update API keys, or toggle tool authorizations in Settings at any time. Active sessions will safely drop and transparently rebuild their underlying agents on the next turn, retaining conversation history and automatically sanitizing incompatible payload formats without crashing the pane.
 - **Cross-Model Continuity**: Cumulative session analytics (Total Tokens) are persisted in the database, allowing users to switch LLM providers (e.g., Gemini to Claude) while maintaining a continuous record of the session's overall cost and context depth.
 - **Soft Clear Pattern**: Clicking "Clear Screen" in the sidebar marks a session-specific timestamp. Subsequent restorations only show history generated after that point, providing a clean visual state while keeping the underlying data safe.
@@ -114,10 +115,16 @@ It includes a **Unified Status Indicator**:
 ### 11. `boxxy-model-selection` (Library Crate)
 Data-driven model configuration UI. Uses a registry pattern to dynamically build selection dialogs and dropdowns based on registered `AiProvider` traits. Decouples AI capability discovery from the main application window.
 
-### 12. `boxxy-mcp` (Library Crate)
+### 12. `boxxy-claw-protocol` (Library Crate)
+Pure-data DTO layer shared between the UI and the daemon across the D-Bus boundary. Defines `ClawMessage`, `ClawEngineEvent`, `PersistentClawRow`, `AgentStatus`, `ScheduledTask`, `UsageWrapper`, and the `ClawEnvironment` trait. Contains no GTK types, no reasoning-engine internals — every field serialises cleanly via serde. Both `boxxy-claw` and `boxxy-claw-ui` depend on it; neither depends on the other.
+
+### 13. `boxxy-claw-ui` (Library Crate)
+All GTK widgets for the Claw sidebar page (right-hand `ViewStack` tab). Provides `ClawSidebarComponent` (the outer shell: status page, token counter, pending-tasks drawer, "Clear" button) and `create_claw_message_list` (the per-pane virtual list of diagnosis / suggestion / tool-call / process-list / user-message rows). Rows are recycled via `boxxy_core_widgets::ObjectExtSafe` so long histories stay cheap. Strictly display-only — the `add_*_approval_row` helpers format proposals as Diagnosis rows and deliberately ignore their callback args.
+
+### 14. `boxxy-mcp` (Library Crate)
 Implements the Model Context Protocol (MCP) using `rmcp`. It provides a `McpClientManager` to orchestrate connections via Stdio and HTTP(SSE/Streamable). Features dynamic tool ingestion, bridging JSON Schema Draft 7 to `rig` via `DynamicMcpTool`, and employs a "Lazy Boot" caching strategy to prevent slow startup times when configuring heavy Node.js MCP servers.
 
-### 13. `boxxy-telemetry` (Library Crate)
+### 15. `boxxy-telemetry` (Library Crate)
 Provides a privacy-first observability layer for tracking agent and system usage.
 - **Durable SQLite Journaling:** UI processes (`boxxy-app`) write telemetry events instantly to a local `telemetry_journal` SQLite table, ensuring zero UI lag and zero data loss on abrupt shutdowns.
 - **Agent-Delegated Flushing:** The background `boxxy-agent` daemon periodically drains this local journal and exports the metrics to the Supabase backend using the OpenTelemetry (OTLP) SDK.

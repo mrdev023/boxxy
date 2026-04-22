@@ -2,24 +2,32 @@ use super::{PaneInner, PendingDiagnosis};
 use crate::PaneOutput;
 use crate::claw_indicator::ClawIndicator;
 use crate::overlay::{OverlayMode, TerminalOverlay};
+use boxxy_claw_protocol::{AgentStatus, ClawEngineEvent, ClawMessage, UsageWrapper};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+/// Computes a session-total delta from a per-turn usage wrapper. The protocol
+/// dropped the materialized `total_tokens` field, so we sum it at the call site.
+#[inline]
+fn usage_total(u: &UsageWrapper) -> u64 {
+    u.input_tokens + u.output_tokens
+}
+
 pub(super) fn setup_claw(
     widget: &gtk::Overlay,
     inner: &Rc<RefCell<PaneInner>>,
     id: String,
-    claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
-    claw_rx: async_channel::Receiver<boxxy_claw::engine::ClawEngineEvent>,
+    claw_sender: async_channel::Sender<ClawMessage>,
+    claw_rx: async_channel::Receiver<ClawEngineEvent>,
     claw_list_store: gtk::gio::ListStore,
     callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
     spawn_intent: Option<String>,
     total_tokens: Rc<Cell<u64>>,
     is_pinned: Rc<Cell<bool>>,
     is_web_search: Rc<Cell<bool>>,
-    session_status: Rc<RefCell<boxxy_claw::engine::AgentStatus>>,
+    session_status: Rc<RefCell<AgentStatus>>,
     agent_name: Rc<RefCell<String>>,
     claw_indicator: &ClawIndicator,
 ) -> (TerminalOverlay, PendingDiagnosis) {
@@ -52,7 +60,7 @@ pub(super) fn setup_claw(
             let cwd = inner_clone.borrow().working_dir.clone().unwrap_or_default();
             if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                 let _ = tx
-                    .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                    .send(ClawMessage::UserMessage {
                         message: intent,
                         snapshot,
                         cwd,
@@ -95,7 +103,7 @@ pub(super) fn setup_claw(
                 gtk::glib::spawn_future_local(async move {
                     if let Some(snapshot) = pane.get_text_snapshot(100, 0).await {
                         let _ = tx
-                            .send(boxxy_claw::engine::ClawMessage::UserMessage {
+                            .send(ClawMessage::UserMessage {
                                 message: reply,
                                 snapshot,
                                 cwd,
@@ -121,21 +129,21 @@ pub(super) fn setup_claw(
             gtk::glib::spawn_future_local(async move {
                 let msg = match proposal {
                     crate::TerminalProposal::FileWrite(_, _) => {
-                        boxxy_claw::engine::ClawMessage::FileWriteReply { approved }
+                        ClawMessage::FileWriteReply { approved }
                     }
                     crate::TerminalProposal::FileDelete(_) => {
-                        boxxy_claw::engine::ClawMessage::FileDeleteReply { approved }
+                        ClawMessage::FileDeleteReply { approved }
                     }
                     crate::TerminalProposal::KillProcess(_, _) => {
-                        boxxy_claw::engine::ClawMessage::KillProcessReply { approved }
+                        ClawMessage::KillProcessReply { approved }
                     }
                     crate::TerminalProposal::GetClipboard => {
-                        boxxy_claw::engine::ClawMessage::GetClipboardReply { approved }
+                        ClawMessage::GetClipboardReply { approved }
                     }
                     crate::TerminalProposal::SetClipboard(_) => {
-                        boxxy_claw::engine::ClawMessage::SetClipboardReply { approved }
+                        ClawMessage::SetClipboardReply { approved }
                     }
-                    _ => boxxy_claw::engine::ClawMessage::FileWriteReply { approved },
+                    _ => ClawMessage::FileWriteReply { approved },
                 };
                 let _ = tx.send(msg).await;
             });
@@ -161,7 +169,7 @@ pub(super) fn setup_claw(
                     let tx = tx_cancel.clone();
                     gtk::glib::spawn_future_local(async move {
                         let _ = tx
-                            .send(boxxy_claw::engine::ClawMessage::CancelPending)
+                            .send(ClawMessage::CancelPending)
                             .await;
                     });
                 }
@@ -186,7 +194,7 @@ pub(super) fn setup_claw(
             let tx = tx_lazy_reply.clone();
             gtk::glib::spawn_future_local(async move {
                 let _ = tx
-                    .send(boxxy_claw::engine::ClawMessage::RequestLazyDiagnosis {})
+                    .send(ClawMessage::RequestLazyDiagnosis {})
                     .await;
             });
         },
@@ -206,11 +214,13 @@ pub(super) fn setup_claw(
     let is_pinned_for_events = is_pinned.clone();
     let is_web_search_for_events = is_web_search.clone();
     let agent_name_for_events = agent_name.clone();
+    // Used to reply to correlation-ID requests from the engine (e.g. scrollback).
+    let tx_engine_reply = claw_sender.clone();
 
     gtk::glib::spawn_future_local(async move {
         while let Ok(event) = claw_rx.recv().await {
             match &event {
-                boxxy_claw::engine::ClawEngineEvent::SessionStateChanged { status, .. } => {
+                ClawEngineEvent::SessionStateChanged { status, .. } => {
                     *session_status.borrow_mut() = status.clone();
                     inner_clone.borrow().msg_bar.set_status(status.clone());
 
@@ -218,29 +228,29 @@ pub(super) fn setup_claw(
                         indicator.set_mode(status.clone());
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::UserMessage { content } => {
-                    boxxy_claw::ui::add_user_row(&claw_store_events, id.clone(), content);
+                ClawEngineEvent::UserMessage { content } => {
+                    boxxy_claw_ui::add_user_row(&claw_store_events, id.clone(), content);
                 }
-                boxxy_claw::engine::ClawEngineEvent::AgentThinking { is_thinking, .. } => {
+                ClawEngineEvent::AgentThinking { is_thinking, .. } => {
                     if *is_thinking {
                         indicator_event_clone.show_thinking();
                     } else {
                         indicator_event_clone.hide();
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::LazyErrorIndicator { .. } => {
+                ClawEngineEvent::LazyErrorIndicator { .. } => {
                     indicator_event_clone.show_lazy_error();
                 }
-                boxxy_claw::engine::ClawEngineEvent::DiagnosisComplete {
+                ClawEngineEvent::DiagnosisComplete {
                     diagnosis,
                     agent_name,
                     usage,
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
-                    boxxy_claw::ui::add_diagnosis_row(
+                    boxxy_claw_ui::add_diagnosis_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
@@ -255,7 +265,12 @@ pub(super) fn setup_claw(
                         crate::TerminalProposal::None,
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::InjectCommand {
+                // Proposal events: the in-terminal popover owns user
+                // approval. The sidebar gets a read-only log entry so
+                // the history view reflects that the agent proposed
+                // something — the approval-row helpers format it as a
+                // Diagnosis row and ignore their callback args.
+                ClawEngineEvent::InjectCommand {
                     command,
                     diagnosis,
                     agent_name,
@@ -263,35 +278,33 @@ pub(super) fn setup_claw(
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
                     if !diagnosis.is_empty() {
-                        boxxy_claw::ui::add_diagnosis_row(
+                        boxxy_claw_ui::add_diagnosis_row(
                             &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
                             diagnosis,
                         );
                     }
-
-                    boxxy_claw::ui::add_approval_row(
+                    boxxy_claw_ui::add_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         command,
                         |_| {},
                     );
-
                     indicator_event_clone.hide();
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Propose Command"),
                         diagnosis,
                         crate::TerminalProposal::Command(command.clone()),
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeFileWrite {
+                ClawEngineEvent::ProposeFileWrite {
                     path,
                     content,
                     agent_name,
@@ -299,9 +312,9 @@ pub(super) fn setup_claw(
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
-                    boxxy_claw::ui::add_file_write_approval_row(
+                    boxxy_claw_ui::add_file_write_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
@@ -310,25 +323,24 @@ pub(super) fn setup_claw(
                         |_| {},
                         |_| {},
                     );
-
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Propose File Edit"),
                         &format!("Path: `{path}`\n\nI need to write or edit this file to complete the task."),
                         crate::TerminalProposal::FileWrite(path.clone(), content.clone())
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeFileDelete {
+                ClawEngineEvent::ProposeFileDelete {
                     path,
                     agent_name,
                     usage,
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
-                    boxxy_claw::ui::add_file_delete_approval_row(
+                    boxxy_claw_ui::add_file_delete_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
@@ -336,16 +348,15 @@ pub(super) fn setup_claw(
                         |_| {},
                         |_| {},
                     );
-
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Delete File"),
                         &format!("I want to DELETE this file:\n\n`{path}`"),
-                        crate::TerminalProposal::Command(format!("rm '{path}'")),
+                        crate::TerminalProposal::FileDelete(path.clone()),
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeKillProcess {
+                ClawEngineEvent::ProposeKillProcess {
                     pid,
                     process_name,
                     agent_name,
@@ -353,9 +364,9 @@ pub(super) fn setup_claw(
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
-                    boxxy_claw::ui::add_kill_process_approval_row(
+                    boxxy_claw_ui::add_kill_process_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
@@ -364,46 +375,44 @@ pub(super) fn setup_claw(
                         |_| {},
                         |_| {},
                     );
-
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Kill Process"),
                         &format!("I want to KILL this process:\n\nPID: {pid} ({process_name})"),
-                        crate::TerminalProposal::Command(format!("kill {pid}")),
+                        crate::TerminalProposal::KillProcess(*pid, process_name.clone()),
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeGetClipboard { agent_name, usage } => {
+                ClawEngineEvent::ProposeGetClipboard { agent_name, usage } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
-                    boxxy_claw::ui::add_clipboard_get_approval_row(
+                    boxxy_claw_ui::add_clipboard_get_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         |_| {},
                         |_| {},
                     );
-
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Read Clipboard"),
                         "I want to read your clipboard.",
-                        crate::TerminalProposal::None,
+                        crate::TerminalProposal::GetClipboard,
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeSetClipboard {
+                ClawEngineEvent::ProposeSetClipboard {
                     agent_name,
                     text,
                     usage,
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
-                    boxxy_claw::ui::add_clipboard_set_approval_row(
+                    boxxy_claw_ui::add_clipboard_set_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
@@ -411,16 +420,15 @@ pub(super) fn setup_claw(
                         |_| {},
                         |_| {},
                     );
-
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Write Clipboard"),
                         &format!("I want to write this to your clipboard:\n\n{text}"),
-                        crate::TerminalProposal::None,
+                        crate::TerminalProposal::SetClipboard(text.clone()),
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand {
+                ClawEngineEvent::ProposeTerminalCommand {
                     command,
                     explanation,
                     agent_name,
@@ -428,34 +436,32 @@ pub(super) fn setup_claw(
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
                     if !explanation.is_empty() {
-                        boxxy_claw::ui::add_diagnosis_row(
+                        boxxy_claw_ui::add_diagnosis_row(
                             &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
                             explanation,
                         );
                     }
-
-                    boxxy_claw::ui::add_approval_row(
+                    boxxy_claw_ui::add_approval_row(
                         &claw_store_events,
                         id.clone(),
                         Some(agent_name.clone()),
                         command,
                         |_| {},
                     );
-
                     popover_event_clone.show(
                         OverlayMode::Claw,
-                        &agent_name,
+                        agent_name,
                         Some("Terminal Command"),
                         explanation,
                         crate::TerminalProposal::Command(command.clone()),
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::Identity {
+                ClawEngineEvent::Identity {
                     agent_name,
                     pinned,
                     web_search_enabled,
@@ -475,7 +481,7 @@ pub(super) fn setup_claw(
                         .update_ui(status, *pinned, *web_search_enabled);
                     total_tokens_for_events.set(*total_tokens);
                 }
-                boxxy_claw::engine::ClawEngineEvent::PinStatusChanged(pinned) => {
+                ClawEngineEvent::PinStatusChanged(pinned) => {
                     is_pinned_for_events.set(*pinned);
                     let status = session_status.borrow().clone();
                     inner_clone.borrow().msg_bar.update_ui(
@@ -484,7 +490,7 @@ pub(super) fn setup_claw(
                         inner_clone.borrow().msg_bar.web_search_state.get(),
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::WebSearchStatusChanged(enabled) => {
+                ClawEngineEvent::WebSearchStatusChanged(enabled) => {
                     is_web_search_for_events.set(*enabled);
                     let status = session_status.borrow().clone();
                     inner_clone.borrow().msg_bar.update_ui(
@@ -493,20 +499,20 @@ pub(super) fn setup_claw(
                         *enabled,
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::Evicted => {
+                ClawEngineEvent::Evicted => {
                     if let Some(ind) = &inner_clone.borrow().claw_indicator {
                         ind.set_evicted(true);
                     }
                     indicator_event_clone.hide();
                     popover_event_clone.hide();
-                    boxxy_claw::ui::add_diagnosis_row(
+                    boxxy_claw_ui::add_diagnosis_row(
                         &claw_store_events,
                         id.clone(),
                         None,
                         "Agent was EVICTED because the session was resumed in another pane.",
                     );
                 }
-                boxxy_claw::engine::ClawEngineEvent::RequestCwdSwitch { path } => {
+                ClawEngineEvent::RequestCwdSwitch { path } => {
                     let pane_inner = inner_clone.borrow();
                     let terminal = pane_inner.terminal.clone();
                     let path = path.clone();
@@ -538,54 +544,50 @@ pub(super) fn setup_claw(
                         }
                     });
                 }
-                boxxy_claw::engine::ClawEngineEvent::SystemMessage { text } => {
-                    boxxy_claw::ui::add_system_message_row(&claw_store_events, id.clone(), text);
+                ClawEngineEvent::SystemMessage { text } => {
+                    boxxy_claw_ui::add_system_message_row(&claw_store_events, id.clone(), text);
                 }
-                boxxy_claw::engine::ClawEngineEvent::RequestScrollback {
+                ClawEngineEvent::RequestScrollback {
                     max_lines,
                     offset_lines,
-                    reply,
+                    request_id,
                     ..
                 } => {
                     let pane_inner = inner_clone.borrow();
                     let pane = pane_inner.terminal.clone();
 
-                    if pane.is_alt_screen() {
-                        if let Some(ind) = &pane_inner.claw_indicator {
-                            ind.set_visible(false);
-                        }
-                    } else {
-                        if let Some(ind) = &pane_inner.claw_indicator {
-                            ind.set_visible(true);
-                        }
+                    // Hide the Claw badge while a TUI (alt screen) owns the terminal:
+                    // scrollback requests during vim/less would otherwise be
+                    // visually noisy without being useful.
+                    if let Some(ind) = &pane_inner.claw_indicator {
+                        ind.set_visible(!pane.is_alt_screen());
                     }
 
                     let max_lines = *max_lines;
                     let offset_lines = *offset_lines;
-                    let reply = reply.clone();
+                    let request_id = *request_id;
+                    let tx_reply = tx_engine_reply.clone();
                     gtk::glib::spawn_future_local(async move {
-                        let mut sender_opt = reply.lock().await;
-                        if let Some(sender) = sender_opt.take() {
-                            if let Some(snapshot) =
-                                pane.get_text_snapshot(max_lines, offset_lines).await
-                            {
-                                let _ = sender.send(snapshot);
-                            } else {
-                                let _ =
-                                    sender.send("Error: Failed to fetch scrollback.".to_string());
-                            }
-                        }
+                        let content = pane
+                            .get_text_snapshot(max_lines, offset_lines)
+                            .await
+                            .unwrap_or_else(|| {
+                                "Error: Failed to fetch scrollback.".to_string()
+                            });
+                        let _ = tx_reply
+                            .send(ClawMessage::ScrollbackReply { request_id, content })
+                            .await;
                     });
                 }
-                boxxy_claw::engine::ClawEngineEvent::ProposalResolved { .. } => {
+                ClawEngineEvent::ProposalResolved { .. } => {
                     popover_event_clone.hide();
                 }
-                boxxy_claw::engine::ClawEngineEvent::RequestSpawnAgent { .. }
-                | boxxy_claw::engine::ClawEngineEvent::RequestCloseAgent { .. }
-                | boxxy_claw::engine::ClawEngineEvent::InjectKeystrokes { .. } => {
+                ClawEngineEvent::RequestSpawnAgent { .. }
+                | ClawEngineEvent::RequestCloseAgent { .. }
+                | ClawEngineEvent::InjectKeystrokes { .. } => {
                     // Handled upstream by TerminalComponent / Window
                 }
-                boxxy_claw::engine::ClawEngineEvent::ToolResult {
+                ClawEngineEvent::ToolResult {
                     agent_name,
                     tool_name,
                     result,
@@ -593,10 +595,10 @@ pub(super) fn setup_claw(
                 } => {
                     if let Some(usage) = usage {
                         total_tokens_for_events
-                            .set(total_tokens_for_events.get() + usage.total_tokens);
+                            .set(total_tokens_for_events.get() + usage_total(usage));
                     }
                     if tool_name == "list_processes" {
-                        boxxy_claw::ui::add_process_list_row(
+                        boxxy_claw_ui::add_process_list_row(
                             &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
@@ -604,7 +606,7 @@ pub(super) fn setup_claw(
                             |_, _| {},
                         );
                     } else {
-                        boxxy_claw::ui::add_tool_call_row(
+                        boxxy_claw_ui::add_tool_call_row(
                             &claw_store_events,
                             id.clone(),
                             Some(agent_name.clone()),
@@ -613,26 +615,27 @@ pub(super) fn setup_claw(
                         );
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::TaskStatusChanged { tasks, .. } => {
+                ClawEngineEvent::TaskStatusChanged { tasks, .. } => {
                     let has_pending = tasks
                         .iter()
-                        .any(|t| t.status == boxxy_claw::engine::TaskStatus::Pending);
+                        .any(|t| t.status == boxxy_claw_protocol::TaskStatus::Pending);
                     if let Some(ind) = &inner_clone.borrow().claw_indicator {
                         ind.set_has_tasks(has_pending);
                     }
                 }
-                boxxy_claw::engine::ClawEngineEvent::RestoreHistory(rows) => {
+                ClawEngineEvent::RestoreHistory(rows) => {
                     // Bulk append history items to minimize UI layout passes
                     let mut items = Vec::with_capacity(rows.len());
                     for row in rows {
-                        items.push(boxxy_claw::engine::ClawRowObject::new(row.clone()));
+                        items.push(boxxy_claw_ui::row_object::ClawRowObject::new(row.clone()));
                     }
                     claw_store_events.remove_all();
                     claw_store_events.extend_from_slice(&items);
                 }
-                boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. }
-                | boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification { .. } => {
-                    // Handled by the window orchestrator for sound/notification
+                ClawEngineEvent::TaskCompleted { .. }
+                | ClawEngineEvent::PushGlobalNotification { .. }
+                | ClawEngineEvent::DelegatedTaskReply { .. } => {
+                    // Routed by the window orchestrator / swarm layer, not the pane.
                 }
             }
 

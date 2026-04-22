@@ -1,4 +1,4 @@
-use crate::engine::ClawEngineEvent;
+use crate::engine::{ClawEngineEvent, ClawEnvironment};
 use crate::engine::session::SessionState;
 use crate::engine::tools::set_state::SetAgentStateTool;
 use crate::engine::tools::skills::ActivateSkillTool;
@@ -11,12 +11,12 @@ use crate::engine::tools::workspace::{
 };
 use crate::engine::tools::{ClawApprovalHandler, SysShellTool};
 use crate::utils::load_prompt_fallback;
-use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_core_toolbox::{
     FileDeleteTool, FileReadTool, FileWriteTool, GetClipboardTool, GetSystemInfoTool,
     HttpFetchTool, KillProcessTool, ListDirectoryTool, ListProcessesTool, SetClipboardTool,
 };
 use boxxy_model_selection::ModelProvider;
+use std::sync::Arc;
 use rig::agent::Agent;
 use rig::client::CompletionClient;
 use rig::message::Message;
@@ -191,8 +191,7 @@ impl ClawAgent {
 #[allow(clippy::too_many_arguments)]
 pub async fn create_claw_agent(
     config: &AgentConfig,
-    creds: &AiCredentials,
-    claw_proxy: &AgentClawProxy<'static>,
+    env: &Arc<dyn ClawEnvironment>,
     current_dir: &str,
     tx_ui: async_channel::Sender<ClawEngineEvent>,
     state: std::sync::Arc<tokio::sync::Mutex<SessionState>>,
@@ -210,6 +209,34 @@ pub async fn create_claw_agent(
         }
     };
 
+    let (mut api_keys, mut ollama_url) = {
+        let state_lock = state.lock().await;
+        let keys = state_lock.api_keys.read().await.clone();
+        let url = state_lock.ollama_url.read().await.clone();
+        (keys, url)
+    };
+
+    // Fallback: if the IPC-pushed credentials are empty (common when the
+    // engine is hosted in the daemon and the UI hasn't called
+    // `update_credentials` yet — e.g. keys are stored in settings.json,
+    // not env vars) fall back to the on-disk settings. This also merges
+    // in provider env vars via `get_effective_api_keys`.
+    let is_usable = |keys: &std::collections::HashMap<String, String>| {
+        keys.values().any(|v| !v.is_empty())
+    };
+    if !is_usable(&api_keys) {
+        let settings = boxxy_preferences::Settings::load();
+        api_keys = settings.get_effective_api_keys();
+        if ollama_url.is_empty() {
+            ollama_url = settings.ollama_base_url.clone();
+        }
+    }
+
+    let creds = AiCredentials {
+        api_keys,
+        ollama_url,
+    };
+
     let approval_handler = std::sync::Arc::new(ClawApprovalHandler {
         tx_ui: tx_ui.clone(),
         state: state.clone(),
@@ -220,7 +247,7 @@ pub async fn create_claw_agent(
 
     let mut tools: Vec<Box<dyn rig::tool::ToolDyn>> = vec![
         Box::new(SysShellTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             current_dir: current_dir.to_string(),
             approval: approval_handler.clone(),
         }),
@@ -263,7 +290,7 @@ pub async fn create_claw_agent(
             tx_ui: tx_ui.clone(),
         }),
         Box::new(ListProcessesTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             approval: approval_handler.clone(),
         }),
         Box::new(ScheduleTaskTool {
@@ -310,7 +337,7 @@ pub async fn create_claw_agent(
         }),
         Box::new(SummonHeadlessWorkerTool {
             state: state.clone(),
-            claw_proxy: claw_proxy.clone(),
+            env: (*env).clone(),
         }),
         Box::new(SetAgentStateTool {
             state: state.clone(),
@@ -323,22 +350,22 @@ pub async fn create_claw_agent(
     // Conditional Core Toolbox tools
     if config.file_tools_enabled {
         tools.push(Box::new(FileReadTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             current_dir: current_dir.to_string(),
             approval: approval_handler.clone(),
         }));
         tools.push(Box::new(FileWriteTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             current_dir: current_dir.to_string(),
             approval: approval_handler.clone(),
         }));
         tools.push(Box::new(ListDirectoryTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             current_dir: current_dir.to_string(),
             approval: approval_handler.clone(),
         }));
         tools.push(Box::new(FileDeleteTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             current_dir: current_dir.to_string(),
             approval: approval_handler.clone(),
         }));
@@ -346,14 +373,13 @@ pub async fn create_claw_agent(
 
     if config.system_tools_enabled {
         tools.push(Box::new(GetSystemInfoTool {
-            proxy: claw_proxy.clone(),
-            approval: approval_handler.clone(),
+            env: (*env).clone(),
         }));
     }
 
     if config.dangerous_tools_enabled {
         tools.push(Box::new(KillProcessTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             approval: approval_handler.clone(),
         }));
     }
@@ -375,11 +401,11 @@ pub async fn create_claw_agent(
 
     if config.clipboard_tools_enabled {
         tools.push(Box::new(GetClipboardTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             approval: approval_handler.clone(),
         }));
         tools.push(Box::new(SetClipboardTool {
-            proxy: claw_proxy.clone(),
+            env: (*env).clone(),
             approval: approval_handler.clone(),
         }));
     }

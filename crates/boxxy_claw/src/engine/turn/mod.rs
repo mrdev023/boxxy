@@ -1,10 +1,10 @@
 use crate::engine::{
     ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
     context::retrieve_memories, dispatcher::extract_command_and_clean, persist_visual_event,
-    session::SessionState, summarization::turn::summarize_and_store,
+    session::SessionState, summarization::turn::summarize_and_store, ClawEnvironment,
 };
+use boxxy_claw_protocol::UsageWrapper;
 use crate::utils::load_prompt_fallback;
-use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_db::Db;
 use log::info;
 use rig::message::Message;
@@ -19,12 +19,12 @@ pub fn spawn_turn(
     _session_ctx: &str,
     cwd: String,
     is_new_task: bool,
-    claw_proxy: AgentClawProxy<'static>,
+    env: Arc<dyn ClawEnvironment>,
     db: Arc<Mutex<Option<Db>>>,
     state: Arc<Mutex<SessionState>>,
     tx_ui: async_channel::Sender<ClawEngineEvent>,
     tx_self: async_channel::Sender<ClawMessage>,
-    delegate_reply_tx: Option<tokio::sync::oneshot::Sender<String>>,
+    delegate_reply_id: Option<uuid::Uuid>,
     image_attachments: Vec<String>,
 ) -> tokio::task::JoinHandle<()> {
     let prompt_clone = prompt.to_string();
@@ -160,11 +160,6 @@ pub fn spawn_turn(
         let system_prompt =
             system_prompt_template.replace("{{available_skills}}", &available_skills_text);
 
-        let creds = boxxy_ai_core::AiCredentials::new(
-            settings.get_effective_api_keys(),
-            settings.ollama_base_url.clone(),
-        );
-
         // --- PHASE 3: PERSISTENT AGENT ---
         // We check if we already have an agent instance for this session.
         // If not, or if the model changed, we create a new one safely.
@@ -215,8 +210,7 @@ pub fn spawn_turn(
 
             match crate::engine::agent::create_claw_agent(
                 &current_config,
-                &creds,
-                &claw_proxy,
+                &env,
                 &cwd_clone,
                 tx_ui.clone(),
                 state.clone(),
@@ -634,7 +628,7 @@ pub fn spawn_turn(
                         agent_name: agent_name.clone(),
                         command,
                         diagnosis: clean_diagnosis,
-                        usage: usage,
+                        usage: usage.map(UsageWrapper::from),
                     };
                     persist_visual_event(
                         db.clone(),
@@ -647,7 +641,7 @@ pub fn spawn_turn(
                     let event = ClawEngineEvent::DiagnosisComplete {
                         agent_name: agent_name.clone(),
                         diagnosis: clean_diagnosis,
-                        usage: usage,
+                        usage: usage.map(UsageWrapper::from),
                     };
                     persist_visual_event(
                         db.clone(),
@@ -657,8 +651,13 @@ pub fn spawn_turn(
                     );
                     let _ = tx_ui.send(event).await;
                 }
-                if let Some(tx) = delegate_reply_tx {
-                    let _ = tx.send(response.clone());
+                if let Some(request_id) = delegate_reply_id {
+                    let _ = tx_ui
+                        .send(ClawEngineEvent::DelegatedTaskReply {
+                            request_id,
+                            result: response.clone(),
+                        })
+                        .await;
                 }
             }
             Err(e) => {
@@ -694,8 +693,13 @@ pub fn spawn_turn(
                 );
                 let _ = tx_ui.send(event).await;
 
-                if let Some(tx) = delegate_reply_tx {
-                    let _ = tx.send(format!("Error: {}", e));
+                if let Some(request_id) = delegate_reply_id {
+                    let _ = tx_ui
+                        .send(ClawEngineEvent::DelegatedTaskReply {
+                            request_id,
+                            result: format!("Error: {}", e),
+                        })
+                        .await;
                 }
             }
         }

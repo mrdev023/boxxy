@@ -151,7 +151,7 @@ impl TerminalOverlay {
 
         vbox.append(&header);
 
-        let diagnosis_viewer = StructuredViewer::new(boxxy_claw::ui::get_claw_viewer_registry());
+        let diagnosis_viewer = StructuredViewer::new(boxxy_claw_ui::get_claw_viewer_registry());
         vbox.append(diagnosis_viewer.widget());
 
         let command_frame = gtk::Frame::new(None);

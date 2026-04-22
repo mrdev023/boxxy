@@ -15,6 +15,8 @@ use crate::{PaneInit, PaneOutput};
 
 use crate::claw_indicator::ClawIndicator;
 use crate::overlay::{OverlayMode, TerminalOverlay};
+use boxxy_claw_protocol::*;
+use boxxy_claw_ui;
 
 mod app_menu;
 mod claw;
@@ -81,11 +83,11 @@ pub struct TerminalPaneComponent {
     claw_indicator: ClawIndicator,
 
     pending_sleep_diagnosis: PendingDiagnosis,
-    claw_sender: async_channel::Sender<boxxy_claw::engine::ClawMessage>,
+    claw_sender: async_channel::Sender<ClawMessage>,
     pub claw_message_list: gtk::ListView,
 
     pub is_claw_active: Rc<Cell<bool>>,
-    pub session_status: Rc<RefCell<boxxy_claw::engine::AgentStatus>>,
+    pub session_status: Rc<RefCell<AgentStatus>>,
     pub is_pinned: Rc<Cell<bool>>,
     is_web_search: Rc<Cell<bool>>,
     agent_name: Rc<RefCell<String>>,
@@ -96,15 +98,43 @@ pub struct TerminalPaneComponent {
 
 impl Drop for PaneInner {
     fn drop(&mut self) {
-        if let Some(pid) = self.pid {
-            // When a terminal pane is closed, we must ensure all child processes are killed.
-            // Since the agent daemon outlives the UI, simply closing the PTY master FD
-            // might not be enough if the child (like mpv) ignores SIGHUP or if the
-            // agent is still holding the slave FD open.
-            log::info!("PaneInner dropping, killing process group for PID {}", pid);
+        let Some(pid) = self.pid else { return };
+
+        // Read the live setting here rather than snapshotting it at
+        // spawn time — that way toggling persistence in Preferences
+        // takes effect on the very next pane close, not just on panes
+        // opened after the toggle.
+        let persist = Settings::load().pty_persistence;
+
+        if persist {
+            log::info!(
+                "PaneInner dropping (pid={}): pty_persistence on → detaching into daemon",
+                pid
+            );
             glib::spawn_future_local(async move {
                 let agent = crate::get_agent().await;
-                // Signal 15 is SIGTERM. This ensures that the shell and all its children (like mpv) are terminated properly.
+                // Set the flag then detach. Order matters: detach()
+                // only keeps the shell alive if persistence is already
+                // on at decision time.
+                let _ = agent.set_persistence(pid, true).await;
+                match agent.detach(pid).await {
+                    Ok(1) => log::info!("pid={} detached into background", pid),
+                    Ok(0) => log::info!("pid={} terminated (unexpectedly — persistence may be off on daemon)", pid),
+                    Ok(3) => log::warn!(
+                        "pid={} detached without buffer (daemon has no stored FD — shell will block when kernel PTY buffer fills)",
+                        pid
+                    ),
+                    Ok(code) => log::debug!("pid={} detach returned code {}", pid, code),
+                    Err(e) => log::warn!("pid={} detach failed: {}", pid, e),
+                }
+            });
+        } else {
+            // Non-persistent path: SIGTERM the process group so shells
+            // and their children (mpv, etc.) are cleaned up even if they
+            // ignore SIGHUP.
+            log::info!("PaneInner dropping (pid={}): killing process group", pid);
+            glib::spawn_future_local(async move {
+                let agent = crate::get_agent().await;
                 let _ = agent.signal_process_group(pid, 15).await;
             });
         }
@@ -158,17 +188,45 @@ impl TerminalPaneComponent {
             .style_context()
             .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
-        let (claw_session, claw_sender, claw_rx) = boxxy_claw::engine::ClawSession::new(id.clone());
+        let (claw_sender, claw_rx_from_agent) = async_channel::unbounded();
+        let (tx_to_agent, rx_from_ui) = async_channel::unbounded::<boxxy_claw_protocol::ClawMessage>();
+        let session_id_rc = Rc::new(RefCell::new(None));
+        let session_id_for_init = session_id_rc.clone();
+        let id_for_init = id.clone();
+        let claw_sender_clone = claw_sender.clone();
 
         gtk::glib::spawn_future_local(async move {
             let agent = crate::get_agent().await;
-            claw_session.start(agent.claw_proxy().clone());
+            if let Ok((session_id, rx_events)) = agent.create_claw_session(id_for_init).await {
+                session_id_for_init.replace(Some(session_id.clone()));
+                
+                // Forward events from agent to our internal rx
+                let tx = claw_sender_clone.clone();
+                tokio::spawn(async move {
+                    let mut rx_events = rx_events;
+                    while let Ok(event) = rx_events.recv().await {
+                        let _ = tx.send(event).await;
+                    }
+                });
+
+                // Forward messages from UI to agent
+                let agent_clone = agent.clone();
+                let session_id_clone = session_id.clone();
+                let mut rx_from_ui = rx_from_ui;
+                tokio::spawn(async move {
+                    while let Ok(msg) = rx_from_ui.recv().await {
+                        let _ = agent_clone.post_claw_message(session_id_clone.clone(), msg).await;
+                    }
+                });
+            }
         });
 
-        let (claw_message_list, claw_list_store) = boxxy_claw::ui::create_claw_message_list();
+        let (claw_message_list, claw_list_store) = boxxy_claw_ui::create_claw_message_list();
+        let claw_rx = claw_rx_from_agent;
+        let claw_sender = tx_to_agent;
 
         let is_claw_active = Rc::new(Cell::new(false));
-        let session_status = Rc::new(RefCell::new(boxxy_claw::engine::AgentStatus::Off));
+        let session_status = Rc::new(RefCell::new(AgentStatus::Off));
         let is_pinned = Rc::new(Cell::new(false));
         let is_web_search = Rc::new(Cell::new(settings.web_search_on_by_default));
         let agent_name = Rc::new(RefCell::new(String::new()));
@@ -251,12 +309,12 @@ impl TerminalPaneComponent {
                                 true,
                                 matches!(
                                     *session_status_for_msg.borrow(),
-                                    boxxy_claw::engine::AgentStatus::Sleep
+                                    AgentStatus::Sleep
                                 ),
                             ));
                             let tx = tx_msg.clone();
                             glib::spawn_future_local(async move {
-                                let _ = tx.send(boxxy_claw::engine::ClawMessage::Initialize).await;
+                                let _ = tx.send(ClawMessage::Initialize).await;
                             });
                         }
 
@@ -269,7 +327,7 @@ impl TerminalPaneComponent {
                                     let session_id = query["/resume ".len()..].trim().to_string();
                                     if !session_id.is_empty() {
                                         let _ = tx
-                                            .send(boxxy_claw::engine::ClawMessage::ResumeSession {
+                                            .send(ClawMessage::ResumeSession {
                                                 session_id,
                                             })
                                             .await;
@@ -278,7 +336,7 @@ impl TerminalPaneComponent {
                                 }
 
                                 let _ = tx
-                                    .send(boxxy_claw::engine::ClawMessage::ClawQuery {
+                                    .send(ClawMessage::ClawQuery {
                                         query,
                                         snapshot,
                                         cwd,
@@ -309,11 +367,11 @@ impl TerminalPaneComponent {
                             .and_then(|w| w.upgrade())
                         {
                             let mut status = session_status_for_active.borrow().clone();
-                            if active && status == boxxy_claw::engine::AgentStatus::Off {
-                                status = boxxy_claw::engine::AgentStatus::Waiting;
+                            if active && status == AgentStatus::Off {
+                                status = AgentStatus::Waiting;
                                 *session_status_for_active.borrow_mut() = status.clone();
                             } else if !active {
-                                status = boxxy_claw::engine::AgentStatus::Off;
+                                status = AgentStatus::Off;
                                 *session_status_for_active.borrow_mut() = status.clone();
                             }
 
@@ -331,17 +389,17 @@ impl TerminalPaneComponent {
                             active,
                             matches!(
                                 *session_status_for_active.borrow(),
-                                boxxy_claw::engine::AgentStatus::Sleep
+                                AgentStatus::Sleep
                             ),
                         ));
                         let tx = tx_claw_toggle.clone();
                         if active {
                             glib::spawn_future_local(async move {
-                                let _ = tx.send(boxxy_claw::engine::ClawMessage::Initialize).await;
+                                let _ = tx.send(ClawMessage::Initialize).await;
                             });
                         } else {
                             glib::spawn_future_local(async move {
-                                let _ = tx.send(boxxy_claw::engine::ClawMessage::Deactivate).await;
+                                let _ = tx.send(ClawMessage::Deactivate).await;
                             });
                         }
                     }
@@ -349,13 +407,13 @@ impl TerminalPaneComponent {
                 move |sleep| {
                     let currently_sleeping = matches!(
                         *session_status_for_sleep.borrow(),
-                        boxxy_claw::engine::AgentStatus::Sleep
+                        AgentStatus::Sleep
                     );
                     if currently_sleeping != sleep {
                         let new_status = if sleep {
-                            boxxy_claw::engine::AgentStatus::Sleep
+                            AgentStatus::Sleep
                         } else {
-                            boxxy_claw::engine::AgentStatus::Waiting
+                            AgentStatus::Waiting
                         };
                         *session_status_for_sleep.borrow_mut() = new_status.clone();
 
@@ -378,7 +436,7 @@ impl TerminalPaneComponent {
                         let tx = tx_sleep_toggle.clone();
                         glib::spawn_future_local(async move {
                             let _ = tx
-                                .send(boxxy_claw::engine::ClawMessage::SleepToggle(sleep))
+                                .send(ClawMessage::SleepToggle(sleep))
                                 .await;
                         });
                     }
@@ -400,7 +458,7 @@ impl TerminalPaneComponent {
                         let tx = tx_pin_toggle.clone();
                         glib::spawn_future_local(async move {
                             let _ = tx
-                                .send(boxxy_claw::engine::ClawMessage::TogglePin(pinned))
+                                .send(ClawMessage::TogglePin(pinned))
                                 .await;
                         });
                     }
@@ -422,7 +480,7 @@ impl TerminalPaneComponent {
                         let tx = tx_web_search_toggle.clone();
                         glib::spawn_future_local(async move {
                             let _ = tx
-                                .send(boxxy_claw::engine::ClawMessage::ToggleWebSearch(enabled))
+                                .send(ClawMessage::ToggleWebSearch(enabled))
                                 .await;
                         });
                     }
@@ -700,7 +758,7 @@ impl TerminalPaneComponent {
     pub fn cancel_task(&self, task_id: uuid::Uuid) {
         let _ = self
             .claw_sender
-            .send_blocking(boxxy_claw::engine::ClawMessage::CancelTask { task_id });
+            .send_blocking(ClawMessage::CancelTask { task_id });
     }
 
     pub fn write_all(&self, data: Vec<u8>) {
@@ -773,6 +831,7 @@ impl TerminalPaneComponent {
                         env,
                         cols,
                         rows,
+                        pane_id: id.clone(),
                     };
 
                     use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -827,7 +886,7 @@ impl TerminalPaneComponent {
                                             // Update AI Engine immediately
                                             let _ = claw_tx
                                                 .send(
-                                                    boxxy_claw::engine::ClawMessage::ForegroundProcessChanged {
+                                                    ClawMessage::ForegroundProcessChanged {
                                                         process_name: args.process_name.clone(),
                                                     },
                                                 )
@@ -908,11 +967,11 @@ impl TerminalPaneComponent {
     pub fn is_sleep(&self) -> bool {
         matches!(
             *self.session_status.borrow(),
-            boxxy_claw::engine::AgentStatus::Sleep
+            AgentStatus::Sleep
         )
     }
 
-    pub fn set_session_status(&self, status: boxxy_claw::engine::AgentStatus) {
+    pub fn set_session_status(&self, status: AgentStatus) {
         *self.session_status.borrow_mut() = status.clone();
 
         self.msg_bar.set_status(status.clone());
@@ -938,9 +997,9 @@ impl TerminalPaneComponent {
         self.claw_indicator.set_visible(active);
 
         let status = if active {
-            boxxy_claw::engine::AgentStatus::Waiting
+            AgentStatus::Waiting
         } else {
-            boxxy_claw::engine::AgentStatus::Off
+            AgentStatus::Off
         };
         *self.session_status.borrow_mut() = status.clone();
 
@@ -952,11 +1011,11 @@ impl TerminalPaneComponent {
         let tx = self.claw_sender.clone();
         if active {
             glib::spawn_future_local(async move {
-                let _ = tx.send(boxxy_claw::engine::ClawMessage::Initialize).await;
+                let _ = tx.send(ClawMessage::Initialize).await;
             });
         } else {
             glib::spawn_future_local(async move {
-                let _ = tx.send(boxxy_claw::engine::ClawMessage::Deactivate).await;
+                let _ = tx.send(ClawMessage::Deactivate).await;
             });
         }
     }
@@ -964,7 +1023,7 @@ impl TerminalPaneComponent {
     pub fn reload_claw(&self) {
         let tx = self.claw_sender.clone();
         glib::spawn_future_local(async move {
-            let _ = tx.send(boxxy_claw::engine::ClawMessage::Reload).await;
+            let _ = tx.send(ClawMessage::Reload).await;
         });
     }
 
@@ -972,7 +1031,7 @@ impl TerminalPaneComponent {
         let tx = self.claw_sender.clone();
         glib::spawn_future_local(async move {
             let _ = tx
-                .send(boxxy_claw::engine::ClawMessage::SoftClearHistory)
+                .send(ClawMessage::SoftClearHistory)
                 .await;
         });
     }
@@ -980,7 +1039,7 @@ impl TerminalPaneComponent {
     pub fn notify_settings_invalidated(&self) {
         let _ = self
             .claw_sender
-            .try_send(boxxy_claw::engine::ClawMessage::SettingsInvalidated);
+            .try_send(ClawMessage::SettingsInvalidated);
     }
 
     pub fn clear_claw_history(&self) {
@@ -1040,7 +1099,7 @@ impl TerminalPaneComponent {
                     self.is_web_search.set(false);
                     let _ = self
                         .claw_sender
-                        .send_blocking(boxxy_claw::engine::ClawMessage::ToggleWebSearch(false));
+                        .send_blocking(ClawMessage::ToggleWebSearch(false));
                     self.msg_bar.update_ui(
                         self.session_status.borrow().clone(),
                         self.is_pinned.get(),
@@ -1049,7 +1108,7 @@ impl TerminalPaneComponent {
                 } else {
                     // If enabled, send current local state to ensure it's synced
                     let _ = self.claw_sender.send_blocking(
-                        boxxy_claw::engine::ClawMessage::ToggleWebSearch(self.is_web_search.get()),
+                        ClawMessage::ToggleWebSearch(self.is_web_search.get()),
                     );
                 }
             }

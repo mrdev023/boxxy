@@ -1,3 +1,5 @@
+pub mod registry;
+
 use crate::core::state::AgentState;
 use crate::ipc::pty::SpawnOptions;
 use nix::fcntl::OFlag;
@@ -101,6 +103,24 @@ impl PtySubsystem {
         options: SpawnOptions,
     ) -> fdo::Result<u32> {
         let std_fd: std::os::unix::io::OwnedFd = pty_master.into();
+
+        // Dup the master *before* consuming it into PtyMaster. This dup
+        // goes into the registry and sits idle until `detach()` activates
+        // it, so persistence works without the UI having to hand an FD
+        // over at detach time.
+        let registry_fd_raw = unsafe { libc::dup(std_fd.as_raw_fd()) };
+        let registry_fd = if registry_fd_raw >= 0 {
+            Some(unsafe {
+                std::os::unix::io::OwnedFd::from_raw_fd(registry_fd_raw)
+            })
+        } else {
+            log::warn!(
+                "spawn: dup of master FD failed: {}; session won't be eligible for persistence",
+                std::io::Error::last_os_error()
+            );
+            None
+        };
+
         let master_fd = unsafe { PtyMaster::from_owned_fd(std_fd) };
 
         unsafe {
@@ -186,8 +206,17 @@ impl PtySubsystem {
             .id()
             .ok_or_else(|| fdo::Error::Failed("Failed to get PID".to_string()))?;
 
+        // Register the PTY session so detach/reattach/list-detached can
+        // find it later. viewer_count starts at 1 (the spawning UI).
+        // The daemon's FD dup sits idle until detach activates it.
+        self.state
+            .pty_registry
+            .register(pid, options.pane_id.clone(), registry_fd)
+            .await;
+
         let emitter = emitter.to_owned();
         let tracked_pids = self.state.tracked_pids.clone();
+        let pty_registry = self.state.pty_registry.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_millis(1500));
@@ -202,6 +231,9 @@ impl PtySubsystem {
                         };
                         let _ = PtySubsystem::exited(&emitter, pid, exit_code).await;
                         tracked_pids.write().await.remove(&pid);
+                        // Drop the session record; this also aborts any
+                        // active detached reader task.
+                        pty_registry.remove(pid).await;
                         break;
                     }
                     _ = interval.tick() => {
@@ -223,6 +255,42 @@ impl PtySubsystem {
         });
 
         Ok(pid)
+    }
+
+    async fn set_persistence(&self, pid: u32, enabled: bool) -> fdo::Result<()> {
+        self.state.pty_registry.set_persistence(pid, enabled).await;
+        Ok(())
+    }
+
+    /// Decrements the viewer count. If the last viewer detached:
+    ///   * persistence off → SIGTERM the process group (returns 0).
+    ///   * persistence on  → daemon starts buffering via its stored
+    ///     FD dup (returns 1). The UI doesn't need to hand an FD over;
+    ///     the daemon has had one since `spawn()`.
+    /// Numeric codes match `DetachOutcome`; the UI only has to check 1
+    /// for "successfully detached and alive".
+    async fn detach(&self, pid: u32) -> fdo::Result<u32> {
+        let outcome = self.state.pty_registry.detach(pid).await;
+        Ok(match outcome {
+            registry::DetachOutcome::Detached => 1,
+            registry::DetachOutcome::Terminated => 0,
+            registry::DetachOutcome::StillViewed => 2,
+            registry::DetachOutcome::DetachedUnbuffered => 3,
+            registry::DetachOutcome::Unknown => u32::MAX,
+        })
+    }
+
+    async fn list_detached_sessions(&self) -> fdo::Result<Vec<(u32, String, u64)>> {
+        Ok(self.state.pty_registry.list_detached().await)
+    }
+
+    async fn reattach(&self, pid: u32) -> fdo::Result<(Vec<u8>, OwnedFd)> {
+        match self.state.pty_registry.reattach(pid).await {
+            Some((bytes, fd)) => Ok((bytes, OwnedFd::from(fd))),
+            None => Err(fdo::Error::Failed(format!(
+                "No detached session for pid {pid}"
+            ))),
+        }
     }
 
     async fn get_cwd(&self, pid: u32) -> fdo::Result<String> {

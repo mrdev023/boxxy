@@ -515,11 +515,17 @@ version = "0.0.34"
 dependencies = [
  "anyhow",
  "arboard",
+ "async-channel",
  "async-trait",
+ "boxxy-ai-core",
+ "boxxy-claw",
+ "boxxy-claw-protocol",
  "boxxy-db",
  "boxxy-model-selection",
  "boxxy-preferences",
  "boxxy-telemetry",
+ "chrono",
+ "clap",
  "directories",
  "enumflags2",
  "env_logger",
@@ -527,10 +533,13 @@ dependencies = [
  "libc",
  "log",
  "nix",
+ "petname",
  "serde",
  "serde_json",
  "sysinfo",
+ "tempfile",
  "tokio",
+ "uuid",
  "zbus",
 ]
 
@@ -604,21 +613,18 @@ dependencies = [
  "anyhow",
  "async-channel",
  "async-trait",
- "boxxy-agent",
  "boxxy-ai-core",
+ "boxxy-claw-protocol",
  "boxxy-core-toolbox",
- "boxxy-core-widgets",
  "boxxy-db",
  "boxxy-mcp",
  "boxxy-model-selection",
  "boxxy-preferences",
  "boxxy-telemetry",
- "boxxy-viewer",
  "chrono",
  "directories",
- "glib",
- "gtk4",
- "libadwaita",
+ "futures-util",
+ "home",
  "log",
  "notify",
  "petname",
@@ -629,6 +635,40 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.18",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "boxxy-claw-protocol"
+version = "0.0.34"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "log",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "zvariant",
+]
+
+[[package]]
+name = "boxxy-claw-ui"
+version = "0.0.34"
+dependencies = [
+ "anyhow",
+ "boxxy-claw-protocol",
+ "boxxy-core-widgets",
+ "boxxy-viewer",
+ "chrono",
+ "gtk4",
+ "libadwaita",
+ "log",
+ "rig-core",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -646,7 +686,7 @@ version = "0.0.34"
 dependencies = [
  "anyhow",
  "async-trait",
- "boxxy-agent",
+ "boxxy-claw-protocol",
  "boxxy-telemetry",
  "directories",
  "log",
@@ -724,6 +764,7 @@ dependencies = [
  "base64",
  "boxxy-ai-core",
  "boxxy-claw",
+ "boxxy-claw-protocol",
  "boxxy-core-widgets",
  "boxxy-db",
  "boxxy-preferences",
@@ -810,6 +851,8 @@ dependencies = [
  "boxxy-agent",
  "boxxy-ai-core",
  "boxxy-claw",
+ "boxxy-claw-protocol",
+ "boxxy-claw-ui",
  "boxxy-msgbar",
  "boxxy-preferences",
  "boxxy-themes",
@@ -825,6 +868,8 @@ dependencies = [
  "libadwaita",
  "libc",
  "log",
+ "serde",
+ "serde_json",
  "tokio",
  "uuid",
  "zbus",
@@ -904,10 +949,13 @@ name = "boxxy-window"
 version = "0.0.34"
 dependencies = [
  "anyhow",
+ "ashpd",
  "async-channel",
  "boxxy-ai-core",
  "boxxy-bookmarks",
  "boxxy-claw",
+ "boxxy-claw-protocol",
+ "boxxy-claw-ui",
  "boxxy-command-palette",
  "boxxy-keybindings",
  "boxxy-model-selection",
@@ -919,6 +967,7 @@ dependencies = [
  "getrandom 0.4.2",
  "gstreamer",
  "gtk4",
+ "home",
  "libadwaita",
  "log",
  "rand 0.10.0",
@@ -931,6 +980,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
+ "zbus",
 ]
 
 [[package]]
@@ -4809,8 +4859,10 @@ dependencies = [
  "boxxy-agent",
  "boxxy-ai-core",
  "boxxy-claw",
+ "boxxy-claw-protocol",
  "boxxy-core-toolbox",
  "boxxy-preferences",
+ "boxxy-terminal",
  "chrono",
  "env_logger",
  "futures-util",

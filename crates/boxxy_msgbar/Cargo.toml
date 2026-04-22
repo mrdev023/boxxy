@@ -15,6 +15,7 @@ log.workspace = true
 tokio.workspace = true
 boxxy-preferences = { path = "../preferences" }
 boxxy-claw = { path = "../boxxy_claw" }
+boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-db = { path = "../db" }
 uuid = { workspace = true, features = ["v4"] }

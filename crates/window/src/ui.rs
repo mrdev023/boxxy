@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use boxxy_bookmarks::manager::{BOOKMARKS_EVENT_BUS, BookmarksManager};
 use boxxy_bookmarks::sidebar::BookmarksSidebarComponent;
-use boxxy_claw::ClawSidebarComponent;
+use boxxy_claw_ui::ClawSidebarComponent;
 use boxxy_command_palette::CommandPaletteComponent;
 use boxxy_preferences::{AppState, PreferencesComponent, Settings};
 use boxxy_sidebar::AiSidebarComponent;

@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use crate::state::{AppInput, AppWindowInner};
 use boxxy_terminal::{TerminalEvent, TerminalEventKind};
+use boxxy_claw_protocol::*;
 
 pub fn handle_terminal_event(
     _inner_ref: &Rc<RefCell<AppWindowInner>>,
@@ -129,12 +130,12 @@ pub fn handle_terminal_event(
                 }
 
                 match claw_event {
-                    boxxy_claw::engine::ClawEngineEvent::SessionStateChanged { status, .. } => {
+                    ClawEngineEvent::SessionStateChanged { status, .. } => {
                         inner.tabs[pos]
                             .controller
                             .set_session_status_for_pane(&p_id, status);
                     }
-                    boxxy_claw::engine::ClawEngineEvent::Identity {
+                    ClawEngineEvent::Identity {
                         agent_name,
                         pinned,
                         web_search_enabled,
@@ -156,7 +157,7 @@ pub fn handle_terminal_event(
                             }
                         }
                     }
-                    boxxy_claw::engine::ClawEngineEvent::PinStatusChanged(pinned) => {
+                    ClawEngineEvent::PinStatusChanged(pinned) => {
                         if let Some(page) = inner.tab_view.selected_page() {
                             let child = page.child();
                             if inner.tabs[pos].controller.widget() == &child {
@@ -169,7 +170,7 @@ pub fn handle_terminal_event(
                             }
                         }
                     }
-                    boxxy_claw::engine::ClawEngineEvent::WebSearchStatusChanged(enabled) => {
+                    ClawEngineEvent::WebSearchStatusChanged(enabled) => {
                         if let Some(page) = inner.tab_view.selected_page() {
                             let child = page.child();
                             if inner.tabs[pos].controller.widget() == &child {
@@ -182,29 +183,29 @@ pub fn handle_terminal_event(
                             }
                         }
                     }
-                    boxxy_claw::engine::ClawEngineEvent::DiagnosisComplete { .. }
-                    | boxxy_claw::engine::ClawEngineEvent::InjectCommand { .. }
-                    | boxxy_claw::engine::ClawEngineEvent::ProposeFileWrite { .. }
-                    | boxxy_claw::engine::ClawEngineEvent::RestoreHistory(..)
-                    | boxxy_claw::engine::ClawEngineEvent::ProposeTerminalCommand { .. } => {
+                    ClawEngineEvent::DiagnosisComplete { .. }
+                    | ClawEngineEvent::InjectCommand { .. }
+                    | ClawEngineEvent::ProposeFileWrite { .. }
+                    | ClawEngineEvent::RestoreHistory(..)
+                    | ClawEngineEvent::ProposeTerminalCommand { .. } => {
                         inner.claw.refresh_visibility();
                     }
-                    boxxy_claw::engine::ClawEngineEvent::RequestSpawnAgent {
+                    ClawEngineEvent::RequestSpawnAgent {
                         location,
                         intent,
                         ..
                     } => match location {
-                        boxxy_claw::engine::SpawnLocation::NewTab => {
+                        SpawnLocation::NewTab => {
                             super::tabs::new_tab_with_intent(inner, intent);
                         }
-                        boxxy_claw::engine::SpawnLocation::VerticalSplit => {
+                        SpawnLocation::VerticalSplit => {
                             inner.tabs[pos].controller.split_vertical(intent);
                         }
-                        boxxy_claw::engine::SpawnLocation::HorizontalSplit => {
+                        SpawnLocation::HorizontalSplit => {
                             inner.tabs[pos].controller.split_horizontal(intent);
                         }
                     },
-                    boxxy_claw::engine::ClawEngineEvent::RequestCloseAgent {
+                    ClawEngineEvent::RequestCloseAgent {
                         target_agent_name,
                     } => {
                         let inner_clone = _inner_ref.clone();
@@ -225,7 +226,7 @@ pub fn handle_terminal_event(
                             }
                         });
                     }
-                    boxxy_claw::engine::ClawEngineEvent::InjectKeystrokes {
+                    ClawEngineEvent::InjectKeystrokes {
                         target_agent_name,
                         keys,
                     } => {
@@ -247,10 +248,10 @@ pub fn handle_terminal_event(
                             }
                         });
                     }
-                    boxxy_claw::engine::ClawEngineEvent::TaskStatusChanged { tasks, .. } => {
+                    ClawEngineEvent::TaskStatusChanged { tasks, .. } => {
                         let has_pending = tasks
                             .iter()
-                            .any(|t| t.status == boxxy_claw::engine::TaskStatus::Pending);
+                            .any(|t| t.status == TaskStatus::Pending);
                         let widget = inner.tabs[pos].controller.widget();
                         let page = inner.tab_view.page(widget);
 
@@ -275,10 +276,10 @@ pub fn handle_terminal_event(
                             }
                         }
                     }
-                    boxxy_claw::engine::ClawEngineEvent::TaskCompleted { .. } => {
+                    ClawEngineEvent::TaskCompleted { .. } => {
                         crate::sound::play_task_completion_sound();
                     }
-                    boxxy_claw::engine::ClawEngineEvent::PushGlobalNotification {
+                    ClawEngineEvent::PushGlobalNotification {
                         title,
                         message,
                     } => {

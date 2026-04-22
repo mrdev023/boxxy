@@ -1,3 +1,4 @@
+use boxxy_claw_protocol::AgentStatus;
 use boxxy_terminal::TerminalComponent;
 use libadwaita;
 use std::cell::RefCell;
@@ -43,7 +44,7 @@ impl TerminalController {
     pub fn set_session_status_for_pane(
         &self,
         pane_id: &str,
-        status: boxxy_claw::engine::AgentStatus,
+        status: AgentStatus,
     ) -> bool {
         self.controller.set_session_status_for_pane(pane_id, status)
     }

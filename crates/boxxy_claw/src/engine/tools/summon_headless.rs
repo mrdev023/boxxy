@@ -1,5 +1,5 @@
 use crate::engine::session::{ClawSession, SessionState};
-use boxxy_agent::ipc::claw::AgentClawProxy;
+use crate::engine::ClawEnvironment;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,7 +20,7 @@ pub struct SummonHeadlessOutput {
 
 pub struct SummonHeadlessWorkerTool {
     pub state: Arc<Mutex<SessionState>>,
-    pub claw_proxy: AgentClawProxy<'static>,
+    pub env: Arc<dyn ClawEnvironment>,
 }
 
 impl Tool for SummonHeadlessWorkerTool {
@@ -32,20 +32,17 @@ impl Tool for SummonHeadlessWorkerTool {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Spawns a transient background agent for parallel tasks without disturbing the user's terminal UI. \
-            The new agent will have its own context and tools. \
-            Returns a `task_id` that you MUST `await_tasks([task_id])` on to retrieve the results."
-                .to_string(),
+            description: "Spawns a background agent with a specific profile to complete a task. Use this when you want to continue working in your pane while another agent handles a sub-task. The results will be delivered back to you.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "profile": {
                         "type": "string",
-                        "description": "The specific system instructions for this transient worker (e.g. 'You are an expert Python debugger')."
+                        "description": "The personality/skill profile for the worker (e.g. 'rust-expert', 'documentation-writer')."
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "The specific task instruction or command for the new agent to execute."
+                        "description": "The specific task instructions for the worker."
                     }
                 },
                 "required": ["profile", "prompt"]
@@ -57,12 +54,15 @@ impl Tool for SummonHeadlessWorkerTool {
         boxxy_telemetry::track_tool_use(Self::NAME).await;
         let task_id = uuid::Uuid::new_v4();
 
-        let (my_pane_id, my_session_id, my_name) = {
-            let state = self.state.lock().await;
+        let (my_pane_id, my_session_id, my_name, reply_rx) = {
+            let mut state = self.state.lock().await;
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            state.pending_delegations.insert(task_id, reply_tx);
             (
                 state.pane_id.clone(),
                 uuid::Uuid::parse_str(&state.session_id).unwrap_or_default(),
                 state.agent_name.clone(),
+                reply_rx,
             )
         };
 
@@ -71,17 +71,14 @@ impl Tool for SummonHeadlessWorkerTool {
             ClawSession::new_headless(my_pane_id, my_session_id, args.profile);
 
         let child_name = session.name.clone();
-        session.start(self.claw_proxy.clone());
+        session.start(self.env.clone());
 
-        // Create a oneshot channel for the response to map back to our task execution
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
-        // Send the delegated task
+        // Send the delegated task with correlation ID
         let _ = tx_child
             .send(crate::engine::ClawMessage::DelegatedTask {
                 source_agent_name: my_name.clone(),
                 prompt: args.prompt,
-                reply_tx,
+                request_id: task_id,
             })
             .await;
 
@@ -96,21 +93,17 @@ impl Tool for SummonHeadlessWorkerTool {
                 due_at: chrono::Utc::now(),
             });
 
-            // To get tx_self, we need to ask the workspace registry
-            let workspace = crate::registry::workspace::global_workspace().await;
-            let tx_self = workspace.get_pane_tx_by_name(&my_name).await.unwrap();
-
+            // Re-broadcast back to ourselves when it finishes
+            let tx_self = state.tx_self.clone();
             tokio::spawn(async move {
-                let result_str = match reply_rx.await {
-                    Ok(msg) => msg,
-                    Err(_) => "Task failed or worker crashed.".to_string(),
-                };
-                let _ = tx_self
-                    .send(crate::engine::ClawMessage::TaskCompletedEvent {
-                        task_id,
-                        result: result_str,
-                    })
-                    .await;
+                if let Ok(result) = reply_rx.await {
+                    let _ = tx_self
+                        .send(crate::engine::ClawMessage::TaskCompletedEvent {
+                            task_id,
+                            result,
+                        })
+                        .await;
+                }
             });
         }
 

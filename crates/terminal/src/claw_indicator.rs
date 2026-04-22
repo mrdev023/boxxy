@@ -1,3 +1,4 @@
+use boxxy_claw_protocol::AgentStatus;
 use gtk::prelude::*;
 use gtk4 as gtk;
 use std::cell::{Cell, RefCell};
@@ -301,8 +302,8 @@ impl ClawIndicator {
         }
     }
 
-    pub fn set_mode(&self, status: boxxy_claw::engine::AgentStatus) {
-        use boxxy_claw::engine::AgentStatus::*;
+    pub fn set_mode(&self, status: AgentStatus) {
+        use AgentStatus::*;
 
         match status {
             Sleep => {
