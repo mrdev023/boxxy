@@ -65,6 +65,19 @@ impl DaemonCore {
         // `MaintenanceSubsystem` reads the same state.
         dreaming::spawn_with_status(power.clone(), ghost.clone(), dream_status.clone());
 
+        // Telemetry subsystem: Initialize and periodically flush in the background
+        // so it never delays daemon startup or UI responsiveness.
+        tokio::spawn(async move {
+            boxxy_telemetry::init_db().await;
+            boxxy_telemetry::init().await;
+
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(30 * 60));
+            loop {
+                tick.tick().await;
+                boxxy_telemetry::flush_journal().await;
+            }
+        });
+
         // Zombie-guard sweeper: runs at niceness 19 and only sweeps
         // while in ghost mode — the TTL is 4 h, so a one-session delay
         // doesn't matter.
