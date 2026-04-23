@@ -110,9 +110,7 @@ impl PtySubsystem {
         // over at detach time.
         let registry_fd_raw = unsafe { libc::dup(std_fd.as_raw_fd()) };
         let registry_fd = if registry_fd_raw >= 0 {
-            Some(unsafe {
-                std::os::unix::io::OwnedFd::from_raw_fd(registry_fd_raw)
-            })
+            Some(unsafe { std::os::unix::io::OwnedFd::from_raw_fd(registry_fd_raw) })
         } else {
             log::warn!(
                 "spawn: dup of master FD failed: {}; session won't be eligible for persistence",

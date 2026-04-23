@@ -88,22 +88,16 @@ mod tests {
         // 0 → 1 should exit ghost
         tx.send(1).unwrap();
         // give the watcher task a tick
-        let _ = tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            watch_rx.changed(),
-        )
-        .await
-        .unwrap();
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(200), watch_rx.changed())
+            .await
+            .unwrap();
         assert!(!g.is_ghost());
 
         // 1 → 0 should re-enter ghost
         tx.send(0).unwrap();
-        let _ = tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            watch_rx.changed(),
-        )
-        .await
-        .unwrap();
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(200), watch_rx.changed())
+            .await
+            .unwrap();
         assert!(g.is_ghost());
     }
 

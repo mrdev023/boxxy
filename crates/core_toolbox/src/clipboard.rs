@@ -80,7 +80,9 @@ impl Tool for SetClipboardTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Write text to the system clipboard. This requires explicit user approval.".to_string(),
+            description:
+                "Write text to the system clipboard. This requires explicit user approval."
+                    .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {

@@ -52,7 +52,7 @@ pub async fn ensure_agent_running() -> Result<()> {
 
     // Step 2 — Ensure daemon is running.
     spawn_agent(&host_path).await?;
-    
+
     // Step 3 — Wait for D-Bus name to be ready.
     wait_for_agent_ready().await?;
 
@@ -63,7 +63,7 @@ async fn wait_for_agent_ready() -> Result<()> {
     let conn = Connection::session().await?;
     let mut attempts = 0;
     let max_attempts = 10;
-    
+
     loop {
         match query_ghost_version().await {
             Ok(ver) => {
@@ -75,7 +75,10 @@ async fn wait_for_agent_ready() -> Result<()> {
                 if attempts >= max_attempts {
                     anyhow::bail!("Timed out waiting for agent to claim D-Bus name: {}", e);
                 }
-                info!("Waiting for agent D-Bus name (attempt {}/{})...", attempts, max_attempts);
+                info!(
+                    "Waiting for agent D-Bus name (attempt {}/{})...",
+                    attempts, max_attempts
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
             }
         }
@@ -91,7 +94,10 @@ async fn needs_redeploy(host_path: &PathBuf) -> bool {
     match query_ghost_version().await {
         Ok(ver) if ver == AGENT_VERSION => false,
         Ok(ver) => {
-            warn!("Ghost version {} != app version {} — redeploying", ver, AGENT_VERSION);
+            warn!(
+                "Ghost version {} != app version {} — redeploying",
+                ver, AGENT_VERSION
+            );
             true
         }
         Err(_) => true,
@@ -107,7 +113,7 @@ async fn query_ghost_version() -> Result<String> {
 
 async fn deploy_agent_binary(dest: &PathBuf) -> Result<()> {
     info!("Deploying agent binary to {}", dest.display());
-    
+
     let src_path = PathBuf::from("/app/libexec/boxxy-agent");
     if !src_path.exists() {
         anyhow::bail!("Source agent binary not found at {}", src_path.display());
@@ -115,7 +121,7 @@ async fn deploy_agent_binary(dest: &PathBuf) -> Result<()> {
 
     // Create the destination directory on the host if it doesn't exist.
     let parent = dest.parent().context("no parent dir")?;
-    
+
     Command::new("flatpak-spawn")
         .args(["--host", "mkdir", "-p", &parent.to_string_lossy()])
         .status()
@@ -133,7 +139,7 @@ async fn deploy_agent_binary(dest: &PathBuf) -> Result<()> {
         let mut file = tokio::fs::File::open(&src_path).await?;
         tokio::io::copy(&mut file, &mut stdin).await?;
     }
-    
+
     child.wait().await?;
 
     Command::new("flatpak-spawn")
@@ -142,7 +148,13 @@ async fn deploy_agent_binary(dest: &PathBuf) -> Result<()> {
         .await?;
 
     Command::new("flatpak-spawn")
-        .args(["--host", "mv", "-f", &tmp.to_string_lossy(), &dest.to_string_lossy()])
+        .args([
+            "--host",
+            "mv",
+            "-f",
+            &tmp.to_string_lossy(),
+            &dest.to_string_lossy(),
+        ])
         .status()
         .await?;
 

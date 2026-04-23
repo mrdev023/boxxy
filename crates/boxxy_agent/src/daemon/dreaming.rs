@@ -155,11 +155,8 @@ async fn run_one_cycle(settings: &boxxy_preferences::Settings) -> anyhow::Result
     creds.api_keys = settings.get_effective_api_keys();
     creds.ollama_url = settings.ollama_base_url.clone();
 
-    let orchestrator = boxxy_claw::memories::DreamOrchestrator::new(
-        db_arc,
-        creds,
-        settings.memory_model.clone(),
-    );
+    let orchestrator =
+        boxxy_claw::memories::DreamOrchestrator::new(db_arc, creds, settings.memory_model.clone());
     orchestrator.run_cycle().await
 }
 

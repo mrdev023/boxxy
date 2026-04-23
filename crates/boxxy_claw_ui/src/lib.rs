@@ -64,56 +64,54 @@ impl BlockRenderer for ProcessListRenderer {
         list_box.add_css_class("boxed-list");
         list_box.set_selection_mode(gtk::SelectionMode::None);
 
-        let append_row =
-            |list_box: &gtk::ListBox,
-             pid: u32,
-             name: &str,
-             cpu: f64,
-             mem: u64,
-             read: u64,
-             write: u64| {
-                let row = gtk::ListBoxRow::new();
-                let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-                item_box.set_margin_top(4);
-                item_box.set_margin_bottom(4);
-                item_box.set_margin_start(4);
-                item_box.set_margin_end(4);
+        let append_row = |list_box: &gtk::ListBox,
+                          pid: u32,
+                          name: &str,
+                          cpu: f64,
+                          mem: u64,
+                          read: u64,
+                          write: u64| {
+            let row = gtk::ListBoxRow::new();
+            let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            item_box.set_margin_top(4);
+            item_box.set_margin_bottom(4);
+            item_box.set_margin_start(4);
+            item_box.set_margin_end(4);
 
-                let pid_lbl = gtk::Label::new(Some(&format!("{pid}")));
-                pid_lbl.set_width_chars(6);
-                item_box.append(&pid_lbl);
+            let pid_lbl = gtk::Label::new(Some(&format!("{pid}")));
+            pid_lbl.set_width_chars(6);
+            item_box.append(&pid_lbl);
 
-                let name_lbl = gtk::Label::new(Some(name));
-                name_lbl.set_hexpand(true);
-                name_lbl.set_halign(gtk::Align::Start);
-                name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
-                item_box.append(&name_lbl);
+            let name_lbl = gtk::Label::new(Some(name));
+            name_lbl.set_hexpand(true);
+            name_lbl.set_halign(gtk::Align::Start);
+            name_lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            item_box.append(&name_lbl);
 
-                // Only show disk I/O when there's actual activity; quiet
-                // processes get a cleaner row.
-                if read > 0 || write > 0 {
-                    let io_str =
-                        format!("R:{}MB W:{}MB", read / 1_048_576, write / 1_048_576);
-                    let io_lbl = gtk::Label::new(Some(&io_str));
-                    io_lbl.add_css_class("caption");
-                    io_lbl.add_css_class("dim-label");
-                    io_lbl.set_margin_end(6);
-                    item_box.append(&io_lbl);
-                }
+            // Only show disk I/O when there's actual activity; quiet
+            // processes get a cleaner row.
+            if read > 0 || write > 0 {
+                let io_str = format!("R:{}MB W:{}MB", read / 1_048_576, write / 1_048_576);
+                let io_lbl = gtk::Label::new(Some(&io_str));
+                io_lbl.add_css_class("caption");
+                io_lbl.add_css_class("dim-label");
+                io_lbl.set_margin_end(6);
+                item_box.append(&io_lbl);
+            }
 
-                let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
-                cpu_lbl.add_css_class("caption");
-                cpu_lbl.add_css_class("dim-label");
-                item_box.append(&cpu_lbl);
+            let cpu_lbl = gtk::Label::new(Some(&format!("{cpu:.1}%")));
+            cpu_lbl.add_css_class("caption");
+            cpu_lbl.add_css_class("dim-label");
+            item_box.append(&cpu_lbl);
 
-                let mem_lbl = gtk::Label::new(Some(&format!("{}MB", mem / (1024 * 1024))));
-                mem_lbl.add_css_class("caption");
-                mem_lbl.add_css_class("dim-label");
-                item_box.append(&mem_lbl);
+            let mem_lbl = gtk::Label::new(Some(&format!("{}MB", mem / (1024 * 1024))));
+            mem_lbl.add_css_class("caption");
+            mem_lbl.add_css_class("dim-label");
+            item_box.append(&mem_lbl);
 
-                row.set_child(Some(&item_box));
-                list_box.append(&row);
-            };
+            row.set_child(Some(&item_box));
+            list_box.append(&row);
+        };
 
         if let Ok(output) = serde_json::from_str::<ProcessListOutput>(raw_payload) {
             for info in output.processes {
@@ -176,6 +174,10 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
         let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
         vbox.add_css_class("claw-virtual-row");
+        // `claw-row` is always present so consumers (drawer, sidebar)
+        // can target "any claw row" generically. The per-variant
+        // `claw-row-<kind>` class is rewritten in `connect_bind`.
+        vbox.add_css_class("claw-row");
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let icon = gtk::Image::new();
@@ -236,6 +238,19 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
         icon.remove_css_class("warning");
         icon.remove_css_class("error");
         vbox.remove_css_class("system-message");
+        // Strip every per-variant class — rows are recycled across
+        // variants, so the new bind picks exactly one below.
+        for cls in [
+            "claw-row-system",
+            "claw-row-diagnosis",
+            "claw-row-user",
+            "claw-row-suggested",
+            "claw-row-process-list",
+            "claw-row-tool-call",
+            "claw-row-command",
+        ] {
+            vbox.remove_css_class(cls);
+        }
 
         let agent_or_unknown = |name: Option<String>| -> String {
             name.unwrap_or_else(|| "Unknown Agent".to_string())
@@ -248,6 +263,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 title.set_label("Models");
                 title.add_css_class("accent");
                 vbox.add_css_class("system-message");
+                vbox.add_css_class("claw-row-system");
 
                 viewer.set_content(&content);
                 viewer.widget().set_visible(true);
@@ -262,6 +278,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 icon.add_css_class("accent");
                 title.set_label("Diagnosis");
                 pane_lbl.set_label(&agent_or_unknown(agent_name));
+                vbox.add_css_class("claw-row-diagnosis");
 
                 viewer.set_content(&content);
                 viewer.widget().set_visible(true);
@@ -271,6 +288,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 icon.set_icon_name(Some("boxxy-comic-bubble-symbolic"));
                 title.set_label("User Message");
                 pane_lbl.set_label("User");
+                vbox.add_css_class("claw-row-user");
 
                 viewer.set_content(&content);
                 viewer.widget().set_visible(true);
@@ -286,6 +304,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 icon.add_css_class("warning");
                 title.set_label("Suggested Action");
                 pane_lbl.set_label(&agent_or_unknown(agent_name));
+                vbox.add_css_class("claw-row-suggested");
 
                 if diagnosis.is_empty() {
                     viewer.widget().set_visible(false);
@@ -306,6 +325,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 icon.add_css_class("accent");
                 title.set_label("Process List");
                 pane_lbl.set_label(&agent_or_unknown(agent_name));
+                vbox.add_css_class("claw-row-process-list");
 
                 viewer.clear();
                 viewer.append_custom_block("list_processes", &result_json);
@@ -321,6 +341,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 icon.add_css_class("accent");
                 title.set_label(&format!("Used tool: {tool_name}"));
                 pane_lbl.set_label(&agent_or_unknown(agent_name));
+                vbox.add_css_class("claw-row-tool-call");
 
                 // Tool results can be huge (whole file contents); show a
                 // compact single-row label instead.
@@ -337,6 +358,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                     icon.add_css_class("error");
                 }
                 pane_lbl.set_label("User");
+                vbox.add_css_class("claw-row-command");
 
                 viewer.set_content(&command);
                 viewer.widget().set_visible(true);

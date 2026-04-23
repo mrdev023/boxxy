@@ -201,7 +201,8 @@ impl AgentInterface {
 
         log::info!(
             "Creating Claw session for pane {} as '{}'",
-            pane_id, agent_name
+            pane_id,
+            agent_name
         );
 
         let (session, tx, rx_ui) = boxxy_claw::engine::ClawSession::new(pane_id.clone());
@@ -264,8 +265,7 @@ impl AgentInterface {
                 maybe_send_desktop_notification(&conn_clone, &agent_name, &event).await;
 
                 if let Ok(event_json) = serde_json::to_string(&event) {
-                    let _ =
-                        Self::claw_event(&emitter, session_id_clone.clone(), event_json).await;
+                    let _ = Self::claw_event(&emitter, session_id_clone.clone(), event_json).await;
                 }
             }
         });
@@ -295,17 +295,15 @@ impl AgentInterface {
     async fn end_claw_session(&self, session_id: String) {
         let pane_id = {
             let mut manager = self.session_manager.lock().await;
-            manager
-                .sessions
-                .remove(&session_id)
-                .map(|s| s.pane_id)
+            manager.sessions.remove(&session_id).map(|s| s.pane_id)
         };
         if let Some(pane_id) = pane_id {
             // Forget the agent's identity too — this pane is being disposed.
             self.core.registry.remove(&pane_id).await;
             log::info!(
                 "Ended Claw session {} (pane {} removed from registry)",
-                session_id, pane_id
+                session_id,
+                pane_id
             );
         }
     }
@@ -334,7 +332,10 @@ async fn maybe_send_desktop_notification(
         ClawEngineEvent::PushGlobalNotification { title, message } => {
             notifier::send(conn, title, message).await;
         }
-        ClawEngineEvent::TaskCompleted { agent_name: task_agent, .. } => {
+        ClawEngineEvent::TaskCompleted {
+            agent_name: task_agent,
+            ..
+        } => {
             let title = format!("{} finished a task", task_agent);
             notifier::send(
                 conn,

@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use rig::completion::Usage;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ContextQuality {
@@ -147,7 +147,9 @@ pub enum ClawMessage {
         task_id: Uuid,
         state: AgentStatus,
     },
-    WakeSummaryComplete { result: Result<String, String> },
+    WakeSummaryComplete {
+        result: Result<String, String>,
+    },
     CommandFinished {
         exit_code: i32,
         snapshot: String,
@@ -165,11 +167,21 @@ pub enum ClawMessage {
         cwd: String,
         image_attachments: Vec<String>,
     },
-    FileWriteReply { approved: bool },
-    FileDeleteReply { approved: bool },
-    KillProcessReply { approved: bool },
-    GetClipboardReply { approved: bool },
-    SetClipboardReply { approved: bool },
+    FileWriteReply {
+        approved: bool,
+    },
+    FileDeleteReply {
+        approved: bool,
+    },
+    KillProcessReply {
+        approved: bool,
+    },
+    GetClipboardReply {
+        approved: bool,
+    },
+    SetClipboardReply {
+        approved: bool,
+    },
     RequestLazyDiagnosis,
     CancelPending,
     SoftClearHistory,
@@ -189,13 +201,24 @@ pub enum ClawMessage {
         request_id: Uuid,
         content: String,
     },
-    ForegroundProcessChanged { process_name: String },
-    ResumeSession { session_id: String },
+    ForegroundProcessChanged {
+        process_name: String,
+    },
+    ResumeSession {
+        session_id: String,
+    },
     TogglePin(bool),
     ToggleWebSearch(bool),
-    CancelTask { task_id: Uuid },
-    SubscriptionEvent { event: ClawEvent },
-    TaskCompletedEvent { task_id: Uuid, result: String },
+    CancelTask {
+        task_id: Uuid,
+    },
+    SubscriptionEvent {
+        event: ClawEvent,
+    },
+    TaskCompletedEvent {
+        task_id: Uuid,
+        result: String,
+    },
     Abort,
     TurnFinished,
     SettingsInvalidated,
@@ -329,7 +352,12 @@ pub enum ClawEngineEvent {
 #[async_trait::async_trait]
 pub trait ClawEnvironment: Send + Sync + 'static {
     async fn exec_shell(&self, command: String) -> anyhow::Result<(i32, String, String)>;
-    async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> anyhow::Result<String>;
+    async fn read_file(
+        &self,
+        path: String,
+        start_line: u32,
+        end_line: u32,
+    ) -> anyhow::Result<String>;
     async fn write_file(&self, path: String, content: String) -> anyhow::Result<()>;
     async fn list_directory(&self, path: String) -> anyhow::Result<Vec<(String, bool, u64)>>;
     async fn delete_file(&self, path: String) -> anyhow::Result<()>;

@@ -1,0 +1,28 @@
+[package]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+license.workspace = true
+name = "boxxy-claw-widget"
+
+[dependencies]
+gtk4.workspace = true
+async-channel.workspace = true
+glib.workspace = true
+log.workspace = true
+tokio.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+base64.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+lazy_static.workspace = true
+boxxy-ai-core = { path = "../ai_core" }
+boxxy-claw = { path = "../boxxy_claw" }
+boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
+boxxy-claw-ui = { path = "../boxxy_claw_ui" }
+boxxy-core-widgets.workspace = true
+boxxy-db = { path = "../db" }
+boxxy-preferences = { path = "../preferences" }
+boxxy-viewer = { path = "../viewer" }

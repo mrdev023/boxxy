@@ -1,4 +1,3 @@
-use crate::engine::{ClawEngineEvent, ClawEnvironment};
 use crate::engine::session::SessionState;
 use crate::engine::tools::set_state::SetAgentStateTool;
 use crate::engine::tools::skills::ActivateSkillTool;
@@ -10,13 +9,13 @@ use crate::engine::tools::workspace::{
     ListActiveAgentsTool, ReadPaneTool, SendKeystrokesTool, SetGlobalIntentTool, SpawnAgentTool,
 };
 use crate::engine::tools::{ClawApprovalHandler, SysShellTool};
+use crate::engine::{ClawEngineEvent, ClawEnvironment};
 use crate::utils::load_prompt_fallback;
 use boxxy_core_toolbox::{
     FileDeleteTool, FileReadTool, FileWriteTool, GetClipboardTool, GetSystemInfoTool,
     HttpFetchTool, KillProcessTool, ListDirectoryTool, ListProcessesTool, SetClipboardTool,
 };
 use boxxy_model_selection::ModelProvider;
-use std::sync::Arc;
 use rig::agent::Agent;
 use rig::client::CompletionClient;
 use rig::message::Message;
@@ -24,6 +23,7 @@ use rig::providers::gemini;
 use rig::providers::ollama;
 use rig::providers::openai::responses_api::ResponsesCompletionModel;
 use serde_json::json;
+use std::sync::Arc;
 
 use crate::engine::agent_config::AgentConfig;
 use boxxy_ai_core::{AiCredentials, ModelContextHook};
@@ -221,9 +221,8 @@ pub async fn create_claw_agent(
     // `update_credentials` yet — e.g. keys are stored in settings.json,
     // not env vars) fall back to the on-disk settings. This also merges
     // in provider env vars via `get_effective_api_keys`.
-    let is_usable = |keys: &std::collections::HashMap<String, String>| {
-        keys.values().any(|v| !v.is_empty())
-    };
+    let is_usable =
+        |keys: &std::collections::HashMap<String, String>| keys.values().any(|v| !v.is_empty());
     if !is_usable(&api_keys) {
         let settings = boxxy_preferences::Settings::load();
         api_keys = settings.get_effective_api_keys();

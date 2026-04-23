@@ -305,9 +305,7 @@ impl PtyRegistry {
             .read()
             .await
             .values()
-            .filter(|s| {
-                s.is_detached() && now.duration_since(s.last_activity) > DETACHED_TTL
-            })
+            .filter(|s| s.is_detached() && now.duration_since(s.last_activity) > DETACHED_TTL)
             .map(|s| s.pid)
             .collect();
 
@@ -535,9 +533,7 @@ mod tests {
         //    `marker` below is what we expect to see, not `payload`.
         let payload = b"captured-while-detached\n";
         let marker: &[u8] = b"captured-while-detached";
-        let written = unsafe {
-            libc::write(slave_fd, payload.as_ptr() as *const _, payload.len())
-        };
+        let written = unsafe { libc::write(slave_fd, payload.as_ptr() as *const _, payload.len()) };
         assert_eq!(written, payload.len() as isize);
 
         // Tokio needs a real wait here; the reader is a separate task.

@@ -1,8 +1,7 @@
 use crate::engine::{
-    ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
+    ClawEngineEvent, ClawEnvironment, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
     context::load_session_context, context::retrieve_memories,
     dispatcher::extract_command_and_clean, persist_visual_event, turn::spawn_turn,
-    ClawEnvironment,
 };
 use crate::utils::load_prompt_fallback;
 use boxxy_db::Db;
@@ -23,13 +22,24 @@ pub struct SessionState {
     pub api_keys: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
     pub ollama_url: Arc<tokio::sync::RwLock<String>>,
     pub pending_terminal_reply: Option<tokio::sync::oneshot::Sender<Result<String, String>>>,
+    /// Set when the agent emits a legacy `InjectCommand` event (from a
+    /// parsed text-response command, not the `ProposeTerminalCommand`
+    /// tool). Used at `CommandFinished` time to distinguish agent-
+    /// originated commands from user-typed ones — the former should
+    /// auto-diagnose on failure, the latter should only surface the
+    /// passive "Lazy Error Indicator" pill.
+    /// Cleared on consumption (next `CommandFinished`) or explicit
+    /// reject (`CancelPending`).
+    pub pending_inject_command: bool,
     pub pending_file_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_file_delete_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_kill_process_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_get_clipboard_reply: Option<tokio::sync::oneshot::Sender<bool>>,
     pub pending_set_clipboard_reply: Option<tokio::sync::oneshot::Sender<bool>>,
-    pub pending_scrollbacks: std::collections::HashMap<uuid::Uuid, tokio::sync::oneshot::Sender<String>>,
-    pub pending_delegations: std::collections::HashMap<uuid::Uuid, tokio::sync::oneshot::Sender<String>>,
+    pub pending_scrollbacks:
+        std::collections::HashMap<uuid::Uuid, tokio::sync::oneshot::Sender<String>>,
+    pub pending_delegations:
+        std::collections::HashMap<uuid::Uuid, tokio::sync::oneshot::Sender<String>>,
     pub history: Vec<Message>,
     pub pending_lazy_diagnosis: Option<(String, String, String)>,
     pub persistent_agent: Option<crate::engine::agent::ClawAgent>,
@@ -100,6 +110,7 @@ impl ClawSession {
                 api_keys: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
                 ollama_url: Arc::new(tokio::sync::RwLock::new(String::new())),
                 pending_terminal_reply: None,
+                pending_inject_command: false,
                 pending_file_reply: None,
                 pending_file_delete_reply: None,
                 pending_kill_process_reply: None,
@@ -961,12 +972,59 @@ impl ClawSession {
                                     continue;
                                 }
 
+                                // Cheap exit-code filter: some tools use
+                                // non-zero to signal a normal outcome
+                                // (grep with no match, diff with
+                                // differences). Diagnosing these would
+                                // flood the lazy pill. Keep this list
+                                // minimal — we can grow it if it proves
+                                // noisy.
+                                if exit_code == 1 {
+                                    let cmd = snapshot.lines().next().unwrap_or("");
+                                    let first_word =
+                                        cmd.split_whitespace().next().unwrap_or("");
+                                    if matches!(first_word, "grep" | "diff" | "test" | "[") {
+                                        continue;
+                                    }
+                                }
+
                                 let prompt = format!(
                                     "The user's command failed with exit code {exit_code}. Please analyze the terminal snapshot and suggest a fix."
                                 );
 
+                                // Sleep mode gate — short-circuit before
+                                // we decide anything else. An agent in
+                                // Sleep shouldn't pop UI or burn tokens.
                                 if state_lock.status != crate::engine::AgentStatus::Waiting {
                                     drop(state_lock);
+                                    continue;
+                                }
+
+                                // Origin split: if this is a user-typed
+                                // command, surface the passive Lazy
+                                // Error pill and stash the prompt. Zero
+                                // tokens until the user clicks and
+                                // `RequestLazyDiagnosis` arrives. If
+                                // it's an agent-proposed command
+                                // (legacy `InjectCommand` path — the
+                                // `ProposeTerminalCommand` tool path
+                                // already unblocked above), keep the
+                                // current proactive-diagnose behavior so
+                                // the accept→error→auto-fix loop works.
+                                let agent_originated = state_lock.pending_inject_command;
+                                state_lock.pending_inject_command = false;
+
+                                if !agent_originated {
+                                    state_lock.pending_lazy_diagnosis =
+                                        Some((prompt.clone(), snapshot.clone(), cwd.clone()));
+                                    drop(state_lock);
+                                    let _ = self
+                                        .tx_ui
+                                        .send(ClawEngineEvent::LazyErrorIndicator {
+                                            visible: true,
+                                            agent_name: self.name.clone(),
+                                        })
+                                        .await;
                                     continue;
                                 }
 
@@ -1275,6 +1333,12 @@ impl ClawSession {
                             if let Some(reply) = state_lock.pending_terminal_reply.take() {
                                 let _ = reply.send(Err("[USER_EXPLICIT_REJECT]".to_string()));
                             }
+                            // Rejected InjectCommand → agent no longer
+                            // owns the outcome. Without this, a later
+                            // user-typed command failing would be
+                            // misclassified as agent-originated and
+                            // pop the drawer.
+                            state_lock.pending_inject_command = false;
                             if let Some(reply) = state_lock.pending_file_reply.take() {
                                 let _ = reply.send(false);
                             }

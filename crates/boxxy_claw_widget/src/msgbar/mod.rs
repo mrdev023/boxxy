@@ -13,6 +13,7 @@ pub use attachment::{Attachment, AttachmentManager};
 pub struct MsgBarComponent {
     pub widget: gtk::Box,
     pub entry: gtk::Entry,
+    pub send_btn: gtk::Button,
     pub is_active: Rc<Cell<bool>>,
     pub attachment_mgr: AttachmentManager,
     pub history: Rc<RefCell<history::MsgHistory>>,
@@ -25,6 +26,9 @@ pub struct MsgBarComponent {
     pub sleep_state: Rc<Cell<bool>>,
     pub pin_state: Rc<Cell<bool>>,
     pub web_search_state: Rc<Cell<bool>>,
+    /// When true, the msgbar does not hide itself on Enter/Escape — its
+    /// enclosing container (e.g. the claw overlay drawer) owns visibility.
+    embedded: Rc<Cell<bool>>,
     _autocomplete: Rc<boxxy_core_widgets::autocomplete::AutocompleteController>,
 }
 
@@ -61,7 +65,9 @@ impl MsgBarComponent {
             )
             .build();
 
-        entry.add_css_class("monospace");
+        // Default app font, not terminal monospace. The msgbar is
+        // chat-chrome inside the drawer; monospace made it feel like a
+        // shell prompt.
 
         let claw_image = gtk::Image::from_icon_name("boxxy-boxxyclaw-symbolic");
 
@@ -157,6 +163,24 @@ impl MsgBarComponent {
 
         widget.append(&entry);
 
+        // Send button — mirrors Enter in the entry. Intentionally NOT
+        // appended to `widget`: callers (the claw overlay drawer) place
+        // it *outside* the msgbar box so the bar itself can be a rounded
+        // field and the send icon floats next to it, matching chat UIs.
+        let send_btn = gtk::Button::builder()
+            .icon_name("boxxy-paper-plane-symbolic")
+            .css_classes(["flat", "image-button", "msgbar-send"])
+            .tooltip_text("Send")
+            .valign(gtk::Align::Center)
+            .can_focus(false)
+            .build();
+        let send_entry = entry.clone();
+        send_btn.connect_clicked(move |_| {
+            // Reuse the existing Enter submit path so attachments, history
+            // push, and the embedded-mode visibility rules all apply.
+            send_entry.emit_activate();
+        });
+
         let is_active = Rc::new(Cell::new(false));
 
         let history = Rc::new(RefCell::new(history::MsgHistory::new()));
@@ -180,8 +204,11 @@ impl MsgBarComponent {
             })),
         );
 
+        let embedded = Rc::new(Cell::new(false));
+
         let c_active = is_active.clone();
         let c_widget = widget.clone();
+        let c_embedded_enter = embedded.clone();
         let c_attachment_mgr = attachment_mgr.clone();
         let c_history = history.clone();
 
@@ -205,8 +232,12 @@ impl MsgBarComponent {
 
             c_attachment_mgr.clear();
 
-            c_active.set(false);
-            c_widget.set_visible(false);
+            // When embedded in a drawer, visibility is owned by the
+            // container; self-hiding would leave an empty strip in the UI.
+            if !c_embedded_enter.get() {
+                c_active.set(false);
+                c_widget.set_visible(false);
+            }
         });
 
         // To truly intercept Ctrl+V, it's easier to use the key controller
@@ -214,6 +245,7 @@ impl MsgBarComponent {
         key_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
         let k_active = is_active.clone();
         let k_widget = widget.clone();
+        let k_embedded = embedded.clone();
         let k_entry = entry.clone();
         let k_cancel = on_cancel_rc;
         let k_attachment_mgr = attachment_mgr.clone();
@@ -264,8 +296,13 @@ impl MsgBarComponent {
             }
 
             if key == gtk::gdk::Key::Escape {
-                k_active.set(false);
-                k_widget.set_visible(false);
+                // In embedded mode the container owns visibility; only
+                // cancel the in-progress input, the drawer stays open so
+                // the user can still read/reply.
+                if !k_embedded.get() {
+                    k_active.set(false);
+                    k_widget.set_visible(false);
+                }
                 k_entry.set_text("");
                 k_history.borrow_mut().reset();
                 k_attachment_mgr.clear();
@@ -280,6 +317,7 @@ impl MsgBarComponent {
         Self {
             widget,
             entry,
+            send_btn,
             is_active,
             attachment_mgr,
             history,
@@ -292,7 +330,21 @@ impl MsgBarComponent {
             sleep_state,
             pin_state,
             web_search_state,
+            embedded,
             _autocomplete: autocomplete_ctrl,
+        }
+    }
+
+    /// Mark the msgbar as embedded inside another container (the claw
+    /// overlay drawer). Embedded mode suppresses self-hide on Enter and
+    /// Escape — the container owns visibility so the agent stays reachable
+    /// after each reply.
+    pub fn set_embedded(&self, embedded: bool) {
+        self.embedded.set(embedded);
+        if embedded {
+            // The drawer manages visibility directly.
+            self.widget.set_visible(true);
+            self.is_active.set(true);
         }
     }
 
@@ -383,11 +435,9 @@ impl MsgBarComponent {
         self.web_search_toggle.set_visible(visible);
     }
 
-    pub fn apply_font(&self, font_desc: &gtk::pango::FontDescription) {
-        // GTK4 requires us to set the font on the widget via CSS or attributes
-        // The most reliable way for an Entry is via a custom Pango attr list
-        let attrs = gtk::pango::AttrList::new();
-        attrs.insert(gtk::pango::AttrFontDesc::new(font_desc));
-        self.entry.set_attributes(&attrs);
-    }
+    /// Deliberate no-op since the merge-into-drawer refactor. The
+    /// msgbar used to track the terminal font for visual continuity
+    /// with the shell; now it's chat chrome and inherits the default
+    /// app font. Kept to preserve the public API.
+    pub fn apply_font(&self, _font_desc: &gtk::pango::FontDescription) {}
 }

@@ -64,6 +64,11 @@ impl ClawRowObject {
     }
 
     pub fn get_row(&self) -> PersistentClawRow {
-        self.imp().row.borrow().as_ref().expect("Row should be set").clone()
+        self.imp()
+            .row
+            .borrow()
+            .as_ref()
+            .expect("Row should be set")
+            .clone()
     }
 }

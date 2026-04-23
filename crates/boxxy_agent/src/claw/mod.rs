@@ -1,10 +1,10 @@
 use crate::core::state::AgentState;
+use boxxy_claw_protocol::ClawEnvironment;
 use std::process::Stdio;
+use std::sync::Arc;
 use tokio::process::Command;
 use zbus::fdo;
 use zbus::interface;
-use std::sync::Arc;
-use boxxy_claw_protocol::ClawEnvironment;
 
 pub mod notifier;
 pub mod registry;
@@ -40,7 +40,12 @@ impl ClawEnvironment for ClawSubsystem {
         Ok((exit_code, stdout, stderr))
     }
 
-    async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> anyhow::Result<String> {
+    async fn read_file(
+        &self,
+        path: String,
+        start_line: u32,
+        end_line: u32,
+    ) -> anyhow::Result<String> {
         let blacklisted = load_blacklist();
 
         for black_path in blacklisted {
@@ -228,43 +233,63 @@ impl ClawEnvironment for ClawSubsystem {
 #[interface(name = "dev.boxxy.BoxxyTerminal.Agent.Claw")]
 impl ClawSubsystem {
     async fn exec_shell(&self, command: String) -> fdo::Result<(i32, String, String)> {
-        ClawEnvironment::exec_shell(self, command).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::exec_shell(self, command)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> fdo::Result<String> {
-        ClawEnvironment::read_file(self, path, start_line, end_line).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::read_file(self, path, start_line, end_line)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn write_file(&self, path: String, content: String) -> fdo::Result<()> {
-        ClawEnvironment::write_file(self, path, content).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::write_file(self, path, content)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn list_directory(&self, path: String) -> fdo::Result<Vec<(String, bool, u64)>> {
-        ClawEnvironment::list_directory(self, path).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::list_directory(self, path)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn delete_file(&self, path: String) -> fdo::Result<()> {
-        ClawEnvironment::delete_file(self, path).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::delete_file(self, path)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn get_system_info(&self) -> fdo::Result<String> {
-        ClawEnvironment::get_system_info(self).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::get_system_info(self)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn list_processes(&self) -> fdo::Result<Vec<(u32, String, f64, u64, u64, u64)>> {
-        ClawEnvironment::list_processes(self).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::list_processes(self)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn kill_process(&self, pid: u32, signal: i32) -> fdo::Result<()> {
-        ClawEnvironment::kill_process(self, pid, signal).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::kill_process(self, pid, signal)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn get_clipboard(&self) -> fdo::Result<String> {
-        ClawEnvironment::get_clipboard(self).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::get_clipboard(self)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 
     async fn set_clipboard(&self, text: String) -> fdo::Result<()> {
-        ClawEnvironment::set_clipboard(self, text).await.map_err(|e| fdo::Error::Failed(e.to_string()))
+        ClawEnvironment::set_clipboard(self, text)
+            .await
+            .map_err(|e| fdo::Error::Failed(e.to_string()))
     }
 }
 

@@ -14,8 +14,7 @@ pub fn setup_advanced_page(
 ) -> Box<dyn Fn(&str) -> bool> {
     let login_shell_switch: adw::SwitchRow = builder.object("login_shell_switch").unwrap();
     let show_vte_grid_switch: adw::SwitchRow = builder.object("show_vte_grid_switch").unwrap();
-    let pty_persistence_switch: adw::SwitchRow =
-        builder.object("pty_persistence_switch").unwrap();
+    let pty_persistence_switch: adw::SwitchRow = builder.object("pty_persistence_switch").unwrap();
     let custom_regex_entry: adw::EntryRow = builder.object("custom_regex_entry").unwrap();
     let reset_regex_btn: gtk::Button = builder.object("reset_regex_btn").unwrap();
     let open_config_btn: gtk::Button = builder.object("open_config_btn").unwrap();

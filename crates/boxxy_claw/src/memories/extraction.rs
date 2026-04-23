@@ -62,7 +62,9 @@ pub async fn extract_implicit_memory(
                         .await;
                     log::debug!(
                         "Background Observer extracted Fact for project {}: {} -> {}",
-                        project_path, key, content
+                        project_path,
+                        key,
+                        content
                     );
                 }
             }

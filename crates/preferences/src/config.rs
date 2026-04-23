@@ -79,25 +79,6 @@ impl fmt::Display for ColorScheme {
 pub const DEFAULT_FILE_REGEX: &str =
     r#"(?:https?://[^\s"'<>]+|/[\w.@:/-]+|~[\w.@:/-]+|\.{1,2}/[\w.@:/-]+)"#;
 
-#[derive(Debug, Clone, Copy)]
-pub struct DimensionBounds {
-    pub min: i32,
-    pub max: i32,
-    pub default: i32,
-}
-
-pub const CLAW_WIDTH_BOUNDS: DimensionBounds = DimensionBounds {
-    min: 400,
-    max: 1600,
-    default: 600,
-};
-
-pub const CLAW_HEIGHT_BOUNDS: DimensionBounds = DimensionBounds {
-    min: 400,
-    max: 1600,
-    default: 900,
-};
-
 // --- User Configurable Settings ---
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(default)]
@@ -152,8 +133,11 @@ pub struct Settings {
     pub enable_os_context: bool,
     pub enable_progress_bar: bool,
     pub colored_tabs: bool,
-    pub claw_popover_width: i32,
-    pub claw_popover_max_height: i32,
+    /// When true, the in-terminal Claw overlay keeps a scrollable history
+    /// of messages (mirroring the sidebar logger). When false, each new
+    /// message replaces the previous one in the overlay. Off by default
+    /// because the overlay normally shows only the latest turn.
+    pub maintain_overlay_history: bool,
     pub claw_msgbar_shortcut: String,
     pub enable_telemetry: bool,
     pub install_id: Option<String>,
@@ -207,8 +191,7 @@ impl Default for Settings {
             enable_os_context: true,
             enable_progress_bar: true,
             colored_tabs: false,
-            claw_popover_width: CLAW_WIDTH_BOUNDS.default,
-            claw_popover_max_height: CLAW_HEIGHT_BOUNDS.default,
+            maintain_overlay_history: false,
             claw_msgbar_shortcut: "<Ctrl>slash".to_string(),
             enable_telemetry: true, // ON by default during Preview
             install_id: None,

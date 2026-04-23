@@ -1,5 +1,5 @@
-use crate::engine::session::{ClawSession, SessionState};
 use crate::engine::ClawEnvironment;
+use crate::engine::session::{ClawSession, SessionState};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -98,10 +98,7 @@ impl Tool for SummonHeadlessWorkerTool {
             tokio::spawn(async move {
                 if let Ok(result) = reply_rx.await {
                     let _ = tx_self
-                        .send(crate::engine::ClawMessage::TaskCompletedEvent {
-                            task_id,
-                            result,
-                        })
+                        .send(crate::engine::ClawMessage::TaskCompletedEvent { task_id, result })
                         .await;
                 }
             });

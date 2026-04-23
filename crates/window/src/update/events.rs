@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::state::{AppInput, AppWindowInner};
-use boxxy_terminal::{TerminalEvent, TerminalEventKind};
 use boxxy_claw_protocol::*;
+use boxxy_terminal::{TerminalEvent, TerminalEventKind};
 
 pub fn handle_terminal_event(
     _inner_ref: &Rc<RefCell<AppWindowInner>>,
@@ -191,9 +191,7 @@ pub fn handle_terminal_event(
                         inner.claw.refresh_visibility();
                     }
                     ClawEngineEvent::RequestSpawnAgent {
-                        location,
-                        intent,
-                        ..
+                        location, intent, ..
                     } => match location {
                         SpawnLocation::NewTab => {
                             super::tabs::new_tab_with_intent(inner, intent);
@@ -205,9 +203,7 @@ pub fn handle_terminal_event(
                             inner.tabs[pos].controller.split_horizontal(intent);
                         }
                     },
-                    ClawEngineEvent::RequestCloseAgent {
-                        target_agent_name,
-                    } => {
+                    ClawEngineEvent::RequestCloseAgent { target_agent_name } => {
                         let inner_clone = _inner_ref.clone();
                         let target_name = target_agent_name.clone();
                         gtk4::glib::spawn_future_local(async move {
@@ -249,9 +245,7 @@ pub fn handle_terminal_event(
                         });
                     }
                     ClawEngineEvent::TaskStatusChanged { tasks, .. } => {
-                        let has_pending = tasks
-                            .iter()
-                            .any(|t| t.status == TaskStatus::Pending);
+                        let has_pending = tasks.iter().any(|t| t.status == TaskStatus::Pending);
                         let widget = inner.tabs[pos].controller.widget();
                         let page = inner.tab_view.page(widget);
 
@@ -279,10 +273,7 @@ pub fn handle_terminal_event(
                     ClawEngineEvent::TaskCompleted { .. } => {
                         crate::sound::play_task_completion_sound();
                     }
-                    ClawEngineEvent::PushGlobalNotification {
-                        title,
-                        message,
-                    } => {
+                    ClawEngineEvent::PushGlobalNotification { title, message } => {
                         let _ = inner.tx.send_blocking(AppInput::PushGlobalNotification(
                             crate::widgets::notification::Notification {
                                 id: uuid::Uuid::new_v4().to_string(),

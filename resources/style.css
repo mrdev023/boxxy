@@ -327,28 +327,27 @@ tabbox separator {
 }
 
 /* ── Boxxy-Claw Inline Widget ─────────────────────────────────────────── */
-.claw-widget {
-    border-radius: 24px;
+.claw-drawer {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    border: 1px solid alpha(currentColor, 0.1);
+    border-bottom: 1px solid alpha(currentColor, 0.1);
     background-clip: padding-box;
 }
 
-.claw-widget .suggested-action {
+.claw-drawer .suggested-action {
 }
 
-.claw-widget button:focus,
-.claw-widget entry:focus-within {
+.claw-drawer button:focus,
+.claw-drawer entry:focus-within {
     outline: 2px solid alpha(currentColor, 0.4);
     outline-offset: 0px;
 }
 
-.claw-widget .heading {
+.claw-drawer .heading {
     font-weight: bold;
     font-size: 1.1em;
 }
 
-.claw-widget frame.view {
+.claw-drawer frame.view {
     border-radius: 12px;
     background-color: alpha(black, 0.2);
     border: 1px solid alpha(currentColor, 0.05);
@@ -447,6 +446,62 @@ boxxyterminalwidget {
   border: none;
   border-radius: 0;
   outline: none;
+}
+
+/* Claw overlay drawer: the msgbar is the rounded input field itself; the
+   entry inside is transparent; the send button is a sibling widget placed
+   outside the bar with zero background. */
+.claw-drawer .boxxy-msgbar {
+  background: alpha(@view_fg_color, 0.06);
+  border: 1px solid alpha(@view_fg_color, 0.10);
+  border-radius: 10px;
+  padding: 2px 6px;
+  margin: 0;
+  box-shadow: none;
+}
+
+.claw-drawer .boxxy-msgbar entry,
+.claw-drawer .boxxy-msgbar entry:focus,
+.claw-drawer .boxxy-msgbar entry:focus-within {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 4px 4px;
+  box-shadow: none;
+  outline: none;
+}
+
+/* Toggle buttons on the left side of the bar: flat with no bg at rest. */
+.claw-drawer .boxxy-msgbar button.image-button,
+.claw-drawer .boxxy-msgbar button.flat {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  outline: none;
+  min-height: 0;
+  padding: 4px;
+}
+
+.claw-drawer .boxxy-msgbar button.image-button:hover,
+.claw-drawer .boxxy-msgbar button.flat:hover {
+  background: alpha(@view_fg_color, 0.08);
+}
+
+/* External send button — sibling of the msgbar, never has any chrome. */
+.claw-drawer button.msgbar-send,
+.claw-drawer button.msgbar-send:hover,
+.claw-drawer button.msgbar-send:active,
+.claw-drawer button.msgbar-send:focus {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  outline: none;
+  padding: 4px;
+  min-height: 0;
+}
+
+.claw-drawer button.msgbar-send:hover image {
+  opacity: 0.85;
 }
 
 /* Status Indicators for MsgBar Buttons */

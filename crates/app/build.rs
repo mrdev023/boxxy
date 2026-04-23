@@ -73,6 +73,7 @@ fn main() {
     <file compressed="true" alias="ui/preferences.ui">ui/preferences.ui</file>
     <file compressed="true" alias="ui/widgets/notification_pill.ui">ui/widgets/notification_pill.ui</file>
     <file compressed="true" alias="ui/widgets/notification_details.ui">ui/widgets/notification_details.ui</file>
+    <file compressed="true" alias="ui/claw_overlay.ui">ui/claw_overlay.ui</file>
     <file compressed="true" alias="sounds/task.wav">sounds/task.wav</file>
   </gresource>
 </gresources>
@@ -153,6 +154,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../resources/ui/preferences.ui");
     println!("cargo:rerun-if-changed=../../resources/ui/widgets/notification_pill.ui");
     println!("cargo:rerun-if-changed=../../resources/ui/widgets/notification_details.ui");
+    println!("cargo:rerun-if-changed=../../resources/ui/claw_overlay.ui");
     println!("cargo:rerun-if-changed=../../resources/sounds/task.wav");
 
     glib_build_tools::compile_resources(

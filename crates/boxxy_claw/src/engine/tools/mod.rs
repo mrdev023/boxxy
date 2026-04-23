@@ -6,8 +6,8 @@ pub mod tasks;
 pub mod terminal;
 pub mod workspace;
 
-use crate::engine::{ClawEngineEvent, ClawEnvironment};
 use crate::engine::session::SessionState;
+use crate::engine::{ClawEngineEvent, ClawEnvironment};
 use boxxy_core_toolbox::ApprovalHandler;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;

@@ -41,11 +41,7 @@ impl TerminalController {
         self.controller.set_claw_active(active);
     }
 
-    pub fn set_session_status_for_pane(
-        &self,
-        pane_id: &str,
-        status: AgentStatus,
-    ) -> bool {
+    pub fn set_session_status_for_pane(&self, pane_id: &str, status: AgentStatus) -> bool {
         self.controller.set_session_status_for_pane(pane_id, status)
     }
 

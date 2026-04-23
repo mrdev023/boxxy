@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
+use boxxy_agent::ipc::AgentProxy;
 use boxxy_agent::ipc::claw::AgentClawProxy;
 use boxxy_agent::ipc::pty::{AgentPtyProxy, SpawnOptions};
-use boxxy_agent::ipc::AgentProxy;
-use boxxy_claw_protocol::{ClawMessage, ClawEngineEvent, ClawEnvironment};
-use zbus::Connection;
-use zbus::zvariant::OwnedFd;
+use boxxy_claw_protocol::{ClawEngineEvent, ClawEnvironment, ClawMessage};
 use futures_util::StreamExt;
 use serde_json;
+use zbus::Connection;
+use zbus::zvariant::OwnedFd;
 
 #[derive(Clone)]
 pub struct AgentManager {
@@ -17,7 +17,9 @@ pub struct AgentManager {
 
 impl AgentManager {
     pub async fn new() -> Result<Self> {
-        let conn = Connection::session().await.context("Failed to connect to Session Bus")?;
+        let conn = Connection::session()
+            .await
+            .context("Failed to connect to Session Bus")?;
 
         let agent_proxy = AgentProxy::builder(&conn)
             .destination("dev.boxxy.BoxxyAgent")?
@@ -40,49 +42,72 @@ impl AgentManager {
         // Notify daemon that a client has connected
         let _ = agent_proxy.notify_client_connected().await;
 
-        Ok(Self { agent_proxy, proxy, claw_proxy })
+        Ok(Self {
+            agent_proxy,
+            proxy,
+            claw_proxy,
+        })
     }
 
     pub async fn disconnect(&self) {
         let _ = self.agent_proxy.notify_client_disconnected().await;
     }
 
-    pub async fn update_credentials(&self, api_keys: std::collections::HashMap<String, String>, ollama_url: String) -> Result<()> {
-        let _ : () = self.agent_proxy.update_credentials(api_keys, ollama_url).await
+    pub async fn update_credentials(
+        &self,
+        api_keys: std::collections::HashMap<String, String>,
+        ollama_url: String,
+    ) -> Result<()> {
+        let _: () = self
+            .agent_proxy
+            .update_credentials(api_keys, ollama_url)
+            .await
             .context("Failed to update agent credentials")?;
         Ok(())
     }
 
-    pub async fn create_claw_session(&self, pane_id: String) -> Result<(String, async_channel::Receiver<ClawEngineEvent>)> {
-        let session_id = self.agent_proxy.create_claw_session(pane_id).await
+    pub async fn create_claw_session(
+        &self,
+        pane_id: String,
+    ) -> Result<(String, async_channel::Receiver<ClawEngineEvent>)> {
+        let session_id = self
+            .agent_proxy
+            .create_claw_session(pane_id)
+            .await
             .context("Failed to create Claw session via Agent")?;
-            
+
         let (tx, rx) = async_channel::unbounded();
-        
+
         // Subscribe to events for this session
-        let mut stream = self.agent_proxy.receive_claw_event().await
+        let mut stream = self
+            .agent_proxy
+            .receive_claw_event()
+            .await
             .context("Failed to subscribe to Claw events")?;
-            
+
         let session_id_filter = session_id.clone();
         tokio::spawn(async move {
             while let Some(msg) = stream.next().await {
                 if let Ok(args) = msg.args() {
                     if args.session_id == session_id_filter {
-                        if let Ok(event) = serde_json::from_str::<ClawEngineEvent>(&args.event_json) {
+                        if let Ok(event) = serde_json::from_str::<ClawEngineEvent>(&args.event_json)
+                        {
                             let _ = tx.send(event).await;
                         }
                     }
                 }
             }
         });
-        
+
         Ok((session_id, rx))
     }
 
     pub async fn post_claw_message(&self, session_id: String, message: ClawMessage) -> Result<()> {
-        let message_json = serde_json::to_string(&message)
-            .context("Failed to serialize ClawMessage")?;
-        self.agent_proxy.post_claw_message(session_id, message_json).await
+        let message_json =
+            serde_json::to_string(&message).context("Failed to serialize ClawMessage")?;
+        self.agent_proxy
+            .post_claw_message(session_id, message_json)
+            .await
             .context("Failed to post Claw message via Agent")
     }
 
@@ -160,10 +185,7 @@ impl AgentManager {
     /// Returns the raw `DetachOutcome` code: 0=Terminated, 1=Detached,
     /// 2=StillViewed, 3=DetachedUnbuffered, u32::MAX=Unknown.
     pub async fn detach(&self, pid: u32) -> Result<u32> {
-        self.proxy
-            .detach(pid)
-            .await
-            .context("Agent detach failed")
+        self.proxy.detach(pid).await.context("Agent detach failed")
     }
 
     pub async fn list_detached_sessions(&self) -> Result<Vec<(u32, String, u64)>> {
@@ -196,42 +218,72 @@ impl DbusClawEnvironment {
 #[async_trait::async_trait]
 impl ClawEnvironment for DbusClawEnvironment {
     async fn exec_shell(&self, command: String) -> Result<(i32, String, String)> {
-        self.proxy.exec_shell(command).await.context("D-Bus exec_shell failed")
+        self.proxy
+            .exec_shell(command)
+            .await
+            .context("D-Bus exec_shell failed")
     }
 
     async fn read_file(&self, path: String, start_line: u32, end_line: u32) -> Result<String> {
-        self.proxy.read_file(path, start_line, end_line).await.context("D-Bus read_file failed")
+        self.proxy
+            .read_file(path, start_line, end_line)
+            .await
+            .context("D-Bus read_file failed")
     }
 
     async fn write_file(&self, path: String, content: String) -> Result<()> {
-        self.proxy.write_file(path, content).await.context("D-Bus write_file failed")
+        self.proxy
+            .write_file(path, content)
+            .await
+            .context("D-Bus write_file failed")
     }
 
     async fn list_directory(&self, path: String) -> Result<Vec<(String, bool, u64)>> {
-        self.proxy.list_directory(path).await.context("D-Bus list_directory failed")
+        self.proxy
+            .list_directory(path)
+            .await
+            .context("D-Bus list_directory failed")
     }
 
     async fn delete_file(&self, path: String) -> Result<()> {
-        self.proxy.delete_file(path).await.context("D-Bus delete_file failed")
+        self.proxy
+            .delete_file(path)
+            .await
+            .context("D-Bus delete_file failed")
     }
 
     async fn get_system_info(&self) -> Result<String> {
-        self.proxy.get_system_info().await.context("D-Bus get_system_info failed")
+        self.proxy
+            .get_system_info()
+            .await
+            .context("D-Bus get_system_info failed")
     }
 
     async fn list_processes(&self) -> Result<Vec<(u32, String, f64, u64, u64, u64)>> {
-        self.proxy.list_processes().await.context("D-Bus list_processes failed")
+        self.proxy
+            .list_processes()
+            .await
+            .context("D-Bus list_processes failed")
     }
 
     async fn kill_process(&self, pid: u32, signal: i32) -> Result<()> {
-        self.proxy.kill_process(pid, signal).await.context("D-Bus kill_process failed")
+        self.proxy
+            .kill_process(pid, signal)
+            .await
+            .context("D-Bus kill_process failed")
     }
 
     async fn get_clipboard(&self) -> Result<String> {
-        self.proxy.get_clipboard().await.context("D-Bus get_clipboard failed")
+        self.proxy
+            .get_clipboard()
+            .await
+            .context("D-Bus get_clipboard failed")
     }
 
     async fn set_clipboard(&self, text: String) -> Result<()> {
-        self.proxy.set_clipboard(text).await.context("D-Bus set_clipboard failed")
+        self.proxy
+            .set_clipboard(text)
+            .await
+            .context("D-Bus set_clipboard failed")
     }
 }

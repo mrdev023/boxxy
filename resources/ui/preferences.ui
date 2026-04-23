@@ -596,43 +596,12 @@
                         <property name="child">
                           <object class="AdwPreferencesPage" id="page_claw_ui">
                             <child>
-                              <object class="AdwPreferencesGroup" id="group_claw_ui_dimensions">
-                                <property name="title" translatable="yes">Dimensions</property>
+                              <object class="AdwPreferencesGroup" id="group_claw_ui_behavior">
+                                <property name="title" translatable="yes">Behavior</property>
                                 <child>
-                                  <object class="AdwSpinRow" id="claw_popover_width_spin">
-                                    <property name="title" translatable="yes">Popover Max Width</property>
-                                    <property name="subtitle" translatable="yes">Maximum width of the Claw popover (px)</property>
-                                    <property name="digits">0</property>
-                                    <property name="numeric">True</property>
-                                    <property name="climb-rate">10</property>
-                                    <property name="adjustment">
-                                      <object class="GtkAdjustment" id="claw_popover_width_adj">
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwSpinRow" id="claw_popover_max_height_spin">
-                                    <property name="title" translatable="yes">Popover Max Height</property>
-                                    <property name="subtitle" translatable="yes">Maximum height of the Claw popover (px)</property>
-                                    <property name="digits">0</property>
-                                    <property name="numeric">True</property>
-                                    <property name="climb-rate">10</property>
-                                    <property name="adjustment">
-                                      <object class="GtkAdjustment" id="claw_popover_max_height_adj">
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Reset Dimensions</property>
-                                    <child type="suffix">
-                                      <object class="GtkButton" id="reset_claw_dimensions_btn">
-                                        <property name="label" translatable="yes">Reset</property>
-                                        <property name="valign">center</property>
-                                      </object>
-                                    </child>
+                                  <object class="AdwSwitchRow" id="maintain_overlay_history_switch">
+                                    <property name="title" translatable="yes">Maintain Session History in Overlay</property>
+                                    <property name="subtitle" translatable="yes">Show a scrollable log of the conversation in the in-terminal overlay, like the sidebar logger. When off, the overlay shows only the latest message.</property>
                                   </object>
                                 </child>
                               </object>

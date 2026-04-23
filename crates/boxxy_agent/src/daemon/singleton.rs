@@ -50,9 +50,7 @@ pub async fn try_claim_or_handoff() -> Result<ClaimResult> {
                         info!("Ghost version matches ({running_ver}) — standing down");
                         Ok(ClaimResult::HandedOff)
                     } else {
-                        warn!(
-                            "Ghost version mismatch: running={running_ver} new={AGENT_VERSION}"
-                        );
+                        warn!("Ghost version mismatch: running={running_ver} new={AGENT_VERSION}");
                         // Ask the Ghost to reload itself from the newly-deployed binary.
                         let _ = proxy.request_reload().await;
                         Ok(ClaimResult::Upgraded)

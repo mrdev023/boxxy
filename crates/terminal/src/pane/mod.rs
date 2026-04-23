@@ -7,23 +7,26 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::search_bar::SearchBarComponent;
-use boxxy_msgbar::MsgBarComponent;
+use boxxy_claw_widget::MsgBarComponent;
 use boxxy_vte::terminal::TerminalWidget;
 
 use crate::is_flatpak;
 use crate::{PaneInit, PaneOutput};
 
-use crate::claw_indicator::ClawIndicator;
-use crate::overlay::{OverlayMode, TerminalOverlay};
 use boxxy_claw_protocol::*;
 use boxxy_claw_ui;
+use boxxy_claw_widget::ClawIndicator;
+use boxxy_claw_widget::{OverlayMode, TerminalOverlay};
 
 mod app_menu;
 mod claw;
+mod claw_host;
 mod events;
 mod gestures;
 mod preview;
 mod ui;
+
+pub(crate) use claw_host::PaneClawHost;
 
 pub type PendingDiagnosis = Rc<RefCell<Option<(String, crate::TerminalProposal)>>>;
 
@@ -119,7 +122,10 @@ impl Drop for PaneInner {
                 let _ = agent.set_persistence(pid, true).await;
                 match agent.detach(pid).await {
                     Ok(1) => log::info!("pid={} detached into background", pid),
-                    Ok(0) => log::info!("pid={} terminated (unexpectedly — persistence may be off on daemon)", pid),
+                    Ok(0) => log::info!(
+                        "pid={} terminated (unexpectedly — persistence may be off on daemon)",
+                        pid
+                    ),
                     Ok(3) => log::warn!(
                         "pid={} detached without buffer (daemon has no stored FD — shell will block when kernel PTY buffer fills)",
                         pid
@@ -189,7 +195,8 @@ impl TerminalPaneComponent {
             .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
         let (claw_sender, claw_rx_from_agent) = async_channel::unbounded();
-        let (tx_to_agent, rx_from_ui) = async_channel::unbounded::<boxxy_claw_protocol::ClawMessage>();
+        let (tx_to_agent, rx_from_ui) =
+            async_channel::unbounded::<boxxy_claw_protocol::ClawMessage>();
         let session_id_rc = Rc::new(RefCell::new(None));
         let session_id_for_init = session_id_rc.clone();
         let id_for_init = id.clone();
@@ -199,7 +206,7 @@ impl TerminalPaneComponent {
             let agent = crate::get_agent().await;
             if let Ok((session_id, rx_events)) = agent.create_claw_session(id_for_init).await {
                 session_id_for_init.replace(Some(session_id.clone()));
-                
+
                 // Forward events from agent to our internal rx
                 let tx = claw_sender_clone.clone();
                 tokio::spawn(async move {
@@ -215,7 +222,9 @@ impl TerminalPaneComponent {
                 let mut rx_from_ui = rx_from_ui;
                 tokio::spawn(async move {
                     while let Ok(msg) = rx_from_ui.recv().await {
-                        let _ = agent_clone.post_claw_message(session_id_clone.clone(), msg).await;
+                        let _ = agent_clone
+                            .post_claw_message(session_id_clone.clone(), msg)
+                            .await;
                     }
                 });
             }
@@ -230,7 +239,9 @@ impl TerminalPaneComponent {
         let is_pinned = Rc::new(Cell::new(false));
         let is_web_search = Rc::new(Cell::new(settings.web_search_on_by_default));
         let agent_name = Rc::new(RefCell::new(String::new()));
-        let claw_indicator = ClawIndicator::new(&widget);
+        let claw_indicator = ClawIndicator::new();
+        // The persistent badge lives in the main terminal overlay.
+        widget.add_overlay(claw_indicator.badge());
         let total_tokens = Rc::new(Cell::new(0));
 
         let (msg_bar, inner) = {
@@ -307,10 +318,7 @@ impl TerminalPaneComponent {
                             cb_msg(PaneOutput::ClawStateChanged(
                                 id_msg.clone(),
                                 true,
-                                matches!(
-                                    *session_status_for_msg.borrow(),
-                                    AgentStatus::Sleep
-                                ),
+                                matches!(*session_status_for_msg.borrow(), AgentStatus::Sleep),
                             ));
                             let tx = tx_msg.clone();
                             glib::spawn_future_local(async move {
@@ -327,9 +335,7 @@ impl TerminalPaneComponent {
                                     let session_id = query["/resume ".len()..].trim().to_string();
                                     if !session_id.is_empty() {
                                         let _ = tx
-                                            .send(ClawMessage::ResumeSession {
-                                                session_id,
-                                            })
+                                            .send(ClawMessage::ResumeSession { session_id })
                                             .await;
                                         return;
                                     }
@@ -387,10 +393,7 @@ impl TerminalPaneComponent {
                         cb_toggle(PaneOutput::ClawStateChanged(
                             id_toggle.clone(),
                             active,
-                            matches!(
-                                *session_status_for_active.borrow(),
-                                AgentStatus::Sleep
-                            ),
+                            matches!(*session_status_for_active.borrow(), AgentStatus::Sleep),
                         ));
                         let tx = tx_claw_toggle.clone();
                         if active {
@@ -405,10 +408,8 @@ impl TerminalPaneComponent {
                     }
                 },
                 move |sleep| {
-                    let currently_sleeping = matches!(
-                        *session_status_for_sleep.borrow(),
-                        AgentStatus::Sleep
-                    );
+                    let currently_sleeping =
+                        matches!(*session_status_for_sleep.borrow(), AgentStatus::Sleep);
                     if currently_sleeping != sleep {
                         let new_status = if sleep {
                             AgentStatus::Sleep
@@ -435,9 +436,7 @@ impl TerminalPaneComponent {
                         ));
                         let tx = tx_sleep_toggle.clone();
                         glib::spawn_future_local(async move {
-                            let _ = tx
-                                .send(ClawMessage::SleepToggle(sleep))
-                                .await;
+                            let _ = tx.send(ClawMessage::SleepToggle(sleep)).await;
                         });
                     }
                 },
@@ -457,9 +456,7 @@ impl TerminalPaneComponent {
                         }
                         let tx = tx_pin_toggle.clone();
                         glib::spawn_future_local(async move {
-                            let _ = tx
-                                .send(ClawMessage::TogglePin(pinned))
-                                .await;
+                            let _ = tx.send(ClawMessage::TogglePin(pinned)).await;
                         });
                     }
                 },
@@ -479,9 +476,7 @@ impl TerminalPaneComponent {
                         }
                         let tx = tx_web_search_toggle.clone();
                         glib::spawn_future_local(async move {
-                            let _ = tx
-                                .send(ClawMessage::ToggleWebSearch(enabled))
-                                .await;
+                            let _ = tx.send(ClawMessage::ToggleWebSearch(enabled)).await;
                         });
                     }
                 },
@@ -570,7 +565,9 @@ impl TerminalPaneComponent {
             callback.clone(),
             id.clone(),
         );
-        widget.add_overlay(&msg_bar.widget);
+        // Msgbar is embedded inside the claw overlay drawer — not a pane
+        // overlay anymore. setup_claw receives it and appends it into the
+        // drawer's msgbar_slot.
 
         let (claw_popover, pending_sleep_diagnosis) = claw::setup_claw(
             &widget,
@@ -579,6 +576,7 @@ impl TerminalPaneComponent {
             claw_sender.clone(),
             claw_rx,
             claw_list_store,
+            msg_bar.clone(),
             callback.clone(),
             init.spawn_intent,
             total_tokens.clone(),
@@ -588,6 +586,10 @@ impl TerminalPaneComponent {
             agent_name.clone(),
             &claw_indicator,
         );
+
+        // Apply the initial overlay-history setting so the drawer renders
+        // in the right mode before any user interaction.
+        claw_popover.set_history_mode(settings.maintain_overlay_history);
 
         inner.borrow_mut().claw_indicator = Some(claw_indicator.clone());
 
@@ -600,30 +602,30 @@ impl TerminalPaneComponent {
         });
         widget.add_overlay(&height_detector);
 
-        // MsgBar shortcut (configurable via Settings)
+        // Ctrl+/ opens the claw drawer (if closed) and focuses the merged
+        // msgbar entry. Never hides the drawer: the agent may be waiting
+        // for a message and silently dismissing the only input surface
+        // would strand the user.
         let shortcut_controller = gtk::ShortcutController::new();
         shortcut_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
 
         let msg_bar_sc = msg_bar.clone();
         let terminal_sc = terminal.clone();
-        let is_claw_active_sc = is_claw_active.clone();
         let session_status_sc = session_status.clone();
         let is_pinned_sc = is_pinned.clone();
         let is_web_search_sc = is_web_search.clone();
+        let agent_name_sc = agent_name.clone();
+        let claw_popover_sc = claw_popover.clone();
         let action = gtk::CallbackAction::new(move |_, _| {
-            if let Some(rect) = terminal_sc.get_cursor_rect() {
-                terminal_sc.set_focusable(false);
-                msg_bar_sc.update_ui(
-                    session_status_sc.borrow().clone(),
-                    is_pinned_sc.get(),
-                    is_web_search_sc.get(),
-                );
-                msg_bar_sc.show_at_y(rect.y() as i32, rect.height() as i32);
-                let entry_clone = msg_bar_sc.entry.clone();
-                gtk::glib::spawn_future_local(async move {
-                    entry_clone.grab_focus();
-                });
-            }
+            terminal_sc.set_focusable(false);
+            // Refresh toggle visuals from live state before presenting.
+            msg_bar_sc.update_ui(
+                session_status_sc.borrow().clone(),
+                is_pinned_sc.get(),
+                is_web_search_sc.get(),
+            );
+            let aname = agent_name_sc.borrow().clone();
+            claw_popover_sc.show_input_only(&aname);
             gtk::glib::Propagation::Stop
         });
 
@@ -693,7 +695,7 @@ impl TerminalPaneComponent {
     pub fn show_claw_popover(&self, title: &str, message: &str, proposal: crate::TerminalProposal) {
         self.claw_indicator.hide();
         self.claw_popover
-            .show(OverlayMode::Claw, title, None, message, proposal);
+            .show(OverlayMode::Claw, title, None, message, proposal.into());
     }
 
     pub fn show_bookmark_proposal(
@@ -703,7 +705,7 @@ impl TerminalPaneComponent {
         proposal: crate::TerminalProposal,
     ) {
         self.claw_popover
-            .show(OverlayMode::Bookmark, title, None, message, proposal);
+            .show(OverlayMode::Bookmark, title, None, message, proposal.into());
     }
 
     pub fn hide_claw_popover(&self) {
@@ -885,11 +887,9 @@ impl TerminalPaneComponent {
                                         {
                                             // Update AI Engine immediately
                                             let _ = claw_tx
-                                                .send(
-                                                    ClawMessage::ForegroundProcessChanged {
-                                                        process_name: args.process_name.clone(),
-                                                    },
-                                                )
+                                                .send(ClawMessage::ForegroundProcessChanged {
+                                                    process_name: args.process_name.clone(),
+                                                })
                                                 .await;
 
                                             // Notify UI for overlays/indicators
@@ -953,8 +953,11 @@ impl TerminalPaneComponent {
     }
 
     pub fn grab_focus(&self) {
-        if self.msg_bar.is_active.get() {
-            self.msg_bar.entry.grab_focus();
+        // With the msgbar embedded in the drawer, "input is active" maps
+        // to "drawer is visible" — the msgbar's own is_active flag stays
+        // latched on in embedded mode and can't be used as the signal.
+        if self.claw_popover.is_visible() {
+            self.claw_popover.grab_input_focus();
         } else {
             self.inner.borrow().terminal.grab_focus();
         }
@@ -965,10 +968,7 @@ impl TerminalPaneComponent {
     }
 
     pub fn is_sleep(&self) -> bool {
-        matches!(
-            *self.session_status.borrow(),
-            AgentStatus::Sleep
-        )
+        matches!(*self.session_status.borrow(), AgentStatus::Sleep)
     }
 
     pub fn set_session_status(&self, status: AgentStatus) {
@@ -1030,16 +1030,12 @@ impl TerminalPaneComponent {
     pub fn soft_clear_claw_history(&self) {
         let tx = self.claw_sender.clone();
         glib::spawn_future_local(async move {
-            let _ = tx
-                .send(ClawMessage::SoftClearHistory)
-                .await;
+            let _ = tx.send(ClawMessage::SoftClearHistory).await;
         });
     }
 
     pub fn notify_settings_invalidated(&self) {
-        let _ = self
-            .claw_sender
-            .try_send(ClawMessage::SettingsInvalidated);
+        let _ = self.claw_sender.try_send(ClawMessage::SettingsInvalidated);
     }
 
     pub fn clear_claw_history(&self) {
@@ -1107,9 +1103,9 @@ impl TerminalPaneComponent {
                     );
                 } else {
                     // If enabled, send current local state to ensure it's synced
-                    let _ = self.claw_sender.send_blocking(
-                        ClawMessage::ToggleWebSearch(self.is_web_search.get()),
-                    );
+                    let _ = self
+                        .claw_sender
+                        .send_blocking(ClawMessage::ToggleWebSearch(self.is_web_search.get()));
                 }
             }
 
@@ -1127,10 +1123,8 @@ impl TerminalPaneComponent {
             needs_invert_scroll = p.invert_scroll != settings.invert_scroll;
         }
 
-        self.claw_popover.update_dimensions(
-            settings.claw_popover_width,
-            settings.claw_popover_max_height,
-        );
+        self.claw_popover
+            .set_history_mode(settings.maintain_overlay_history);
 
         self.msgbar_shortcut
             .set_trigger(Some(parse_accel_trigger(&settings.claw_msgbar_shortcut)));
@@ -1158,6 +1152,9 @@ impl TerminalPaneComponent {
                 settings.font_name, settings.font_size
             ));
             inner.terminal.set_font(Some(&font_desc));
+            // Msgbar uses the default app font (chat chrome, not shell);
+            // apply_font is a no-op but we leave the call here so any
+            // future per-msgbar font setting can flow through.
             self.msg_bar.apply_font(&font_desc);
         }
 

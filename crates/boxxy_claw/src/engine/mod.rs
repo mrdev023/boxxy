@@ -9,11 +9,11 @@ pub mod summarization;
 pub mod tools;
 pub mod turn;
 
-pub use fsm::state::*;
 pub use boxxy_claw_protocol::{
-    ClawMessage, ClawEngineEvent, PersistentClawRow, ClawEvent,
-    ScheduledTask, TaskType, TaskStatus, SpawnLocation, ClawEnvironment
+    ClawEngineEvent, ClawEnvironment, ClawEvent, ClawMessage, PersistentClawRow, ScheduledTask,
+    SpawnLocation, TaskStatus, TaskType,
 };
+pub use fsm::state::*;
 
 use boxxy_db::Db;
 pub use session::ClawSession;
@@ -47,7 +47,10 @@ pub struct PersistentClawRowExt;
 
 impl PersistentClawRowExt {
     #[must_use]
-    pub fn from_engine_event(pane_id: String, event: &ClawEngineEvent) -> Option<PersistentClawRow> {
+    pub fn from_engine_event(
+        pane_id: String,
+        event: &ClawEngineEvent,
+    ) -> Option<PersistentClawRow> {
         match event {
             ClawEngineEvent::UserMessage { content, .. } => Some(PersistentClawRow::User {
                 pane_id,

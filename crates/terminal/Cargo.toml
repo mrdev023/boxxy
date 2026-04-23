@@ -13,11 +13,11 @@ boxxy-vte = { path = "../boxxy_vte" }
 boxxy-preferences = { path = "../preferences" }
 boxxy-themes = { path = "../themes" }
 boxxy-ai-core = { path = "../ai_core" }
-boxxy-msgbar = { path = "../boxxy_msgbar" }
 boxxy-agent = { path = "../boxxy_agent" }
 boxxy-claw = { path = "../boxxy_claw" }
 boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
 boxxy-claw-ui = { path = "../boxxy_claw_ui" }
+boxxy-claw-widget = { path = "../boxxy_claw_widget" }
 boxxy-viewer = { path = "../viewer" }
 async-channel.workspace = true
 ashpd.workspace = true

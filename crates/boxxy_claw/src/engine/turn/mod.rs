@@ -1,10 +1,10 @@
 use crate::engine::{
-    ClawEngineEvent, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
+    ClawEngineEvent, ClawEnvironment, ClawMessage, PersistentClawRow, TaskStatus, TaskType,
     context::retrieve_memories, dispatcher::extract_command_and_clean, persist_visual_event,
-    session::SessionState, summarization::turn::summarize_and_store, ClawEnvironment,
+    session::SessionState, summarization::turn::summarize_and_store,
 };
-use boxxy_claw_protocol::UsageWrapper;
 use crate::utils::load_prompt_fallback;
+use boxxy_claw_protocol::UsageWrapper;
 use boxxy_db::Db;
 use log::info;
 use rig::message::Message;
@@ -630,6 +630,14 @@ pub fn spawn_turn(
                         diagnosis: clean_diagnosis,
                         usage: usage.map(UsageWrapper::from),
                     };
+                    // Mark this command as agent-originated so that when
+                    // the user accepts and the shell eventually returns a
+                    // non-zero exit, `CommandFinished` auto-diagnoses
+                    // instead of falling to the passive Lazy Error path
+                    // (which is reserved for user-typed commands).
+                    // Cleared on CommandFinished consumption or explicit
+                    // reject via CancelPending.
+                    state.lock().await.pending_inject_command = true;
                     persist_visual_event(
                         db.clone(),
                         session_id_clone.clone(),

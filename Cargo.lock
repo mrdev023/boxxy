@@ -673,6 +673,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "boxxy-claw-widget"
+version = "0.0.34"
+dependencies = [
+ "async-channel",
+ "base64",
+ "boxxy-ai-core",
+ "boxxy-claw",
+ "boxxy-claw-protocol",
+ "boxxy-claw-ui",
+ "boxxy-core-widgets",
+ "boxxy-db",
+ "boxxy-preferences",
+ "boxxy-viewer",
+ "chrono",
+ "glib",
+ "gtk4",
+ "lazy_static",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "boxxy-command-palette"
 version = "0.0.34"
 dependencies = [
@@ -758,28 +783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "boxxy-msgbar"
-version = "0.0.34"
-dependencies = [
- "base64",
- "boxxy-ai-core",
- "boxxy-claw",
- "boxxy-claw-protocol",
- "boxxy-core-widgets",
- "boxxy-db",
- "boxxy-preferences",
- "chrono",
- "glib",
- "gtk4",
- "lazy_static",
- "log",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "boxxy-preferences"
 version = "0.0.34"
 dependencies = [
@@ -853,7 +856,7 @@ dependencies = [
  "boxxy-claw",
  "boxxy-claw-protocol",
  "boxxy-claw-ui",
- "boxxy-msgbar",
+ "boxxy-claw-widget",
  "boxxy-preferences",
  "boxxy-themes",
  "boxxy-viewer",

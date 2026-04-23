@@ -275,6 +275,29 @@ fn generate_gtk_css(v: &PaletteVariant) -> String {
     border: 1px solid rgba(128, 128, 128, 0.2);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }}
+
+/* Claw drawer colour scheme: tracks the active terminal palette so
+   the drawer feels native to whichever theme the user picked. Layout
+   (shadows, border-radius, padding) stays in resources/style.css; only
+   colours are palette-driven here. */
+.claw-drawer {{
+    background-color: {bg};
+    color: {fg};
+}}
+
+.claw-drawer .claw-row {{
+    color: {fg};
+}}
+
+/* Inner fields (diagnosis viewer, command preview, template form)
+   lift above the base by one surface step for visual grouping. */
+.claw-drawer frame.view,
+.claw-drawer .claw-row-diagnosis .viewer-block,
+.claw-drawer .claw-row-tool-call .viewer-block,
+.claw-drawer .claw-row-process-list .viewer-block {{
+    background-color: {surface};
+    color: {fg};
+}}
 "#
     )
 }

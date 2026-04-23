@@ -610,11 +610,7 @@ impl TerminalComponent {
         }
     }
 
-    pub fn set_session_status_for_pane(
-        &self,
-        pane_id: &str,
-        status: AgentStatus,
-    ) -> bool {
+    pub fn set_session_status_for_pane(&self, pane_id: &str, status: AgentStatus) -> bool {
         let inner = self.inner.borrow();
         if let Some(pane_data) = inner.panes.get(pane_id) {
             pane_data.controller.set_session_status(status);

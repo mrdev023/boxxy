@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <object class="GtkRevealer" id="root_revealer">
+    <property name="transition-type">crossfade</property>
+    <property name="transition-duration">220</property>
+    <property name="halign">fill</property>
+    <property name="valign">fill</property>
+    <property name="margin-bottom">80</property>
+    <child>
+      <object class="GtkBox" id="main_drawer">
+        <property name="orientation">vertical</property>
+        <style>
+          <class name="claw-drawer"/>
+          <class name="background"/>
+        </style>
+        <child>
+          <object class="GtkBox" id="header_box">
+            <property name="orientation">horizontal</property>
+            <property name="spacing">6</property>
+            <property name="margin-top">12</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <child>
+              <object class="GtkImage" id="icon">
+                <property name="icon-name">boxxy-boxxyclaw-symbolic</property>
+                <style>
+                  <class name="accent"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="title_container">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <property name="halign">start</property>
+                <property name="valign">center</property>
+                <property name="hexpand">true</property>
+                <child>
+                  <object class="GtkLabel" id="title_label">
+                    <property name="label">Boxxy-Claw</property>
+                    <property name="halign">start</property>
+                    <property name="xalign">0.0</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="action_label">
+                    <property name="visible">false</property>
+                    <property name="halign">start</property>
+                    <property name="xalign">0.0</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow" id="single_scroll">
+            <property name="hscrollbar-policy">never</property>
+            <property name="vscrollbar-policy">automatic</property>
+            <property name="vexpand">true</property>
+            <property name="hexpand">true</property>
+            <property name="propagate-natural-height">true</property>
+            <child>
+              <object class="GtkBox" id="diagnosis_container">
+                <property name="orientation">vertical</property>
+                <property name="margin-top">12</property>
+                <property name="margin-bottom">12</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow" id="history_scroll">
+            <property name="visible">false</property>
+            <property name="hscrollbar-policy">never</property>
+            <property name="vscrollbar-policy">automatic</property>
+            <property name="vexpand">true</property>
+            <property name="hexpand">true</property>
+            <child>
+              <object class="GtkBox" id="history_container">
+                <property name="orientation">vertical</property>
+                <property name="margin-top">12</property>
+                <property name="margin-bottom">12</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox" id="bottom_area">
+            <property name="orientation">vertical</property>
+            <property name="spacing">12</property>
+            <property name="margin-top">12</property>
+            <property name="margin-bottom">12</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <child>
+              <object class="GtkFrame" id="command_frame">
+                <style>
+                  <class name="view"/>
+                </style>
+                <child>
+                  <object class="GtkTextView" id="command_view">
+                    <property name="wrap-mode">word-char</property>
+                    <property name="editable">true</property>
+                    <property name="top-margin">8</property>
+                    <property name="bottom-margin">8</property>
+                    <property name="left-margin">8</property>
+                    <property name="right-margin">8</property>
+                    <style>
+                      <class name="monospace"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="msgbar_slot">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="template_box">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkEntry" id="template_entry">
+                    <property name="placeholder-text">Variables...</property>
+                    <property name="hexpand">true</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="file_action_box">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <property name="halign">end</property>
+                <child>
+                  <object class="GtkButton" id="reject_file_btn">
+                    <property name="label">Reject</property>
+                    <style>
+                      <class name="destructive-action"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="approve_file_btn">
+                    <property name="label">Approve &amp; Write</property>
+                    <style>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="action_box">
+                <property name="orientation">horizontal</property>
+                <property name="spacing">6</property>
+                <property name="halign">end</property>
+                <child>
+                  <object class="GtkButton" id="inspect_btn">
+                    <property name="icon-name">boxxy-bug-symbolic</property>
+                    <property name="tooltip-text">Open in Sidebar</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="reject_btn">
+                    <property name="label">Reject</property>
+                    <style>
+                      <class name="destructive-action"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="ok_btn">
+                    <property name="label">Okay</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="accept_btn">
+                    <property name="label">Accept &amp; Run</property>
+                    <style>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

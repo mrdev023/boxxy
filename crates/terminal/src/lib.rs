@@ -2,14 +2,17 @@ use std::env;
 use std::sync::RwLock;
 
 pub mod agent_manager;
-pub mod claw_indicator;
+pub mod claw_proposal;
 pub mod component;
 pub mod events;
-pub mod overlay;
 pub mod pane;
 pub mod preview;
 pub mod search_bar;
 
+// The widget crate now owns `ClawHost` + `Proposal`; we re-export them
+// at the terminal crate root so existing `crate::ClawHost` /
+// `crate::Proposal` references stay valid.
+pub use boxxy_claw_widget::{ClawHost, Proposal};
 pub use component::{Direction, TerminalComponent};
 pub use events::*;
 

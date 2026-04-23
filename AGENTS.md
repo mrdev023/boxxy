@@ -52,7 +52,7 @@ Entry point. Initializes GTK/Libadwaita, registers GResources, bootstraps the ma
 Main UI Orchestrator using a modular MVU pattern. Manages the `AdwApplicationWindow`, tabs, and global state routing via `state.rs`, `ui.rs`, and the `update/` module. Acts as the primary orchestrator for the **Global Workspace Radar**, ensuring peer-to-peer agent discovery and global intent propagation across all windows. Respects the **"Lightweight First"** configuration by initializing agents in an inactive state unless `claw_on_by_default` is enabled. It monitors the active terminal pane to reflect its specific Claw mode state.
 
 ### 3. `boxxy-terminal` (Library Crate)
-Manages the split-pane terminal environment. Features a deep modular architecture (`pane/`) handling UI, gestures, events, media previews, and Claw integration.
+Manages the split-pane terminal environment. Features a deep modular architecture (`pane/`) handling UI, gestures, events, and media previews. Claw UI (drawer, indicator, merged msgbar, event dispatch) does **not** live here — it lives in `boxxy-claw-widget`. The terminal provides `PaneClawHost` as a thin adapter that implements `boxxy_claw_widget::ClawHost` so the drawer can drive the pane without depending on `TerminalWidget` or `PaneInner`.
 
 ### 4. `boxxy-agent` (Binary/Library Crate)
 Host-privileged daemon that sits between the sandboxed UI and the operating system. Exposes four D-Bus interfaces on the session bus (`Agent`, `Pty`, `Claw`, `Maintenance`) from a single process. Hosts `ClawSession` actors (per-pane AI reasoning), owns the PTY registry (viewer ref-count, persistence flag, 4 MB ring buffer per detached session, zombie-sweep on a 4 h TTL), and runs the background Dream Cycle at `niceness 19` gated on UPower + ghost-mode (see §"Memory Consolidation" below). Agent identity is persisted to disk (`$XDG_DATA_HOME/boxxy-terminal/agent-registry.json`) so a pane keeps the same petname across restarts. The binary also provides CLI subcommands — `start`, `stop`, `restart`, `list-sessions` — used by the UI's updater and for manual inspection.
@@ -66,6 +66,8 @@ Agents function as a **Collaborative Swarm**:
 - **Resource Locking**: Employs a global **LockTable** to prevent race conditions. Agents can use `acquire_lock(path)` to safely refactor shared codebases, blocking peers from modifying the same resource until released.
 - **Capability Routing (Service Mesh)**: Automatically routes requests to specialized experts (e.g., "rust-expert") based on active skills and working directory via the `request_assistance` tool.
 - **Autonomous Suspension**: Implements a dedicated **Sleep Mode**. Agents automatically pause their reasoning loop while waiting for external events or sub-tasks, optimizing both cost and system resources.
+
+**Error Handling (Origin-Aware)**: When a shell command finishes with a non-zero exit, the engine reacts based on **who wrote the command**. Agent-originated commands (via `ProposeTerminalCommand` tool or `InjectCommand` event that the user accepted) auto-diagnose — the agent owns the fix, drawer opens, `DiagnosisComplete` fires. User-typed commands (typos, wrong flags, anything the agent didn't propose) emit only a passive `LazyErrorIndicator` — a small red "Error Detected" pill appears at the pane corner. **Zero tokens are spent until the user clicks the pill**, at which point the widget sends `RequestLazyDiagnosis` and the same diagnosis pipeline runs on demand. Sleep mode short-circuits both paths. Non-error exit codes that legitimately signal "nothing matched" (`grep`, `diff`, `test`, `[`) are filtered before the split.
 
 Agents possess full **System & Environment Authority**:
 - **Location & Time Context Injection**: Agents are implicitly aware of the user's geographic location (city, country, timezone) and precise local time without requiring tool calls, achieved via a silent background fetch (`ip-api.com`) and prompt injection. If disabled by the user, a strict `[PRIVACY POLICY]` is injected forbidding the agent from attempting to deduce location or time via shell commands.
@@ -99,11 +101,23 @@ Provides a structured library of high-level tools for Boxxy agents, completely d
 ### 9. `boxxy-preferences` (Library Crate)
 Settings management using an `AdwNavigationSplitView` architecture. UI is defined in `resources/ui/preferences.ui` and supports real-time search filtering. Implements the **"Master Switch vs Local Toggle"** design pattern (e.g., for Web Search), separating global capability authorization from per-pane activation.
 
-### 10. `boxxy-msgbar` (Library Crate)
-Provides the `MsgBarComponent`, an inline GTK input overlay for interacting with Boxxy-Claw. Triggered globally via `Ctrl+/`, it anchors a native text entry precisely over the active terminal cursor. It features a robust GTK-based autocompletion system (`AutocompleteController`) for `@agent` names and seamlessly inherits the active terminal theme's background and foreground colors. It includes native toggle buttons for **Claw Mode**, **Sleep Mode**, **Session Pinning**, and **Web Search**.
+### 10. `boxxy-claw-widget` (Library Crate)
+The reusable Claw drawer UI. Owns every widget the user sees when interacting with an agent in a pane: the slide-down overlay drawer, the floating `ClawIndicator` badge, the merged input bar (formerly the standalone `boxxy-msgbar` crate), the neutral `Proposal` enum, and the event-dispatch loop that turns `ClawEngineEvent`s into widget mutations.
 
-It includes a **Unified Status Indicator**:
-- The bot icon on the far left serves as both the **Claw Toggle** and a **Real-time Status Monitor**. 
+The crate is surface-agnostic: it talks to its host through the `ClawHost` trait (inject a line, execute a script, grab focus, ask for scrollback, send a `ClawMessage`, forward an event, etc.). Today the terminal pane is the only implementor via `PaneClawHost`, but any future surface (standalone chat window, mobile shell) can drive the same UI by implementing the trait.
+
+Key modules:
+- `overlay.rs` — the drawer (`TerminalOverlay`). Loaded from `resources/ui/claw_overlay.ui`. Hosts the merged msgbar inside its bottom area; diagnosis / proposal / bookmark forms above; optional scrollable conversation history (toggled by `maintain_overlay_history` preference).
+- `claw_indicator.rs` — the floating pill that shows the agent's identity + status. The colored badge only surfaces once a real agent name is known — no placeholder "CLAW" text over empty panes.
+- `msgbar/` — the input bar that lives inside the drawer. Carries attachments, autocomplete (`@agent`, `/resume`), history nav, Ctrl+V paste, and the four status toggles (claw/sleep/pin/web-search). The send button is a sibling widget, not a child of the bar, so the bar can render as a single rounded field with the send icon floating alongside.
+- `dispatch.rs` — `spawn_dispatch(rx, host, overlay, indicator, msgbar, sidebar_store, …)`. The single event loop for a pane; every branch is either a widget mutation or a host-trait call.
+- `claw_host.rs` — the `ClawHost` trait (the decoupling boundary).
+- `proposal.rs` — `Proposal` enum (UI shape; converted from terminal-specific `TerminalProposal` via `.into()`).
+
+Ctrl+/ reveals the full drawer and focuses the input — **never hides** it (the agent may be waiting for a message, silent dismissal would strand the user). The drawer's Okay/Reject/Accept buttons are the explicit dismiss paths.
+
+The msgbar's **Unified Status Indicator**:
+- The bot icon on the far left serves as both the **Claw Toggle** and a **Real-time Status Monitor**.
 - It dynamically reflects the agent's current mode:
     - 🦖 **Waiting**: Awake, full context, and ready to respond to errors or queries.
     - 🧠 **Working**: Busy processing an LLM turn or executing a tool.

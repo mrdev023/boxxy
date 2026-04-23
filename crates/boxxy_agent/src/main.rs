@@ -5,7 +5,11 @@ use log::info;
 use zbus::{Connection, proxy};
 
 #[derive(Parser, Debug)]
-#[command(name = "boxxy-agent", version, about = "Boxxy host-side maintenance daemon")]
+#[command(
+    name = "boxxy-agent",
+    version,
+    about = "Boxxy host-side maintenance daemon"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -153,8 +157,8 @@ fn run_async<F: std::future::Future<Output = Result<()>>>(f: F) -> Result<()> {
 /// Double-fork + setsid so the process becomes a true daemon.
 /// MUST be called before starting any threads (including Tokio runtime).
 fn daemonize() -> Result<()> {
-    use nix::unistd::{fork, setsid, ForkResult};
-    
+    use nix::unistd::{ForkResult, fork, setsid};
+
     match unsafe { fork()? } {
         ForkResult::Parent { .. } => std::process::exit(0),
         ForkResult::Child => {
@@ -164,7 +168,11 @@ fn daemonize() -> Result<()> {
                 ForkResult::Child => {
                     // Redirect standard FDs to /dev/null to be a well-behaved daemon
                     use std::os::unix::io::AsRawFd;
-                    if let Ok(dev_null) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/null") {
+                    if let Ok(dev_null) = std::fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .open("/dev/null")
+                    {
                         let fd = dev_null.as_raw_fd();
                         unsafe {
                             libc::dup2(fd, libc::STDIN_FILENO);
