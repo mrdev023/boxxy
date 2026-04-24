@@ -139,7 +139,7 @@
               <object class="GtkBox" id="file_action_box">
                 <property name="orientation">horizontal</property>
                 <property name="spacing">6</property>
-                <property name="halign">end</property>
+                <property name="halign">start</property>
                 <child>
                   <object class="GtkButton" id="reject_file_btn">
                     <property name="label">Reject</property>
@@ -162,7 +162,7 @@
               <object class="GtkBox" id="action_box">
                 <property name="orientation">horizontal</property>
                 <property name="spacing">6</property>
-                <property name="halign">end</property>
+                <property name="halign">start</property>
                 <child>
                   <object class="GtkButton" id="inspect_btn">
                     <property name="icon-name">boxxy-bug-symbolic</property>
