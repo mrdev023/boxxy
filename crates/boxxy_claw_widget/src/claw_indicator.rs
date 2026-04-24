@@ -343,7 +343,7 @@ impl ClawIndicator {
 
     pub fn show_thinking(&self) {
         self.is_active.set(true);
-        self.label.set_label("Thinking..");
+        self.label.set_label("Drinking Water..");
         self.main_btn.set_visible(false);
         self.revealer.set_reveal_child(true);
         // The small identity badge and the detailed pill live in

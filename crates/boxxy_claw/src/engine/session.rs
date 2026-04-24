@@ -519,6 +519,7 @@ impl ClawSession {
                                         is_thinking: false,
                                     })
                                     .await;
+                                let _ = self.tx_ui.send(ClawEngineEvent::DismissDrawer).await;
                             }
                             backlog.clear();
 

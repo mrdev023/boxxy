@@ -87,14 +87,19 @@ pub(super) fn setup_claw(
     *claw_popover_self_ref.borrow_mut() = Some(claw_popover.clone());
     widget.add_overlay(claw_popover.widget());
 
-    // Indicator callbacks: on-cancel is a no-op; on-lazy-click asks the
-    // agent for a fresh diagnosis; on-proactive-click drains the
+    // Indicator callbacks: on-cancel aborts the current agent turn and closes the drawer;
+    // on-lazy-click asks the agent for a fresh diagnosis; on-proactive-click drains the
     // queued-up diagnosis (stashed by `show_diagnosis_ready` from the
     // window orchestrator) and pops the drawer.
     let popover_clone = claw_popover.clone();
     let host_lazy = host.clone();
+    let host_cancel = host.clone();
+    let popover_cancel = claw_popover.clone();
     claw_indicator.set_callbacks(
-        || {},
+        move || {
+            host_cancel.send_claw(ClawMessage::Abort);
+            popover_cancel.hide();
+        },
         move || {
             host_lazy.send_claw(ClawMessage::RequestLazyDiagnosis {});
         },
