@@ -3,6 +3,7 @@ pub mod advanced;
 pub mod agents;
 pub mod apis;
 pub mod appearance;
+pub mod characters;
 pub mod claw_ui;
 pub mod config;
 pub mod mcp;

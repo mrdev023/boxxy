@@ -431,6 +431,8 @@ pub fn spawn_turn(
                 let pending_tasks_json =
                     serde_json::to_string(&state_lock.pending_tasks).unwrap_or_default();
                 let agent_name_for_db = agent_name.clone();
+                let character_id_for_db = state_lock.character_id.clone();
+                let character_display_name_for_db = state_lock.character_display_name.clone();
                 let session_id_for_db = session_id_clone.clone();
                 let cwd_for_db = cwd_clone.clone();
                 let pinned_for_db = state_lock.pinned;
@@ -461,6 +463,8 @@ pub fn spawn_turn(
                             .upsert_session_state(
                                 &session_id_for_db,
                                 &agent_name_for_db,
+                                &character_id_for_db,
+                                &character_display_name_for_db,
                                 "", // title is updated separately in the background LLM task
                                 &history_json,
                                 &pending_tasks_json,

@@ -18,29 +18,22 @@ pub enum OverlayMode {
 #[derive(Clone)]
 pub struct TerminalOverlay {
     revealer: gtk::Revealer,
+    indicator_slot: gtk::Box,
+    character_selector_box: gtk::Box,
     single_scroll: gtk::ScrolledWindow,
     history_scroll: gtk::ScrolledWindow,
     history_list: gtk::ListView,
     history_store: gio::ListStore,
-    title_label: gtk::Label,
-    action_label: gtk::Label,
-    title_container: gtk::Box,
+    history_container: gtk::Box,
+    diagnosis_container: gtk::Box,
     diagnosis_viewer: StructuredViewer,
     command_view: gtk::TextView,
     template_entry: gtk::Entry,
-    /// The merged input widget. Replaces the former `reply_entry`,
-    /// `reply_btn`, and standalone `attachment_mgr`. Carries attachments,
-    /// autocomplete, history navigation, and the 4 status toggles.
     msg_bar: Rc<MsgBarComponent>,
     accept_btn: gtk::Button,
     reject_btn: gtk::Button,
     ok_btn: gtk::Button,
-    icon: gtk::Image,
-
-    // File Write specific widgets
-    #[allow(dead_code)]
     reject_file_btn: gtk::Button,
-    #[allow(dead_code)]
     approve_file_btn: gtk::Button,
     inspect_btn: gtk::Button,
     command_frame: gtk::Frame,
@@ -49,12 +42,17 @@ pub struct TerminalOverlay {
     action_box: gtk::Box,
     current_proposal: Rc<RefCell<Proposal>>,
     current_mode: Rc<RefCell<OverlayMode>>,
+    is_thinking: Rc<Cell<bool>>,
+    active_agent: Rc<RefCell<String>>,
     history_enabled: Rc<Cell<bool>>,
-    /// Countdown that keeps pinning the history scroll to its bottom
-    /// across multiple layout ticks — handles async row realization /
-    /// multi-pass markdown measuring where `upper` grows over several
-    /// frames after a new row is appended.
     history_sticky: Rc<Cell<u32>>,
+    /// Character name pre-selected in the picker before any session starts.
+    selected_character: Rc<RefCell<String>>,
+    /// True while the 500 ms polling timer for registry changes is active.
+    selector_polling: Rc<Cell<bool>>,
+    /// The CHARACTER_CACHE_VERSION value that was current when we last built the picker.
+    last_registry_version: Rc<Cell<u64>>,
+    host: Rc<dyn ClawHost>,
 }
 
 impl TerminalOverlay {
@@ -62,19 +60,18 @@ impl TerminalOverlay {
         indicator_widget: &gtk::Widget,
         msg_bar: Rc<MsgBarComponent>,
         host: Rc<dyn ClawHost>,
+        pending_character: Rc<RefCell<String>>,
     ) -> Self {
         let builder = gtk::Builder::from_resource("/dev/boxxy/BoxxyTerminal/ui/claw_overlay.ui");
 
         let revealer: gtk::Revealer = builder.object("root_revealer").unwrap();
+        let indicator_slot: gtk::Box = builder.object("indicator_slot").unwrap();
+        let character_selector_box: gtk::Box = builder.object("character_selector_box").unwrap();
+
+        indicator_slot.append(indicator_widget);
         let single_scroll: gtk::ScrolledWindow = builder.object("single_scroll").unwrap();
         let history_scroll: gtk::ScrolledWindow = builder.object("history_scroll").unwrap();
         let history_container: gtk::Box = builder.object("history_container").unwrap();
-        let title_label: gtk::Label = builder.object("title_label").unwrap();
-        let action_label: gtk::Label = builder.object("action_label").unwrap();
-        let title_container: gtk::Box = builder.object("title_container").unwrap();
-        let header_box: gtk::Box = builder.object("header_box").unwrap();
-
-        header_box.append(indicator_widget);
 
         let command_view: gtk::TextView = builder.object("command_view").unwrap();
         let template_entry: gtk::Entry = builder.object("template_entry").unwrap();
@@ -82,7 +79,6 @@ impl TerminalOverlay {
         let accept_btn: gtk::Button = builder.object("accept_btn").unwrap();
         let reject_btn: gtk::Button = builder.object("reject_btn").unwrap();
         let ok_btn: gtk::Button = builder.object("ok_btn").unwrap();
-        let icon: gtk::Image = builder.object("icon").unwrap();
 
         let reject_file_btn: gtk::Button = builder.object("reject_file_btn").unwrap();
         let approve_file_btn: gtk::Button = builder.object("approve_file_btn").unwrap();
@@ -206,6 +202,8 @@ impl TerminalOverlay {
 
         let current_proposal = Rc::new(RefCell::new(Proposal::None));
         let current_mode = Rc::new(RefCell::new(OverlayMode::Claw));
+        let is_thinking = Rc::new(Cell::new(false));
+        let active_agent = Rc::new(RefCell::new(String::new()));
         let history_enabled = Rc::new(Cell::new(false));
 
         // Common "dismiss the drawer + return focus to the host" tail,
@@ -369,15 +367,14 @@ impl TerminalOverlay {
         });
         revealer.add_controller(esc_controller);
 
-        TerminalOverlay {
+        let s = Self {
             revealer,
+            indicator_slot,
+            character_selector_box,
             single_scroll,
             history_scroll,
-            history_list,
-            history_store,
-            title_label,
-            action_label,
-            title_container,
+            history_container,
+            diagnosis_container,
             diagnosis_viewer,
             command_view,
             template_entry,
@@ -385,7 +382,6 @@ impl TerminalOverlay {
             accept_btn,
             reject_btn,
             ok_btn,
-            icon,
             reject_file_btn,
             approve_file_btn,
             inspect_btn,
@@ -395,9 +391,18 @@ impl TerminalOverlay {
             action_box,
             current_proposal,
             current_mode,
+            is_thinking,
+            active_agent,
             history_enabled,
             history_sticky,
-        }
+            selected_character: pending_character,
+            selector_polling: Rc::new(Cell::new(false)),
+            last_registry_version: Rc::new(Cell::new(0)),
+            history_list,
+            history_store,
+            host,
+        };
+        s
     }
 
     /// Returns the per-pane history store for the overlay. The pane wires
@@ -433,18 +438,190 @@ impl TerminalOverlay {
         &self.revealer
     }
 
-    /// Hide the proposal/action widgets so the drawer presents only a
-    /// chat-style input while the agent is thinking. Called by the pane
-    /// right after the user submits a reply through the embedded msgbar.
-    pub fn enter_waiting_state(&self) {
-        self.command_frame.set_visible(false);
-        self.action_box.set_visible(false);
-        self.accept_btn.set_visible(false);
-        self.reject_btn.set_visible(false);
-        self.ok_btn.set_visible(false);
-        self.file_action_box.set_visible(false);
-        self.template_box.set_visible(false);
-        // The msgbar stays visible by design — it's the input.
+    pub fn set_active_agent(&self, agent_name: &str) {
+        *self.active_agent.borrow_mut() = agent_name.to_string();
+        self.sync_action_state();
+    }
+
+    pub fn set_thinking(&self, thinking: bool) {
+        self.is_thinking.set(thinking);
+        self.sync_action_state();
+    }
+
+    /// Start a 500 ms polling timer that rebuilds the character picker whenever
+    /// CHARACTER_CACHE_VERSION changes. Safe to call multiple times — a second
+    /// call is a no-op if the timer is already running.
+    fn start_selector_poll(&self) {
+        if self.selector_polling.get() {
+            return;
+        }
+        self.selector_polling.set(true);
+        let version_cell = self.last_registry_version.clone();
+        let overlay = self.clone();
+        let running = self.selector_polling.clone();
+        gtk::glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            if !running.get() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let current = boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
+                .load(std::sync::atomic::Ordering::Relaxed);
+            if current != version_cell.get() {
+                version_cell.set(current);
+                overlay.refresh_character_selector("");
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+
+    /// Cancel the polling timer started by `start_selector_poll`.
+    fn stop_selector_poll(&self) {
+        self.selector_polling.set(false);
+    }
+
+    pub fn refresh_character_selector(&self, current_agent: &str) {
+        if !current_agent.is_empty() {
+            *self.active_agent.borrow_mut() = current_agent.to_string();
+        }
+
+        self.sync_action_state();
+
+        // If the picker isn't visible, don't waste time rebuilding the buttons.
+        if !self.character_selector_box.is_visible() {
+            return;
+        }
+
+        while let Some(child) = self.character_selector_box.first_child() {
+            self.character_selector_box.remove(&child);
+        }
+
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
+        let host_id = self.host.host_id();
+
+        // Returns true if the character with the given UUID is Active in a pane other than ours.
+        let is_taken = |id: &str| -> bool {
+            registry.iter().any(|info| {
+                info.config.id == id
+                    && matches!(
+                        &info.status,
+                        boxxy_claw_protocol::characters::CharacterStatus::Active { pane_id }
+                            if pane_id != &host_id
+                    )
+            })
+        };
+
+        // Auto-default (or auto-correct): ensure `pending` always points to a
+        // character UUID that isn't Active in another pane.  This runs both when
+        // the picker is first shown (pending = "") and whenever the polling timer
+        // detects that the previously-selected character has since been claimed
+        // by another tab.
+        {
+            let mut pending = self.selected_character.borrow_mut();
+            if pending.is_empty() || is_taken(&pending) {
+                // Pick the first registry entry that isn't taken elsewhere.
+                let first_free = registry.iter().find(|info| !is_taken(&info.config.id));
+                if let Some(info) = first_free {
+                    *pending = info.config.id.clone();
+                } else if pending.is_empty() {
+                    // All characters are in use — fall back to first so the
+                    // picker is never completely blank.
+                    if let Some(first) = registry.first() {
+                        *pending = first.config.id.clone();
+                    }
+                }
+                // If every character is taken and pending already has a value,
+                // leave it as-is (the button will be insensitive anyway).
+            }
+        }
+        let pending = self.selected_character.borrow().clone();
+
+        for info in registry.iter() {
+            let btn = gtk::Button::new();
+            let inner_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            inner_box.set_margin_start(4);
+            inner_box.set_margin_end(4);
+            inner_box.set_margin_top(1);
+            inner_box.set_margin_bottom(1);
+
+            let img = gtk::Image::new();
+            if info.has_avatar {
+                if let Ok(dir) = boxxy_claw_protocol::character_loader::get_characters_dir() {
+                    let avatar_path = dir.join(&info.config.name).join("AVATAR.png");
+                    if let Ok(texture) = gtk::gdk::Texture::from_filename(&avatar_path) {
+                        img.set_paintable(Some(&texture));
+                        img.set_pixel_size(20);
+                        img.add_css_class("avatar-icon");
+                    }
+                }
+            }
+            if img.paintable().is_none() {
+                img.set_icon_name(Some("boxxy-boxxyclaw-symbolic"));
+                img.set_pixel_size(16);
+            }
+            inner_box.append(&img);
+
+            let label = gtk::Label::new(Some(&info.config.display_name.to_uppercase()));
+            inner_box.append(&label);
+
+            // In the pre-selection phase the local `pending` is the sole
+            // source of truth for which character is highlighted. Registry
+            // Active status only tells us whether a character is in use in
+            // *another* pane (and should therefore be dimmed).
+            let is_current = info.config.id == pending;
+            let is_in_use = is_taken(&info.config.id);
+
+            if is_current {
+                let check_icon = gtk::Image::from_icon_name("boxxy-object-select-2-symbolic");
+                check_icon.set_pixel_size(16);
+                inner_box.append(&check_icon);
+            }
+
+            btn.set_child(Some(&inner_box));
+            btn.add_css_class("character-btn");
+
+            if is_in_use {
+                btn.set_sensitive(false);
+                btn.add_css_class("in-use");
+            }
+            if is_current {
+                btn.add_css_class("selected-character");
+            }
+
+            let class_name = format!("char-btn-{}", info.config.name);
+            btn.add_css_class(&class_name);
+
+            let css = format!(
+                ".{} {{ background-color: {}; color: white; }}\n\
+                 .{} *:not(image) {{ color: white; }}\n\
+                 .{}:hover {{ filter: brightness(1.1); transform: scale(1.02); }}\n",
+                class_name, info.config.color, class_name, class_name
+            );
+            let provider = gtk::CssProvider::new();
+            #[allow(deprecated)]
+            provider.load_from_string(&css);
+            #[allow(deprecated)]
+            btn.style_context()
+                .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+            // Clicking only updates the local pre-selection so the checkmark
+            // moves immediately. The actual session is created lazily when the
+            // user sends their first message.
+            let selected_rc = self.selected_character.clone();
+            let overlay_clone = self.clone();
+            let char_id = info.config.id.clone();
+            btn.connect_clicked(move |_| {
+                *selected_rc.borrow_mut() = char_id.clone();
+                overlay_clone.refresh_character_selector("");
+            });
+
+            self.character_selector_box.append(&btn);
+        }
+
+        // Snapshot the version we just rendered and start polling for changes
+        // so that when another tab releases a character the picker updates.
+        let current_version = boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
+            .load(std::sync::atomic::Ordering::Relaxed);
+        self.last_registry_version.set(current_version);
+        self.start_selector_poll();
     }
 
     pub fn show(
@@ -455,90 +632,21 @@ impl TerminalOverlay {
         diagnosis: &str,
         proposal: Proposal,
     ) {
-        self.title_label.set_label(title);
+        self.refresh_character_selector(title);
+
         self.diagnosis_viewer.set_content(diagnosis);
         self.msg_bar.entry.set_text("");
         self.template_entry.set_text("");
         *self.current_proposal.borrow_mut() = proposal.clone();
         *self.current_mode.borrow_mut() = mode;
+        self.is_thinking.set(false);
 
-        // Reset visibility
-        self.command_frame.set_visible(false);
-        self.action_box.set_visible(false);
-        self.accept_btn.set_visible(false);
-        self.reject_btn.set_visible(false);
-        self.ok_btn.set_visible(false);
-        self.file_action_box.set_visible(false);
-        // Msgbar is visible in Claw mode, hidden in Bookmark mode (no agent input needed).
-        self.msg_bar.widget.set_visible(mode == OverlayMode::Claw);
-        self.template_box.set_visible(false);
-        self.inspect_btn.set_visible(mode == OverlayMode::Claw);
-
-        match mode {
-            OverlayMode::Claw => {
-                self.icon.set_visible(true);
-                self.icon.set_icon_name(Some("boxxy-boxxyclaw-symbolic"));
-                self.title_label.add_css_class("heading");
-
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                title.hash(&mut hasher);
-                let hash = hasher.finish();
-
-                let r = (hash & 0xFF) as u8 % 150 + 50;
-                let g = ((hash >> 8) & 0xFF) as u8 % 150 + 50;
-                let b = ((hash >> 16) & 0xFF) as u8 % 150 + 50;
-                let color = format!("rgb({}, {}, {})", r, g, b);
-
-                let css = format!(
-                    ".overlay-badge {{ background-color: {}; color: white; border-radius: 12px; padding: 4px 10px; font-weight: bold; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }}",
-                    color
-                );
-                let provider = gtk::CssProvider::new();
-                #[allow(deprecated)]
-                provider.load_from_string(&css);
-                #[allow(deprecated)]
-                self.title_label
-                    .style_context()
-                    .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-                self.title_label.add_css_class("overlay-badge");
-
-                if let Some(act) = action {
-                    self.action_label.set_label(act);
-                    self.action_label.set_visible(true);
-
-                    let action_css = ".action-badge { background-color: rgba(255, 255, 255, 0.1); color: @window_fg_color; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 4px 10px; font-weight: bold; font-size: 0.8rem; margin-left: 6px; }";
-                    let action_provider = gtk::CssProvider::new();
-                    #[allow(deprecated)]
-                    action_provider.load_from_string(&action_css);
-                    #[allow(deprecated)]
-                    self.action_label
-                        .style_context()
-                        .add_provider(&action_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-
-                    self.action_label.add_css_class("action-badge");
-                } else {
-                    self.action_label.set_visible(false);
-                }
-            }
-            OverlayMode::Bookmark => {
-                self.icon.set_visible(true);
-                self.icon
-                    .set_icon_name(Some("boxxy-user-bookmarks-symbolic"));
-                self.title_label.add_css_class("heading");
-                self.action_label.set_visible(false);
-            }
-        }
+        self.sync_action_state();
 
         match proposal {
             Proposal::Command(cmd) => {
                 self.command_view.buffer().set_text(&cmd);
                 self.command_view.set_editable(mode == OverlayMode::Claw);
-                self.command_frame.set_visible(true);
-                self.action_box.set_visible(true);
-                self.accept_btn.set_visible(true);
-                self.reject_btn.set_visible(true);
             }
             Proposal::Bookmark {
                 script,
@@ -551,25 +659,10 @@ impl TerminalOverlay {
                 }
                 self.command_view.buffer().set_text(&display_cmd);
                 self.command_view.set_editable(false);
-                self.command_frame.set_visible(true);
-                self.action_box.set_visible(true);
-                self.accept_btn.set_visible(true);
-                self.reject_btn.set_visible(true);
-                self.template_box.set_visible(true);
                 self.template_entry
                     .set_placeholder_text(Some(&placeholders.join(", ")));
             }
-            Proposal::FileWrite { .. }
-            | Proposal::FileDelete { .. }
-            | Proposal::KillProcess { .. }
-            | Proposal::GetClipboard
-            | Proposal::SetClipboard(_) => {
-                self.file_action_box.set_visible(true);
-            }
-            Proposal::None => {
-                self.action_box.set_visible(true);
-                self.ok_btn.set_visible(true);
-            }
+            _ => {}
         }
 
         self.revealer.set_reveal_child(true);
@@ -603,76 +696,29 @@ impl TerminalOverlay {
     }
 
     pub fn show_chat_only(&self, agent_name: &str) {
-        self.title_label.set_label(agent_name);
+        self.refresh_character_selector(agent_name);
+
         self.diagnosis_viewer.set_content("");
         self.msg_bar.entry.set_text("");
         self.template_entry.set_text("");
         *self.current_proposal.borrow_mut() = Proposal::None;
         *self.current_mode.borrow_mut() = OverlayMode::Claw;
+        self.is_thinking.set(false);
 
-        self.command_frame.set_visible(false);
-        self.action_box.set_visible(false);
-        self.accept_btn.set_visible(false);
-        self.reject_btn.set_visible(false);
-        self.ok_btn.set_visible(false);
-        self.file_action_box.set_visible(false);
-        self.template_box.set_visible(false);
+        self.sync_action_state();
 
-        self.msg_bar.widget.set_visible(true);
-        self.inspect_btn.set_visible(true);
-
-        self.icon.set_visible(true);
-        self.icon.set_icon_name(Some("boxxy-boxxyclaw-symbolic"));
-        self.title_label.add_css_class("heading");
-
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        agent_name.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        let r = (hash & 0xFF) as u8 % 150 + 50;
-        let g = ((hash >> 8) & 0xFF) as u8 % 150 + 50;
-        let b = ((hash >> 16) & 0xFF) as u8 % 150 + 50;
-        let color = format!("rgb({}, {}, {})", r, g, b);
-
-        let css = format!(
-            ".overlay-badge {{ background-color: {}; color: white; border-radius: 12px; padding: 4px 10px; font-weight: bold; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }}",
-            color
-        );
-        let provider = gtk::CssProvider::new();
-        #[allow(deprecated)]
-        provider.load_from_string(&css);
-        #[allow(deprecated)]
-        self.title_label
-            .style_context()
-            .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-        self.title_label.add_css_class("overlay-badge");
-
-        self.action_label.set_visible(false);
         self.revealer.set_reveal_child(true);
     }
 
-    /// Entry point for the Ctrl+/ shortcut. Opens the drawer if closed,
-    /// and always focuses the merged msgbar entry. Never hides — the agent
-    /// may be waiting for a message and a silent dismiss would strand the
-    /// user without an input surface.
     pub fn show_input_only(&self, agent_name: &str) {
         if !self.revealer.reveals_child() {
             // Drawer is closed → present the "chat only" shell so the user
             // gets a clean prompt aimed at this pane's agent.
             self.show_chat_only(agent_name);
         }
-        // Surface the Okay button (and the inspect/bug icon) so the user
-        // has an explicit, smooth way to dismiss the drawer — otherwise
-        // the only escape is the ESC key, which doesn't close in embedded
-        // mode. Only when there's no pending proposal, so we don't clobber
-        // an Accept/Reject choice the user must still make.
-        if matches!(*self.current_proposal.borrow(), Proposal::None) {
-            self.action_box.set_visible(true);
-            self.ok_btn.set_visible(true);
-            self.inspect_btn.set_visible(true);
-        }
+
+        // Ensure action buttons are synced (shows "Okay" if no proposal, etc.)
+        self.set_thinking(false);
 
         // Auto-scroll to the newest row so reopening lands on the latest
         // message (history mode) or the bottom of the scroll (single mode).
@@ -729,13 +775,13 @@ impl TerminalOverlay {
 
     pub fn hide(&self) {
         self.revealer.set_reveal_child(false);
-        // Robust hiding: explicitly hide all proposal-specific action containers
-        // to ensure we don't accidentally leave stale buttons visible if the drawer
-        // re-opens later.
-        self.command_frame.set_visible(false);
-        self.template_box.set_visible(false);
-        self.file_action_box.set_visible(false);
-        self.action_box.set_visible(false);
+        // Robust hiding: clear the proposal state and sync visibility
+        // so that stale buttons aren't briefly visible during fade-out
+        // or the next time the drawer opens.
+        *self.current_proposal.borrow_mut() = Proposal::None;
+        self.is_thinking.set(false);
+        self.sync_action_state();
+        self.stop_selector_poll();
     }
 
     pub fn grab_input_focus(&self) {
@@ -746,8 +792,76 @@ impl TerminalOverlay {
         }
     }
 
+    pub fn set_indicator_slot_visible(&self, visible: bool) {
+        self.indicator_slot.set_visible(visible);
+    }
+
     pub fn is_visible(&self) -> bool {
         self.revealer.reveals_child()
+    }
+
+    pub fn sync_action_state(&self) {
+        let mode = *self.current_mode.borrow();
+        let proposal = self.current_proposal.borrow().clone();
+        let is_thinking = self.is_thinking.get();
+        let has_active_agent = !self.active_agent.borrow().is_empty();
+
+        // 1. Hide everything by default to prevent stale buttons
+        self.command_frame.set_visible(false);
+        self.action_box.set_visible(false);
+        self.accept_btn.set_visible(false);
+        self.reject_btn.set_visible(false);
+        self.ok_btn.set_visible(false);
+        self.file_action_box.set_visible(false);
+        self.template_box.set_visible(false);
+
+        // 2. Base components based on mode
+        self.msg_bar.widget.set_visible(mode == OverlayMode::Claw);
+        self.inspect_btn.set_visible(mode == OverlayMode::Claw);
+
+        // 3. Character Selector Box logic
+        // Only visible if in Claw mode, NOT thinking, and no active agent is set yet.
+        let show_picker = mode == OverlayMode::Claw && !is_thinking && !has_active_agent;
+        self.character_selector_box.set_visible(show_picker);
+
+        // If the picker shouldn't be shown, we don't need to poll the registry.
+        if !show_picker {
+            self.stop_selector_poll();
+        }
+
+        // 4. If the agent is actively thinking, we show no actions.
+        if is_thinking {
+            return;
+        }
+
+        // 5. Show actions based strictly on the current proposal state
+        match proposal {
+            Proposal::Command(_) => {
+                self.command_frame.set_visible(true);
+                self.action_box.set_visible(true);
+                self.accept_btn.set_visible(true);
+                self.reject_btn.set_visible(true);
+            }
+            Proposal::Bookmark { .. } => {
+                self.command_frame.set_visible(true);
+                self.action_box.set_visible(true);
+                self.accept_btn.set_visible(true);
+                self.reject_btn.set_visible(true);
+                self.template_box.set_visible(true);
+            }
+            Proposal::FileWrite { .. }
+            | Proposal::FileDelete { .. }
+            | Proposal::KillProcess { .. }
+            | Proposal::GetClipboard
+            | Proposal::SetClipboard(_) => {
+                self.file_action_box.set_visible(true);
+            }
+            Proposal::None => {
+                // Idle state: just Okay and Inspect (handled above)
+                self.action_box.set_visible(true);
+                self.ok_btn.set_visible(true);
+            }
+        }
     }
 
     pub fn current_proposal(&self) -> Proposal {

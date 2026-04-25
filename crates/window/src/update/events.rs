@@ -12,6 +12,19 @@ pub fn handle_terminal_event(
     inner: &mut AppWindowInner,
     event: TerminalEvent,
 ) {
+    // Global events (no pane id) — handle before the per-pane match.
+    if event.id.is_empty() {
+        if let TerminalEventKind::Notification(message) = event.kind {
+            let _ =
+                inner
+                    .tx
+                    .send_blocking(AppInput::ShowToast(crate::state::ToastRequest::ephemeral(
+                        message,
+                    )));
+        }
+        return;
+    }
+
     if let Some(pos) = inner.tabs.iter().position(|c| c.id == event.id) {
         match event.kind {
             TerminalEventKind::TitleChanged(title) => {

@@ -71,6 +71,17 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
             for pid in &pids {
                 let _ = agent.signal_process_group(*pid, 15).await;
             }
+
+            let tabs: Vec<_> = inner_clone
+                .borrow()
+                .tabs
+                .iter()
+                .map(|t| t.controller.clone())
+                .collect();
+            for tab in tabs {
+                tab.on_close_sync().await;
+            }
+
             inner_clone.borrow().force_close.set(true);
             inner_clone.borrow().window.close();
             return;
@@ -125,6 +136,17 @@ pub fn handle_close_request(inner_ref: &Rc<RefCell<AppWindowInner>>, inner: &mut
             for pid in &pids {
                 let _ = agent.signal_process_group(*pid, 15).await;
             }
+
+            let tabs: Vec<_> = inner_clone
+                .borrow()
+                .tabs
+                .iter()
+                .map(|t| t.controller.clone())
+                .collect();
+            for tab in tabs {
+                tab.on_close_sync().await;
+            }
+
             inner_clone.borrow().force_close.set(true);
             inner_clone.borrow().window.close();
         }

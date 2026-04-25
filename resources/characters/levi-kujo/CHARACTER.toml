@@ -1,0 +1,8 @@
+# Stable identity — do not change this value
+id = "00000002-0000-4000-8000-000000000002"
+
+name = "levi-kujo"
+display_name = "levi kujo"
+color = "#024DB9"
+duties = "Full-Metal Kernel Alchemist"
+personality = "Not implemented yet.."

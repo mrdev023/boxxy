@@ -5,6 +5,7 @@ pub mod history;
 use boxxy_claw_protocol::AgentStatus;
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita as adw;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -26,6 +27,10 @@ pub struct MsgBarComponent {
     pub sleep_state: Rc<Cell<bool>>,
     pub pin_state: Rc<Cell<bool>>,
     pub web_search_state: Rc<Cell<bool>>,
+    /// Current character UUID for avatar lookup
+    pub character_id: Rc<RefCell<Option<String>>>,
+    pub avatar: adw::Avatar,
+    avatar_stack: gtk::Stack,
     /// When true, the msgbar does not hide itself on Enter/Escape — its
     /// enclosing container (e.g. the claw overlay drawer) owns visibility.
     embedded: Rc<Cell<bool>>,
@@ -71,8 +76,15 @@ impl MsgBarComponent {
 
         let claw_image = gtk::Image::from_icon_name("boxxy-boxxyclaw-symbolic");
 
+        let avatar = adw::Avatar::new(32, None, false);
+
+        let avatar_stack = gtk::Stack::new();
+        avatar_stack.set_transition_type(gtk::StackTransitionType::None);
+        avatar_stack.add_named(&claw_image, Some("icon"));
+        avatar_stack.add_named(&avatar, Some("avatar"));
+
         let claw_toggle = gtk::Button::builder()
-            .child(&claw_image)
+            .child(&avatar_stack)
             .css_classes(["flat", "image-button"])
             .tooltip_text("Toggle Claw for this pane")
             .margin_start(4)
@@ -330,9 +342,38 @@ impl MsgBarComponent {
             sleep_state,
             pin_state,
             web_search_state,
+            character_id: Rc::new(RefCell::new(None)),
+            avatar,
+            avatar_stack,
             embedded,
             _autocomplete: autocomplete_ctrl,
         }
+    }
+
+    /// Update the avatar based on the character UUID.
+    pub fn set_character(&self, character_id: &str) {
+        *self.character_id.borrow_mut() = Some(character_id.to_string());
+
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
+        if let Some(info) = registry.iter().find(|c| c.config.id == character_id) {
+            if info.has_avatar {
+                if let Ok(dir) = boxxy_claw_protocol::character_loader::get_characters_dir() {
+                    let avatar_path = dir.join(&info.config.name).join("AVATAR.png");
+                    if let Ok(texture) = gtk::gdk::Texture::from_filename(&avatar_path) {
+                        self.avatar.set_custom_image(Some(&texture));
+                        self.avatar_stack.set_visible_child_name("avatar");
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Fallback to symbolic icon
+        self.avatar.set_custom_image(None::<&gtk::gdk::Texture>);
+        self.avatar_stack.set_visible_child_name("icon");
+        self.claw_image
+            .set_icon_name(Some("boxxy-boxxyclaw-symbolic"));
+        self.claw_image.remove_css_class("avatar-icon");
     }
 
     /// Mark the msgbar as embedded inside another container (the claw
@@ -356,9 +397,11 @@ impl MsgBarComponent {
             "status-error",
             "accent",
             "warning",
+            "grayscale",
         ] {
             self.claw_toggle.remove_css_class(cls);
             self.sleep_toggle.remove_css_class(cls);
+            self.claw_image.remove_css_class(cls);
         }
 
         match status {
@@ -382,6 +425,7 @@ impl MsgBarComponent {
             }
             AgentStatus::Off => {
                 self.sleep_state.set(false);
+                self.claw_image.add_css_class("grayscale");
             }
         }
     }
@@ -402,6 +446,11 @@ impl MsgBarComponent {
         self.is_active.set(false);
         self.entry.set_text("");
         self.history.borrow_mut().reset();
+    }
+
+    pub fn set_input_sensitive(&self, sensitive: bool) {
+        self.entry.set_sensitive(sensitive);
+        self.send_btn.set_sensitive(sensitive);
     }
 
     pub fn update_ui(&self, status: AgentStatus, pinned: bool, web_search: bool) {

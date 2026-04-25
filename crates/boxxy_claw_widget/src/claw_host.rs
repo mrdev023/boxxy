@@ -88,4 +88,9 @@ pub trait ClawHost: 'static {
     /// calls this after handling every event so non-UI consumers (tab
     /// badges, cross-pane swarms) see the full stream.
     fn forward_event(&self, event: ClawEngineEvent);
+
+    /// Request to assign a specific character to this host.
+    /// If no session exists, the host should create one with this character.
+    /// If one exists, the host may handle a character swap.
+    fn request_character(&self, character_id: String);
 }

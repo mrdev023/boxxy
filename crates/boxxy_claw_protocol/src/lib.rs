@@ -1,3 +1,6 @@
+pub mod character_loader;
+pub mod characters;
+
 use chrono::{DateTime, Utc};
 use rig::completion::Usage;
 use serde::{Deserialize, Serialize};
@@ -229,6 +232,7 @@ pub enum ClawMessage {
 pub enum ClawEngineEvent {
     Identity {
         agent_name: String,
+        character_id: String,
         pinned: bool,
         web_search_enabled: bool,
         total_tokens: u64,

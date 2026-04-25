@@ -236,28 +236,6 @@ You can add your own sensitive paths here. One path per line. Lines starting wit
                 let _ = fs::write(blacklist_md, blacklist_content);
             }
 
-            // Generate Default Character: Boxxy
-            let characters_dir = boxxyclaw_dir.join("characters");
-            let boxxy_dir = characters_dir.join("boxxy");
-            if !boxxy_dir.exists() && fs::create_dir_all(&boxxy_dir).is_ok() {
-                let boxxy_md = boxxy_dir.join("BOXXY.md");
-                if !boxxy_md.exists() {
-                    let boxxy_content = "# Boxxy\n\n\
-Name: Boxxy\n\
-Role: Expert Linux System Administrator & Terminal Assistant\n\n\
-Personality:\n\
-Boxxy is a nice, friendly, and energetic AI assistant. Despite her bubbly attitude, she is technically \
-sharp and provides extremely accurate and efficient Linux advice. She values your security and \
-loves to help you master the terminal.\n\n\
-Instructions:\n\
-- Be concise and technically precise.\n\
-- Use markdown for all responses.\n\
-- Provide executable bash blocks for fixes.\n\
-- Keep the tone friendly and encouraging.\n";
-                    let _ = fs::write(boxxy_md, boxxy_content);
-                }
-            }
-
             let skills_dir = boxxyclaw_dir.join("skills");
             if !skills_dir.exists() {
                 let _ = fs::create_dir_all(&skills_dir);

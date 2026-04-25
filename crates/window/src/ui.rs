@@ -275,6 +275,23 @@ impl AppWindow {
             }
         });
 
+        // Drain any notification the agent produced before this subscriber
+        // existed (e.g. DB reset on schema upgrade). We wait for the agent to
+        // finish initializing, then deliver it through the normal toast path.
+        let tx_startup = tx.clone();
+        boxxy_ai_core::utils::runtime().spawn(async move {
+            let agent = boxxy_terminal::get_agent().await;
+            if let Some(msg) = agent.take_startup_notification() {
+                // Small delay so the window finishes painting before the toast appears.
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                let _ = tx_startup
+                    .send(AppInput::ShowToast(crate::state::ToastRequest::persistent(
+                        msg,
+                    )))
+                    .await;
+            }
+        });
+
         let mut settings_rx = boxxy_preferences::SETTINGS_EVENT_BUS.subscribe();
         let tx_settings = tx.clone();
         boxxy_ai_core::utils::runtime().spawn(async move {

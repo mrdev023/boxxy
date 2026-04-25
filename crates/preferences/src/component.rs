@@ -10,6 +10,7 @@ pub struct PreferencesComponent {
     stack: adw::ViewStack,
     nav_shortcuts: gtk::ListBoxRow,
     nav_about: gtk::ListBoxRow,
+    nav_characters: gtk::ListBoxRow,
     search_entry: gtk::SearchEntry,
     theme_row: adw::ActionRow,
     chat_width_spin: adw::SpinRow,
@@ -56,6 +57,8 @@ impl PreferencesComponent {
         nav_previews.set_widget_name("nav_previews");
         let nav_apis: gtk::ListBoxRow = builder.object("nav_apis").unwrap();
         nav_apis.set_widget_name("nav_apis");
+        let nav_characters: gtk::ListBoxRow = builder.object("nav_characters").unwrap();
+        nav_characters.set_widget_name("nav_characters");
         let nav_agents: gtk::ListBoxRow = builder.object("nav_agents").unwrap();
         nav_agents.set_widget_name("nav_agents");
         let nav_mcp: gtk::ListBoxRow = builder.object("nav_mcp").unwrap();
@@ -85,6 +88,10 @@ impl PreferencesComponent {
                     "nav_apis" => {
                         title_clone.set_title("APIs");
                         "apis"
+                    }
+                    "nav_characters" => {
+                        title_clone.set_title("Characters");
+                        "characters"
                     }
                     "nav_agents" => {
                         title_clone.set_title("Agents");
@@ -130,6 +137,7 @@ impl PreferencesComponent {
             crate::previews::setup_previews_page(&builder, settings_rc.clone(), cb_rc.clone());
         let apis_filter =
             crate::apis::setup_apis_page(&builder, settings_rc.clone(), cb_rc.clone());
+        let characters_filter = crate::characters::setup_characters_page(&builder);
         let agents_filter =
             crate::agents::setup_agents_page(&builder, settings_rc.clone(), cb_rc.clone());
         let mcp_filter = crate::mcp::setup_mcp_page(&builder, settings_rc.clone(), cb_rc.clone());
@@ -154,6 +162,7 @@ impl PreferencesComponent {
         let nav_appearance_clone = nav_appearance.clone();
         let nav_previews_clone = nav_previews.clone();
         let nav_apis_clone = nav_apis.clone();
+        let nav_characters_clone = nav_characters.clone();
         let nav_agents_clone = nav_agents.clone();
         let nav_mcp_clone = nav_mcp.clone();
         let nav_claw_ui_clone = nav_claw_ui.clone();
@@ -167,6 +176,7 @@ impl PreferencesComponent {
             nav_appearance_clone.set_visible(appearance_filter(&query));
             nav_previews_clone.set_visible(previews_filter(&query));
             nav_apis_clone.set_visible(apis_filter(&query));
+            nav_characters_clone.set_visible(characters_filter(&query));
             nav_agents_clone.set_visible(agents_filter(&query));
             nav_mcp_clone.set_visible(mcp_filter(&query));
             nav_claw_ui_clone.set_visible(claw_ui_filter(&query));
@@ -177,7 +187,7 @@ impl PreferencesComponent {
             if let Some(selected) = list_clone.selected_row()
                 && !selected.is_visible()
             {
-                for i in 0..9 {
+                for i in 0..20 {
                     if let Some(row) = list_clone.row_at_index(i)
                         && row.is_visible()
                     {
@@ -193,6 +203,7 @@ impl PreferencesComponent {
             stack,
             nav_shortcuts,
             nav_about,
+            nav_characters,
             search_entry,
             theme_row,
             chat_width_spin,
@@ -224,6 +235,8 @@ impl PreferencesComponent {
                 list_box.select_row(Some(&self.nav_shortcuts));
             } else if page_name == "about" {
                 list_box.select_row(Some(&self.nav_about));
+            } else if page_name == "characters" {
+                list_box.select_row(Some(&self.nav_characters));
             }
         }
         self.stack.set_visible_child_name(page_name);

@@ -49,6 +49,7 @@ impl CompletionProvider for SidebarCommandProvider {
                 display_name: cmd.to_string(),
                 replacement_text: cmd.to_string(),
                 icon_name: Some("boxxy-running-symbolic".to_string()),
+                icon_path: None,
                 secondary_text: None,
                 badge_text: None,
                 badge_color: None,

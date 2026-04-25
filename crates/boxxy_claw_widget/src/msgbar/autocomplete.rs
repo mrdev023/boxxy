@@ -11,23 +11,41 @@ impl CompletionProvider for AgentCompletionProvider {
         let query_lower = query.to_lowercase();
         let mut items = Vec::new();
 
-        let runtime = boxxy_ai_core::utils::runtime();
-        let agents = runtime.block_on(async {
-            boxxy_claw::registry::workspace::global_workspace()
-                .await
-                .get_all_agents()
-                .await
-        });
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
 
-        for agent in agents {
-            if agent.name.to_lowercase().contains(&query_lower) {
+        for info in registry.iter() {
+            if info.config.name.to_lowercase().contains(&query_lower)
+                || info
+                    .config
+                    .display_name
+                    .to_lowercase()
+                    .contains(&query_lower)
+            {
+                let badge_color = Some(info.config.color.clone());
+
+                let (secondary_text, icon_name) = match &info.status {
+                    boxxy_claw_protocol::characters::CharacterStatus::Available => {
+                        ("Available".to_string(), "boxxy-chat-symbolic".to_string())
+                    }
+                    boxxy_claw_protocol::characters::CharacterStatus::Active { .. } => {
+                        ("In Use".to_string(), "boxxy-chat-symbolic".to_string())
+                    }
+                };
+
+                let avatar_path = boxxy_claw_protocol::character_loader::get_characters_dir()
+                    .ok()
+                    .map(|d| d.join(&info.config.name).join("AVATAR.png"))
+                    .filter(|p| p.exists())
+                    .map(|p| p.to_string_lossy().into_owned());
+
                 items.push(CompletionItem {
-                    display_name: agent.name.clone(),
-                    replacement_text: format!("@{}", agent.name),
-                    icon_name: Some("boxxy-boxxyclaw-symbolic".to_string()),
-                    secondary_text: Some(agent.status),
+                    display_name: info.config.display_name.clone(),
+                    replacement_text: format!("@{} ", info.config.name),
+                    icon_name: Some(icon_name),
+                    icon_path: avatar_path,
+                    secondary_text: Some(secondary_text),
                     badge_text: None,
-                    badge_color: None,
+                    badge_color,
                 });
             }
         }
@@ -52,6 +70,7 @@ impl CompletionProvider for CommandCompletionProvider {
                 display_name: "Resume past session".to_string(),
                 replacement_text: "/resume".to_string(),
                 icon_name: None,
+                icon_path: None,
                 secondary_text: None,
                 badge_text: None,
                 badge_color: None,
@@ -131,6 +150,8 @@ impl CompletionProvider for ResumeCompletionProvider {
             }
         });
 
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
+
         for session in sessions {
             let mut title = session
                 .title
@@ -138,10 +159,10 @@ impl CompletionProvider for ResumeCompletionProvider {
             if title.trim().is_empty() {
                 title = "Untitled Session".to_string();
             }
-            let agent_name = session.agent_name.unwrap_or_else(|| "Unknown".to_string());
+            // character_name is the registry key; agent_name is the display name
+            let char_name = session.agent_name.clone().unwrap_or_default();
             let msg_count = session.message_count;
 
-            // Format age (very basic implementation)
             let age = if let Some(updated_at) = session.updated_at {
                 get_relative_age(&updated_at)
             } else {
@@ -150,22 +171,46 @@ impl CompletionProvider for ResumeCompletionProvider {
 
             if query_lower.is_empty()
                 || title.to_lowercase().contains(&query_lower)
-                || agent_name.to_lowercase().contains(&query_lower)
+                || char_name.to_lowercase().contains(&query_lower)
             {
+                // Look up the character in the registry for official color + display name.
+                // If not found, fallback to the first character in the registry as requested.
+                let char_info = registry
+                    .iter()
+                    .find(|c| c.config.name == char_name || c.config.display_name == char_name)
+                    .or_else(|| registry.first());
+
+                let badge_color = char_info
+                    .map(|c| c.config.color.clone())
+                    .unwrap_or_else(|| generate_color(&char_name));
+
+                let badge_text = char_info
+                    .map(|c| c.config.display_name.clone())
+                    .unwrap_or_else(|| char_name.clone());
+
                 let icon_name = if session.pinned {
                     "boxxy-view-pin-symbolic".to_string()
                 } else {
-                    "boxxy-chat-symbolic".to_string()
+                    "boxxy-boxxyclaw-symbolic".to_string()
                 };
 
-                let badge_color = generate_color(&agent_name);
+                // Prefer the character's avatar PNG over the generic themed icon.
+                let avatar_path = char_info
+                    .and_then(|info| {
+                        boxxy_claw_protocol::character_loader::get_characters_dir()
+                            .ok()
+                            .map(|d| d.join(&info.config.name).join("AVATAR.png"))
+                    })
+                    .filter(|p| p.exists())
+                    .map(|p| p.to_string_lossy().into_owned());
 
                 items.push(CompletionItem {
                     display_name: format!("{title} [{msg_count} msgs]"),
                     replacement_text: format!("/resume {}", session.id),
                     icon_name: Some(icon_name),
+                    icon_path: avatar_path,
                     secondary_text: Some(age),
-                    badge_text: Some(agent_name),
+                    badge_text: Some(badge_text),
                     badge_color: Some(badge_color),
                 });
             }

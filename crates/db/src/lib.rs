@@ -14,7 +14,7 @@ pub mod store;
 static DB: OnceCell<Db> = OnceCell::const_new();
 pub static DATABASE_WAS_RESET: AtomicBool = AtomicBool::new(false);
 
-const CURRENT_SCHEMA_VERSION: i32 = 9;
+const CURRENT_SCHEMA_VERSION: i32 = 13;
 
 #[derive(Clone)]
 pub struct Db {
@@ -86,41 +86,13 @@ impl Db {
         Ok(db.clone())
     }
 
-    async fn apply_migrations(&self, from_version: i32) -> Result<()> {
-        if from_version < 9 {
-            log::info!("Migrating database to version 9 (Dreaming support)...");
+    async fn apply_migrations(&self, _from_version: i32) -> Result<()> {
+        log::warn!("Preview phase: Wiping database to apply schema changes.");
+        sqlx::query("PRAGMA writable_schema = 1; DELETE FROM sqlite_master; PRAGMA writable_schema = 0; VACUUM;")
+            .execute(&self.pool)
+            .await?;
 
-            // Add last_dream_at to sessions
-            let column_exists: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='last_dream_at'",
-            )
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0)
-                > 0;
-
-            if !column_exists {
-                sqlx::query("ALTER TABLE sessions ADD COLUMN last_dream_at DATETIME")
-                    .execute(&self.pool)
-                    .await?;
-            }
-
-            // Add processing_state to interactions
-            let column_exists: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM pragma_table_info('interactions') WHERE name='processing_state'"
-            )
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0) > 0;
-
-            if !column_exists {
-                sqlx::query(
-                    "ALTER TABLE interactions ADD COLUMN processing_state TEXT DEFAULT 'raw'",
-                )
-                .execute(&self.pool)
-                .await?;
-            }
-        }
+        DATABASE_WAS_RESET.store(true, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 
@@ -141,6 +113,8 @@ impl Db {
                 history_json TEXT,
                 pending_tasks_json TEXT,
                 agent_name TEXT,
+                character_id TEXT NOT NULL DEFAULT '',
+                character_display_name TEXT NOT NULL DEFAULT '',
                 last_cwd TEXT,
                 title TEXT,
                 model_id TEXT,
@@ -149,6 +123,13 @@ impl Db {
                 total_tokens BIGINT DEFAULT 0,
                 last_dream_at DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS active_pane_assignments (
+                pane_id TEXT PRIMARY KEY,
+                character_id TEXT NOT NULL DEFAULT '',
+                session_id TEXT NOT NULL,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 

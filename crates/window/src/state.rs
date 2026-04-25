@@ -13,6 +13,29 @@ use std::rc::Rc;
 use crate::init::TerminalController;
 use crate::widgets::notification::Notification;
 
+/// Carries everything needed to display an in-app toast.
+/// `timeout_secs = 0` means the toast stays until the user dismisses it.
+#[derive(Debug, Clone)]
+pub struct ToastRequest {
+    pub message: String,
+    pub timeout_secs: u32,
+}
+
+impl ToastRequest {
+    pub fn ephemeral(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            timeout_secs: 3,
+        }
+    }
+    pub fn persistent(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            timeout_secs: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TabColor {
     Default,
@@ -122,7 +145,7 @@ pub enum AppInput {
         is_maximized: bool,
     },
     PushGlobalNotification(Notification),
-    ShowToast(String),
+    ShowToast(ToastRequest),
     DismissNotification(String),
     StartUpdateDownload(String, String, Option<String>), // (url, date, checksum_url)
     UpdateDownloaded(String),

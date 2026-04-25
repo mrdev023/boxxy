@@ -7,6 +7,7 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct ClawIndicator {
     container: gtk::Box,       // Detailed indicator (for drawer)
+    hbox: gtk::Box,            // Pill container
     badge_container: gtk::Box, // Small badge (always in terminal)
     badge_box: gtk::Box,
     badge_label: gtk::Label,
@@ -26,6 +27,8 @@ pub struct ClawIndicator {
     has_tasks: Rc<Cell<bool>>,
     badge_provider: gtk::CssProvider,
     pill_provider: gtk::CssProvider,
+    is_drawer_open: Rc<Cell<bool>>,
+    is_claw_active: Rc<Cell<bool>>,
 }
 
 impl ClawIndicator {
@@ -59,38 +62,38 @@ impl ClawIndicator {
                 padding: 0;
                 margin: 0;
             }
-            .indicator-pill {
-                border-radius: 9999px;
-                border: 1px solid rgba(255,255,255,0.12);
-                box-shadow: 0 4px 18px rgba(0,0,0,0.5);
-                padding: 4px 6px 4px 10px;
-            }
-            .indicator-pill button.flat {
-                border-radius: 9999px;
-                padding: 2px 6px;
-                min-height: 0;
-                min-width: 0;
-                color: white;
-            }
-            .indicator-pill button.flat:hover {
-                background-color: rgba(255,255,255,0.15);
-            }
-            .indicator-pill button.circular {
-                border-radius: 9999px;
-                padding: 2px;
-                min-height: 0;
-                min-width: 0;
-                opacity: 0.75;
-                color: white;
-            }
-            .indicator-pill button.circular:hover { opacity: 1.0; }
-            .indicator-pill image.accent  { color: rgba(255,255,255,0.90); }
-            .indicator-pill image.warning { color: #fff3cd; }
-            .indicator-pill image.success { color: #d4f7d4; }
             .status-label {
-                font-size: 0.82rem;
+                font-size: 0.9rem;
                 font-weight: bold;
-                color: white;
+                opacity: 0.8;
+            }
+            .claw-status-pill {
+                background-color: alpha(currentColor, 0.08);
+                border: none;
+                border-radius: 8px;
+                padding: 0 8px 0 12px;
+                min-height: 34px;
+            }
+            .claw-status-pill.destructive-action {
+                background-color: @error_bg_color;
+                color: @error_fg_color;
+            }
+            .claw-status-pill.destructive-action .status-label {
+                color: inherit;
+                opacity: 1.0;
+            }
+            .claw-status-pill.destructive-action image {
+                color: inherit;
+            }
+            .claw-status-pill .flat.circular {
+                min-width: 24px;
+                min-height: 24px;
+                padding: 0;
+                margin-left: 4px;
+            }
+            .claw-status-pill .status-label {
+                margin-left: 4px;
+                margin-right: 4px;
             }
         ";
         let base_provider = gtk::CssProvider::new();
@@ -122,8 +125,8 @@ impl ClawIndicator {
         revealer.set_transition_duration(280);
 
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        hbox.add_css_class("indicator-pill");
         hbox.set_valign(gtk::Align::Center);
+        hbox.add_css_class("claw-status-pill");
 
         let svg = gtk::Svg::from_resource("/dev/boxxy/BoxxyTerminal/icons/boxxy-spinner.gpa");
         svg.play();
@@ -170,6 +173,11 @@ impl ClawIndicator {
         hbox.append(&cancel_btn);
         revealer.set_child(Some(&hbox));
         container.append(&revealer);
+
+        let pill_provider = gtk::CssProvider::new();
+        #[allow(deprecated)]
+        hbox.style_context()
+            .add_provider(&pill_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
         let action_type = Rc::new(RefCell::new(0));
 
@@ -224,6 +232,7 @@ impl ClawIndicator {
 
         Self {
             container,
+            hbox,
             badge_container,
             badge_box,
             badge_label,
@@ -243,6 +252,8 @@ impl ClawIndicator {
             has_tasks: Rc::new(Cell::new(false)),
             badge_provider,
             pill_provider,
+            is_drawer_open: Rc::new(Cell::new(false)),
+            is_claw_active: Rc::new(Cell::new(false)),
         }
     }
 
@@ -254,6 +265,11 @@ impl ClawIndicator {
     /// Persistent badge for the Terminal Overlay
     pub fn badge(&self) -> &gtk::Box {
         &self.badge_container
+    }
+
+    pub fn set_drawer_open(&self, open: bool) {
+        self.is_drawer_open.set(open);
+        self.update_visibility();
     }
 
     pub fn set_callbacks<F1: Fn() + 'static, F2: Fn() + 'static, F3: Fn() + 'static>(
@@ -289,8 +305,16 @@ impl ClawIndicator {
     }
 
     pub fn set_visible(&self, visible: bool) {
-        self.badge_container.set_visible(visible);
-        self.container.set_visible(visible);
+        self.is_claw_active.set(visible);
+        self.update_visibility();
+    }
+
+    fn update_visibility(&self) {
+        let claw_active = self.is_claw_active.get();
+        let drawer_open = self.is_drawer_open.get();
+        self.badge_container
+            .set_visible(claw_active && !drawer_open);
+        self.container.set_visible(claw_active);
     }
 
     pub fn set_evicted(&self, evicted: bool) {
@@ -341,22 +365,27 @@ impl ClawIndicator {
         }
     }
 
-    pub fn show_thinking(&self) {
+    pub fn show_thinking(&self, agent_name: &str) {
         self.is_active.set(true);
         self.label.set_label("Drinking Water..");
         self.main_btn.set_visible(false);
         self.revealer.set_reveal_child(true);
-        // The small identity badge and the detailed pill live in
-        // different places (badge = pane overlay, pill = drawer
-        // header), so they don't crowd each other — the agent's name
-        // should stay visible while it works. Same for the other
-        // `show_*` states below.
         self.spinner.set_visible(true);
         self.icon.set_visible(false);
+        self.hbox.remove_css_class("destructive-action");
+
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
+        let color = registry
+            .iter()
+            .find(|c| c.config.name == agent_name || c.config.display_name == agent_name)
+            .map(|c| c.config.color.clone())
+            .unwrap_or_else(|| "rgba(38, 162, 105, 0.85)".to_string()); // Fallback green
 
         #[allow(deprecated)]
-        self.pill_provider
-            .load_from_string(".indicator-pill { background-color: rgba(38, 162, 105, 0.85); }");
+        self.pill_provider.load_from_string(&format!(
+            ".status-label {{ color: {}; }} .claw-spinner {{ color: {}; }}",
+            color, color
+        ));
     }
 
     pub fn show_diagnosis_ready(&self) {
@@ -369,10 +398,11 @@ impl ClawIndicator {
         self.spinner.set_visible(false);
         self.icon.set_visible(true);
         self.icon.set_icon_name(Some("boxxy-bug-symbolic"));
+        self.hbox.remove_css_class("destructive-action");
 
         #[allow(deprecated)]
         self.pill_provider
-            .load_from_string(".indicator-pill { background-color: rgba(53, 132, 228, 0.85); }");
+            .load_from_string(".status-label { color: rgba(255,255,255,0.8); }");
     }
 
     pub fn show_lazy_error(&self) {
@@ -386,15 +416,17 @@ impl ClawIndicator {
         self.icon.set_visible(true);
         self.icon
             .set_icon_name(Some("boxxy-dialog-warning-symbolic"));
+        self.hbox.add_css_class("destructive-action");
 
         #[allow(deprecated)]
         self.pill_provider
-            .load_from_string(".indicator-pill { background-color: rgba(165, 29, 45, 0.85); }");
+            .load_from_string(".status-label { color: inherit; }");
     }
 
     pub fn hide(&self) {
         self.is_active.set(false);
         self.revealer.set_reveal_child(false);
+        self.hbox.remove_css_class("destructive-action");
         // Only surface the small badge if we actually have an identity to
         // display — otherwise hiding the detailed pill shouldn't cause an
         // empty placeholder badge to appear.
@@ -410,41 +442,43 @@ impl ClawIndicator {
         }
     }
 
-    pub fn set_identity(&self, name: &str) {
+    pub fn set_identity(&self, name: &str, character_id: &str) {
         self.is_evicted.set(false);
         self.badge_box.remove_css_class("evicted");
-        self.badge_label.set_text(name);
 
         if name.is_empty() {
-            // Nothing to display yet — keep the pill retracted so we don't
-            // render an empty colored circle over the terminal.
+            self.badge_label.set_text("");
             self.badge_revealer.set_reveal_child(false);
             return;
         }
 
-        let color = self.generate_color(name);
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
 
-        #[allow(deprecated)]
-        self.badge_provider
-            .load_from_string(&format!(".badge-label {{ background-color: {}; }}", color));
+        // Lookup strategy: 1. ID, 2. Internal Name, 3. Display Name
+        let info = registry
+            .iter()
+            .find(|c| c.config.id == character_id)
+            .or_else(|| registry.iter().find(|c| c.config.name == name))
+            .or_else(|| registry.iter().find(|c| c.config.display_name == name));
+
+        if let Some(info) = info {
+            self.badge_label.set_text(&info.config.display_name);
+
+            #[allow(deprecated)]
+            self.badge_provider.load_from_string(&format!(
+                ".badge-label {{ background-color: {}; }}",
+                info.config.color
+            ));
+        } else {
+            self.badge_label.set_text(name);
+
+            #[allow(deprecated)]
+            self.badge_provider
+                .load_from_string(".badge-label { background-color: #6c7086; }");
+        }
 
         // First real identity — reveal the badge.
         self.badge_revealer.set_reveal_child(true);
-    }
-
-    fn generate_color(&self, name: &str) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        name.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        let r = (hash & 0xFF) as u8 % 150 + 50;
-        let g = ((hash >> 8) & 0xFF) as u8 % 150 + 50;
-        let b = ((hash >> 16) & 0xFF) as u8 % 150 + 50;
-
-        format!("rgb({}, {}, {})", r, g, b)
     }
 
     pub fn update_settings(&self) {

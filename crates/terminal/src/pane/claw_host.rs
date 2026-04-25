@@ -22,6 +22,7 @@ pub struct PaneClawHost {
     pub id: String,
     pub inner_weak: Weak<RefCell<PaneInner>>,
     pub claw_sender: async_channel::Sender<ClawMessage>,
+    pub event_sender: async_channel::Sender<ClawEngineEvent>,
     pub callback: Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
 }
 
@@ -177,5 +178,44 @@ impl ClawHost for PaneClawHost {
 
     fn forward_event(&self, event: ClawEngineEvent) {
         (self.callback)(PaneOutput::ClawEvent(self.id.clone(), event));
+    }
+
+    fn request_character(&self, character_id: String) {
+        let Some(inner_rc) = self.inner_weak.upgrade() else {
+            return;
+        };
+
+        let id = self.id.clone();
+        let event_sender = self.event_sender.clone();
+
+        gtk::glib::spawn_future_local(async move {
+            let agent = crate::get_agent().await;
+
+            if let Ok((session_id, rx_events)) = agent
+                .create_claw_session(id.clone(), character_id.clone())
+                .await
+            {
+                if session_id.is_empty() {
+                    return; // Exclusivity check failed
+                }
+
+                if let Some(inner) = inner_rc.try_borrow_mut().ok() {
+                    let session_arc = inner.session_id.clone();
+                    tokio::spawn(async move {
+                        let mut lock = session_arc.lock().await;
+                        *lock = Some(session_id.clone());
+                    });
+                }
+
+                let tx = event_sender.clone();
+                tokio::spawn(async move {
+                    while let Ok(event) = rx_events.recv().await {
+                        let _ = tx.send(event).await;
+                    }
+                });
+            } else {
+                log::warn!("Failed to request character id={}", character_id);
+            }
+        });
     }
 }

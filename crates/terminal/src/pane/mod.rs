@@ -101,6 +101,21 @@ pub struct TerminalPaneComponent {
 
 impl Drop for PaneInner {
     fn drop(&mut self) {
+        // Release the character assignment in the daemon so the character
+        // becomes available for other panes immediately after the tab closes.
+        // TODO: when PTY persistence is stable, mirror it for claw sessions —
+        // if `pty_persistence` is on, keep the session alive in the daemon
+        // (skip end_claw_session) so the conversation can be resumed after the
+        // UI restarts, the same way the shell process survives detach.
+        let session_arc = self.session_id.clone();
+        glib::spawn_future_local(async move {
+            let sid = session_arc.lock().await.clone();
+            if let Some(session_id) = sid {
+                let agent = crate::get_agent().await;
+                let _ = agent.end_claw_session(session_id).await;
+            }
+        });
+
         let Some(pid) = self.pid else { return };
 
         // Read the live setting here rather than snapshotting it at
@@ -160,6 +175,7 @@ pub(super) struct PaneInner {
     pub(super) n_columns: i64,
     pub(super) n_rows: i64,
     pub(super) pid: Option<u32>,
+    pub session_id: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
     pub(super) claw_indicator: Option<ClawIndicator>,
     pub(super) msg_bar: Rc<MsgBarComponent>,
     pub(super) callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static>,
@@ -172,6 +188,29 @@ impl std::fmt::Debug for TerminalPaneComponent {
 }
 
 impl TerminalPaneComponent {
+    /// Explicitly release the Claw session in the daemon. Called from the
+    /// tab-close path where we have a synchronous handle on the pane.
+    /// Do NOT rely solely on PaneInner::drop for this — GTK closures hold
+    /// Rc clones of inner, so drop may fire very late or not at all.
+    pub fn end_session(&self) {
+        let session_arc = self.inner.borrow().session_id.clone();
+        glib::spawn_future_local(async move {
+            let sid = session_arc.lock().await.clone();
+            if let Some(session_id) = sid {
+                let agent = crate::get_agent().await;
+                let _ = agent.end_claw_session(session_id).await;
+            }
+        });
+    }
+
+    pub async fn end_session_sync(&self) {
+        let sid = self.inner.borrow().session_id.lock().await.clone();
+        if let Some(session_id) = sid {
+            let agent = crate::get_agent().await;
+            let _ = agent.end_claw_session(session_id).await;
+        }
+    }
+
     pub fn new<F: Fn(PaneOutput) + Send + Sync + 'static>(init: PaneInit, callback: F) -> Self {
         let settings = boxxy_preferences::Settings::load();
         let callback: std::sync::Arc<dyn Fn(PaneOutput) + Send + Sync + 'static> =
@@ -197,37 +236,43 @@ impl TerminalPaneComponent {
         let (claw_sender, claw_rx_from_agent) = async_channel::unbounded();
         let (tx_to_agent, rx_from_ui) =
             async_channel::unbounded::<boxxy_claw_protocol::ClawMessage>();
-        let session_id_rc = Rc::new(RefCell::new(None));
-        let session_id_for_init = session_id_rc.clone();
-        let id_for_init = id.clone();
-        let claw_sender_clone = claw_sender.clone();
+        let session_id_arc: std::sync::Arc<tokio::sync::Mutex<Option<String>>> =
+            std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let session_id_for_init = session_id_arc.clone();
 
+        // Expose it to inner so claw_host can update it
+        let session_id_for_inner = session_id_arc.clone();
+        let claw_sender_clone = claw_sender.clone();
+        // Clone for the first-message path (event forwarding from new session)
+        let event_sender_for_first_msg = claw_sender_clone.clone();
+
+        // Shared pre-selection state: the overlay populates this when the user
+        // clicks a character button; the msgbar reads it when creating the
+        // session on the first outgoing message.
+        let pending_character: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+        let pending_char_for_msgbar = pending_character.clone();
+        let pending_char_for_overlay = pending_character.clone();
+
+        // Do not auto-spawn the Claw session. The user will select a character via the Overlay first.
+        // The overlay will start in "Selection Mode" because there is no identity yet.
         gtk::glib::spawn_future_local(async move {
             let agent = crate::get_agent().await;
-            if let Ok((session_id, rx_events)) = agent.create_claw_session(id_for_init).await {
-                session_id_for_init.replace(Some(session_id.clone()));
 
-                // Forward events from agent to our internal rx
-                let tx = claw_sender_clone.clone();
-                tokio::spawn(async move {
-                    let mut rx_events = rx_events;
-                    while let Ok(event) = rx_events.recv().await {
-                        let _ = tx.send(event).await;
-                    }
-                });
+            // Forward messages from UI to agent. Wait until session_id is populated.
+            let mut rx_from_ui = rx_from_ui;
+            let session_id_ref = session_id_for_init.clone();
 
-                // Forward messages from UI to agent
-                let agent_clone = agent.clone();
-                let session_id_clone = session_id.clone();
-                let mut rx_from_ui = rx_from_ui;
-                tokio::spawn(async move {
-                    while let Ok(msg) = rx_from_ui.recv().await {
-                        let _ = agent_clone
-                            .post_claw_message(session_id_clone.clone(), msg)
-                            .await;
+            tokio::spawn(async move {
+                while let Ok(msg) = rx_from_ui.recv().await {
+                    let sid: Option<String> = {
+                        let lock = session_id_ref.lock().await;
+                        lock.clone()
+                    };
+                    if let Some(session_id) = sid {
+                        let _ = agent.post_claw_message(session_id, msg).await;
                     }
-                });
-            }
+                }
+            });
         });
 
         let (claw_message_list, claw_list_store) = boxxy_claw_ui::create_claw_message_list();
@@ -240,8 +285,6 @@ impl TerminalPaneComponent {
         let is_web_search = Rc::new(Cell::new(settings.web_search_on_by_default));
         let agent_name = Rc::new(RefCell::new(String::new()));
         let claw_indicator = ClawIndicator::new();
-        // The persistent badge lives in the main terminal overlay.
-        widget.add_overlay(claw_indicator.badge());
         let total_tokens = Rc::new(Cell::new(0));
 
         let (msg_bar, inner) = {
@@ -314,18 +357,93 @@ impl TerminalPaneComponent {
                                 is_pinned_for_msg.get(),
                                 is_web_search_for_msg.get(),
                             );
-
                             cb_msg(PaneOutput::ClawStateChanged(
                                 id_msg.clone(),
                                 true,
                                 matches!(*session_status_for_msg.borrow(), AgentStatus::Sleep),
                             ));
-                            let tx = tx_msg.clone();
+
+                            // Lazily create the session on the first outgoing message,
+                            // using whichever character the user pre-selected in the
+                            // picker (defaulting to the first registry entry).
+                            let pending = pending_char_for_msgbar.borrow().clone();
+                            let pane_id = id_msg.clone();
+                            let session_id_ref = inner_arc.borrow().session_id.clone();
+                            let event_tx = event_sender_for_first_msg.clone();
+                            let cwd = inner_arc.borrow().working_dir.clone().unwrap_or_default();
+
                             glib::spawn_future_local(async move {
-                                let _ = tx.send(ClawMessage::Initialize).await;
+                                let snapshot =
+                                    pane.get_text_snapshot(100, 0).await.unwrap_or_default();
+                                let agent = crate::get_agent().await;
+
+                                let char_id = if pending.is_empty() {
+                                    boxxy_claw_protocol::characters::CHARACTER_CACHE
+                                        .load()
+                                        .first()
+                                        .map(|c| c.config.id.clone())
+                                        .unwrap_or_default()
+                                } else {
+                                    pending
+                                };
+
+                                if let Ok((session_id, rx_events)) =
+                                    agent.create_claw_session(pane_id, char_id).await
+                                {
+                                    if session_id.is_empty() {
+                                        return;
+                                    }
+                                    *session_id_ref.lock().await = Some(session_id.clone());
+
+                                    tokio::spawn(async move {
+                                        while let Ok(event) = rx_events.recv().await {
+                                            let _ = event_tx.send(event).await;
+                                        }
+                                    });
+
+                                    let first_msg = if query.starts_with("/resume ") {
+                                        let resume_id =
+                                            query["/resume ".len()..].trim().to_string();
+                                        if !resume_id.is_empty() {
+                                            ClawMessage::ResumeSession {
+                                                session_id: resume_id,
+                                            }
+                                        } else {
+                                            ClawMessage::ClawQuery {
+                                                query,
+                                                snapshot,
+                                                cwd,
+                                                image_attachments: images,
+                                            }
+                                        }
+                                    } else {
+                                        ClawMessage::ClawQuery {
+                                            query,
+                                            snapshot,
+                                            cwd,
+                                            image_attachments: images,
+                                        }
+                                    };
+
+                                    // New conversations need an explicit Initialize so the
+                                    // session announces identity and emits the model-info
+                                    // SystemMessage. ResumeSession has its own init path.
+                                    if matches!(first_msg, ClawMessage::ClawQuery { .. }) {
+                                        let _ = agent
+                                            .post_claw_message(
+                                                session_id.clone(),
+                                                ClawMessage::Initialize,
+                                            )
+                                            .await;
+                                    }
+                                    let _ = agent.post_claw_message(session_id, first_msg).await;
+                                }
                             });
+
+                            return;
                         }
 
+                        // Session already exists — send through the established pump.
                         let tx = tx_msg.clone();
                         let cwd = inner_arc.borrow().working_dir.clone().unwrap_or_default();
 
@@ -340,7 +458,6 @@ impl TerminalPaneComponent {
                                         return;
                                     }
                                 }
-
                                 let _ = tx
                                     .send(ClawMessage::ClawQuery {
                                         query,
@@ -497,6 +614,7 @@ impl TerminalPaneComponent {
                 n_columns: 0,
                 n_rows: 0,
                 pid: None,
+                session_id: session_id_for_inner,
                 claw_indicator: None,
                 msg_bar: msg_bar.clone(),
                 callback: callback.clone(),
@@ -574,6 +692,7 @@ impl TerminalPaneComponent {
             &inner,
             id.clone(),
             claw_sender.clone(),
+            claw_sender_clone,
             claw_rx,
             claw_list_store,
             msg_bar.clone(),
@@ -585,7 +704,11 @@ impl TerminalPaneComponent {
             session_status.clone(),
             agent_name.clone(),
             &claw_indicator,
+            pending_char_for_overlay,
         );
+
+        // Badge must be added AFTER the drawer overlay so it renders on top.
+        widget.add_overlay(claw_indicator.badge());
 
         // Apply the initial overlay-history setting so the drawer renders
         // in the right mode before any user interaction.
@@ -719,14 +842,6 @@ impl TerminalPaneComponent {
     pub fn show_diagnosis_ready(&self, diagnosis: String, proposal: crate::TerminalProposal) {
         *self.pending_sleep_diagnosis.borrow_mut() = Some((diagnosis, proposal));
         self.claw_indicator.show_diagnosis_ready();
-    }
-
-    pub fn set_agent_thinking(&self, thinking: bool) {
-        if thinking {
-            self.claw_indicator.show_thinking();
-        } else {
-            self.claw_indicator.hide();
-        }
     }
 
     pub fn terminal(&self) -> TerminalWidget {

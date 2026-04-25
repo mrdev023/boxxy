@@ -8,6 +8,7 @@ name = "boxxy-claw-widget"
 
 [dependencies]
 gtk4.workspace = true
+libadwaita.workspace = true
 async-channel.workspace = true
 glib.workspace = true
 log.workspace = true

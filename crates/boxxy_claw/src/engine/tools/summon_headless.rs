@@ -68,7 +68,7 @@ impl Tool for SummonHeadlessWorkerTool {
 
         // Create and spawn the headless session
         let (session, tx_child) =
-            ClawSession::new_headless(my_pane_id, my_session_id, args.profile);
+            ClawSession::new_headless(my_pane_id, my_session_id, &my_name, args.profile);
 
         let child_name = session.name.clone();
         session.start(self.env.clone());

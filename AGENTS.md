@@ -101,6 +101,8 @@ Provides a structured library of high-level tools for Boxxy agents, completely d
 ### 9. `boxxy-preferences` (Library Crate)
 Settings management using an `AdwNavigationSplitView` architecture. UI is defined in `resources/ui/preferences.ui` and supports real-time search filtering. Implements the **"Master Switch vs Local Toggle"** design pattern (e.g., for Web Search), separating global capability authorization from per-pane activation.
 
+The **Characters page** (`src/characters/mod.rs`) lists all installed characters (avatar, display name, duties, color swatch) loaded directly from disk via `character_loader::load_characters()`. It provides two management actions: "Open Characters Folder" (launches the file manager at the characters dir) and "Reset to Defaults" (double-confirmation destructive action that calls `character_loader::reset_to_defaults()`). Changes to character files only take effect after restarting the `boxxy-agent` daemon, since the registry is seeded at daemon startup. The color swatch is a `gtk::Button` rendered with a per-instance CSS class (`pref-color-dot-{n}`) using `background-image: none` to suppress libadwaita gradient overrides.
+
 ### 10. `boxxy-claw-widget` (Library Crate)
 The reusable Claw drawer UI. Owns every widget the user sees when interacting with an agent in a pane: the slide-down overlay drawer, the floating `ClawIndicator` badge, the merged input bar (formerly the standalone `boxxy-msgbar` crate), the neutral `Proposal` enum, and the event-dispatch loop that turns `ClawEngineEvent`s into widget mutations.
 
@@ -108,7 +110,7 @@ The crate is surface-agnostic: it talks to its host through the `ClawHost` trait
 
 Key modules:
 - `overlay.rs` — the drawer (`TerminalOverlay`). Loaded from `resources/ui/claw_overlay.ui`. Hosts the merged msgbar inside its bottom area; diagnosis / proposal / bookmark forms above; optional scrollable conversation history (toggled by `maintain_overlay_history` preference).
-- `claw_indicator.rs` — the floating pill that shows the agent's identity + status. The colored badge only surfaces once a real agent name is known — no placeholder "CLAW" text over empty panes.
+- `claw_indicator.rs` — the floating pill that shows the agent's identity + status. The colored badge only surfaces once a real agent name is known — no placeholder "CLAW" text over empty panes. On `set_identity`, it looks up the character by UUID (falling back to internal name, then display name) in `CHARACTER_CACHE` and applies the character's CSS hex color to the badge. Unknown characters (e.g., a session resumed after the original character was deleted or replaced) migrate to the first available character in the registry rather than showing a permanent grey fallback.
 - `msgbar/` — the input bar that lives inside the drawer. Carries attachments, autocomplete (`@agent`, `/resume`), history nav, Ctrl+V paste, and the four status toggles (claw/sleep/pin/web-search). The send button is a sibling widget, not a child of the bar, so the bar can render as a single rounded field with the send icon floating alongside.
 - `dispatch.rs` — `spawn_dispatch(rx, host, overlay, indicator, msgbar, sidebar_store, …)`. The single event loop for a pane; every branch is either a widget mutation or a host-trait call.
 - `claw_host.rs` — the `ClawHost` trait (the decoupling boundary).
@@ -131,6 +133,10 @@ Data-driven model configuration UI. Uses a registry pattern to dynamically build
 
 ### 12. `boxxy-claw-protocol` (Library Crate)
 Pure-data DTO layer shared between the UI and the daemon across the D-Bus boundary. Defines `ClawMessage`, `ClawEngineEvent`, `PersistentClawRow`, `AgentStatus`, `ScheduledTask`, `UsageWrapper`, and the `ClawEnvironment` trait. Contains no GTK types, no reasoning-engine internals — every field serialises cleanly via serde. Both `boxxy-claw` and `boxxy-claw-ui` depend on it; neither depends on the other.
+
+Also owns the **Character system** types and loader:
+- `characters.rs` — `CharacterConfig` (id, name, display_name, color, duties, personality), `CharacterInfo` (config + status + has_avatar), `CharacterStatus` (Available / Active { pane_id }), `OrphanGroup` (for sessions whose character was deleted). Exposes a global lock-free `CHARACTER_CACHE: ArcSwap<Vec<CharacterInfo>>` and a `CHARACTER_CACHE_VERSION: AtomicU64` counter that UI components poll to detect registry changes without subscribing to D-Bus signals directly.
+- `character_loader.rs` — disk I/O for the character registry. Characters live at `~/.config/boxxy-terminal/boxxyclaw/characters/<slug>/CHARACTER.toml` (+ optional `AVATAR.png`). Key functions: `load_characters()` (reads all dirs, auto-generates missing UUIDs, deduplicates collisions, sorts by `characters.json` order), `ensure_default_character()` (extracts bundled defaults on first run), `reset_to_defaults()` (wipes all dirs and re-extracts). The three bundled defaults (niko-una, levi-kujo, kuro) are embedded at compile time via `include_bytes!` from `resources/characters/`.
 
 ### 13. `boxxy-claw-ui` (Library Crate)
 All GTK widgets for the Claw sidebar page (right-hand `ViewStack` tab). Provides `ClawSidebarComponent` (the outer shell: status page, token counter, pending-tasks drawer, "Clear" button) and `create_claw_message_list` (the per-pane virtual list of diagnosis / suggestion / tool-call / process-list / user-message rows). Rows are recycled via `boxxy_core_widgets::ObjectExtSafe` so long histories stay cheap. Strictly display-only — the `add_*_approval_row` helpers format proposals as Diagnosis rows and deliberately ignore their callback args.

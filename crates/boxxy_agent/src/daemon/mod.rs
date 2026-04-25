@@ -5,11 +5,12 @@ pub mod priority;
 pub mod singleton;
 
 use anyhow::Result;
-use log::info;
+use log::{info, warn};
+use notify::{EventKind, RecursiveMode, Watcher};
 use std::sync::Arc;
 use tokio::sync::watch;
 
-use crate::claw::AgentRegistry;
+use crate::claw::CharacterRegistry;
 use crate::core::state::AgentState;
 
 /// The single owner of every subsystem in the daemon.
@@ -17,7 +18,7 @@ pub struct DaemonCore {
     pub state: AgentState,
     /// Persistent `pane_id → (agent_name, session_id)` mapping. Makes
     /// agent identity survive UI restarts.
-    pub registry: Arc<AgentRegistry>,
+    pub registry: Arc<CharacterRegistry>,
     /// "On battery / on AC" watcher. Constructed early and passed into
     /// subsystems; UPower updates flow through the same backing channel
     /// regardless of when clones were made.
@@ -27,12 +28,28 @@ pub struct DaemonCore {
     /// What the maintenance subsystem is doing right now, readable via
     /// `MaintenanceSubsystem::get_maintenance_status()`.
     pub dream_status: dreaming::DreamStatusCell,
+    pub db: boxxy_db::Db,
 }
 
 impl DaemonCore {
     pub async fn run() -> Result<()> {
         let state = AgentState::new();
-        let registry = Arc::new(AgentRegistry::load_or_default());
+        let db = boxxy_db::Db::new().await.unwrap_or_else(|e| {
+            panic!("Fatal error: failed to initialize database: {}", e);
+        });
+
+        // The daemon is the single source of truth. When it starts from scratch,
+        // there are no UI panes connected yet, which means no panes are alive in memory.
+        // Therefore, ALL assignments currently in the database are from a previous
+        // session/crash and are stale. We must clear them so characters become Available.
+        let _ = sqlx::query("DELETE FROM active_pane_assignments")
+            .execute(db.pool())
+            .await;
+
+        let registry = Arc::new(CharacterRegistry::load_or_default());
+        if let Err(e) = registry.load_assignments_from_db(&db).await {
+            log::warn!("Failed to load character assignments from DB: {}", e);
+        }
 
         // Build the watchers up front so every subsystem that later
         // clones them sees live updates as soon as the owning task
@@ -44,15 +61,72 @@ impl DaemonCore {
 
         let core = Arc::new(Self {
             state,
-            registry,
+            registry: registry.clone(),
             power: power.clone(),
             ghost: ghost.clone(),
             dream_status: dream_status.clone(),
+            db: db.clone(),
         });
 
         // Start D-Bus services on a fresh session-bus connection.
         let conn = crate::ipc::start_services(core.clone(), client_tx).await?;
         info!("D-Bus services registered");
+
+        // Watch the characters directory for changes
+        let registry_for_watcher = registry.clone();
+        let conn_for_watcher = conn.clone();
+        tokio::spawn(async move {
+            let (tx_notify, mut rx_notify) = tokio::sync::mpsc::channel(10);
+
+            let watcher_res =
+                notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                    if let Ok(event) = res {
+                        // Filter out access events to avoid thrashing
+                        if !matches!(event.kind, EventKind::Access(_)) {
+                            let _ = tx_notify.try_send(());
+                        }
+                    }
+                });
+
+            if let Ok(mut watcher) = watcher_res {
+                if let Ok(char_dir) = boxxy_claw_protocol::character_loader::get_characters_dir() {
+                    let _ = std::fs::create_dir_all(&char_dir);
+                    if let Err(e) = watcher.watch(&char_dir, RecursiveMode::Recursive) {
+                        warn!("character watcher: failed to watch {:?}: {}", char_dir, e);
+                    } else {
+                        info!("character watcher: watching {:?}", char_dir);
+
+                        // We debounce slightly to handle bulk edits or git pull
+                        while rx_notify.recv().await.is_some() {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            // Drain any queued events
+                            while rx_notify.try_recv().is_ok() {}
+
+                            info!("character watcher: changes detected, reloading catalog...");
+                            registry_for_watcher.reload_catalog().await;
+
+                            // Broadcast the update
+                            let updated_registry = registry_for_watcher.get_full_registry().await;
+                            if let Ok(registry_json) = serde_json::to_string(&updated_registry) {
+                                if let Ok(emitter) = zbus::object_server::SignalEmitter::new(
+                                    &conn_for_watcher,
+                                    "/dev/boxxy/Agent",
+                                ) {
+                                    // Use the generated macro method from the Agent trait
+                                    let _ = crate::ipc::AgentInterface::character_registry_updated(
+                                        &emitter,
+                                        registry_json,
+                                    )
+                                    .await;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                warn!("character watcher: failed to initialize notify");
+            }
+        });
 
         // Wire up UPower now that we have a connection. Failures are
         // logged and non-fatal — `power` stays at the AC default.

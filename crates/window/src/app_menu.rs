@@ -98,7 +98,10 @@ impl AppMenuComponent {
 
         self.popover.set_menu_model(Some(&menu_model));
         self.popover.set_pointing_to(Some(&rect));
-        self.popover.popup();
+        let popover = self.popover.clone();
+        gtk4::glib::idle_add_local_once(move || {
+            popover.popup();
+        });
     }
 
     pub fn hide(&self) {

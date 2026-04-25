@@ -533,9 +533,10 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "petname",
+ "notify",
  "serde",
  "serde_json",
+ "sqlx",
  "sysinfo",
  "tempfile",
  "tokio",
@@ -627,7 +628,6 @@ dependencies = [
  "home",
  "log",
  "notify",
- "petname",
  "rig-core",
  "serde",
  "serde_json",
@@ -643,13 +643,17 @@ name = "boxxy-claw-protocol"
 version = "0.0.34"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "async-trait",
  "chrono",
+ "directories",
+ "lazy_static",
  "log",
  "rig-core",
  "serde",
  "serde_json",
  "tokio",
+ "toml 1.1.2+spec-1.1.0",
  "uuid",
  "zvariant",
 ]
@@ -690,6 +694,7 @@ dependencies = [
  "glib",
  "gtk4",
  "lazy_static",
+ "libadwaita",
  "log",
  "serde",
  "serde_json",
@@ -730,6 +735,7 @@ dependencies = [
  "async-channel",
  "glib",
  "gtk4",
+ "libadwaita",
 ]
 
 [[package]]
@@ -787,6 +793,7 @@ name = "boxxy-preferences"
 version = "0.0.34"
 dependencies = [
  "anyhow",
+ "boxxy-claw-protocol",
  "boxxy-keybindings",
  "boxxy-mcp",
  "boxxy-model-selection",
@@ -3880,20 +3887,6 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
-
-[[package]]
-name = "petname"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cd31dcfdbbd7431a807ef4df6edd6473228e94d5c805e8cf671227a21bad068"
-dependencies = [
- "anyhow",
- "clap",
- "itertools",
- "proc-macro2",
- "quote",
- "rand 0.8.5",
-]
 
 [[package]]
 name = "pin-project"

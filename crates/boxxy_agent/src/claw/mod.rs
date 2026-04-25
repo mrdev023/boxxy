@@ -9,7 +9,7 @@ use zbus::interface;
 pub mod notifier;
 pub mod registry;
 
-pub use registry::{AgentIdentity, AgentRegistry};
+pub use registry::{CharacterAssignment, CharacterRegistry};
 
 pub struct ClawSubsystem {
     state: AgentState,

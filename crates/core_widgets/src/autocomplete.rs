@@ -1,5 +1,6 @@
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -8,6 +9,8 @@ pub struct CompletionItem {
     pub display_name: String,
     pub replacement_text: String,
     pub icon_name: Option<String>,
+    /// File-system path to an image (PNG/JPEG). Takes priority over `icon_name`.
+    pub icon_path: Option<String>,
     pub secondary_text: Option<String>,
     pub badge_text: Option<String>,
     pub badge_color: Option<String>,
@@ -191,8 +194,18 @@ impl AutocompleteController {
             hbox.set_margin_start(6);
             hbox.set_margin_end(6);
 
-            if let Some(icon) = item.icon_name {
-                let img = gtk::Image::from_icon_name(&icon);
+            if let Some(path) = item.icon_path.as_deref().filter(|p| !p.is_empty()) {
+                if let Ok(texture) = gtk::gdk::Texture::from_filename(path) {
+                    let avatar = adw::Avatar::new(32, None, false);
+                    avatar.set_custom_image(Some(&texture));
+                    hbox.append(&avatar);
+                } else if let Some(icon) = item.icon_name.as_deref() {
+                    let img = gtk::Image::from_icon_name(icon);
+                    img.add_css_class("dim-label");
+                    hbox.append(&img);
+                }
+            } else if let Some(icon) = item.icon_name.as_deref() {
+                let img = gtk::Image::from_icon_name(icon);
                 img.add_css_class("dim-label");
                 hbox.append(&img);
             }

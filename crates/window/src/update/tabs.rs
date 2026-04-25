@@ -212,6 +212,7 @@ pub fn close_tab_request(inner: &mut AppWindowInner, key: usize) {
         .iter()
         .position(|c| c.controller.widget().as_ptr() as usize == key)
     {
+        inner.tabs[pos].controller.on_close();
         inner.tabs.remove(pos);
     }
     inner.tab_view.close_page_finish(&page, true);

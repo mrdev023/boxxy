@@ -368,9 +368,9 @@ pub fn update(inner_ref: &Rc<RefCell<AppWindowInner>>, input: AppInput) {
         } => {
             window_state::save_window_state(&mut inner, width, height, is_maximized);
         }
-        AppInput::ShowToast(msg) => {
-            let toast = adw::Toast::new(&msg);
-            toast.set_timeout(3);
+        AppInput::ShowToast(req) => {
+            let toast = adw::Toast::new(&req.message);
+            toast.set_timeout(req.timeout_secs);
             inner.toast_overlay.add_toast(toast);
         }
         AppInput::PushGlobalNotification(ready) => {

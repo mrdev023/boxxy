@@ -233,6 +233,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
         // Reset per-row state that specific variants may mutate.
         icon.set_visible(true);
         pane_lbl.set_visible(true);
+        title.set_visible(true);
         title.remove_css_class("accent");
         icon.remove_css_class("accent");
         icon.remove_css_class("warning");
@@ -260,8 +261,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
             PersistentClawRow::SystemMessage { content, .. } => {
                 icon.set_visible(false);
                 pane_lbl.set_visible(false);
-                title.set_label("Models");
-                title.add_css_class("accent");
+                title.set_visible(false);
                 vbox.add_css_class("system-message");
                 vbox.add_css_class("claw-row-system");
 
@@ -286,8 +286,8 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
             }
             PersistentClawRow::User { content, .. } => {
                 icon.set_icon_name(Some("boxxy-comic-bubble-symbolic"));
-                title.set_label("User Message");
-                pane_lbl.set_label("User");
+                title.set_label("You");
+                pane_lbl.set_visible(false);
                 vbox.add_css_class("claw-row-user");
 
                 viewer.set_content(&content);

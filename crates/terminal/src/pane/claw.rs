@@ -14,6 +14,7 @@ pub(super) fn setup_claw(
     inner: &Rc<RefCell<PaneInner>>,
     id: String,
     claw_sender: async_channel::Sender<ClawMessage>,
+    claw_sender_for_host: async_channel::Sender<ClawEngineEvent>,
     claw_rx: async_channel::Receiver<ClawEngineEvent>,
     claw_list_store: gtk::gio::ListStore,
     msg_bar: Rc<MsgBarComponent>,
@@ -25,6 +26,7 @@ pub(super) fn setup_claw(
     session_status: Rc<RefCell<AgentStatus>>,
     agent_name: Rc<RefCell<String>>,
     claw_indicator: &ClawIndicator,
+    pending_character: std::rc::Rc<std::cell::RefCell<String>>,
 ) -> (TerminalOverlay, PendingDiagnosis) {
     let pending_proactive_diagnosis =
         Rc::new(RefCell::new(None::<(String, crate::TerminalProposal)>));
@@ -76,6 +78,7 @@ pub(super) fn setup_claw(
         id: id.clone(),
         inner_weak: Rc::downgrade(inner),
         claw_sender: claw_sender.clone(),
+        event_sender: claw_sender_for_host,
         callback: callback.clone(),
     });
 
@@ -83,9 +86,20 @@ pub(super) fn setup_claw(
         claw_indicator.widget().upcast_ref(),
         msg_bar.clone(),
         host.clone(),
+        pending_character,
     );
     *claw_popover_self_ref.borrow_mut() = Some(claw_popover.clone());
     widget.add_overlay(claw_popover.widget());
+
+    // Hide the small top-right badge while the drawer is open — the indicator
+    // pill inside the drawer already shows the same info. Show it again when
+    // the drawer closes so it remains visible in the terminal background.
+    let indicator_for_notify = claw_indicator.clone();
+    claw_popover
+        .widget()
+        .connect_reveal_child_notify(move |rev| {
+            indicator_for_notify.set_drawer_open(rev.reveals_child());
+        });
 
     // Indicator callbacks: on-cancel aborts the current agent turn and closes the drawer;
     // on-lazy-click asks the agent for a fresh diagnosis; on-proactive-click drains the
@@ -98,7 +112,6 @@ pub(super) fn setup_claw(
     claw_indicator.set_callbacks(
         move || {
             host_cancel.send_claw(ClawMessage::Abort);
-            popover_cancel.hide();
         },
         move || {
             host_lazy.send_claw(ClawMessage::RequestLazyDiagnosis {});

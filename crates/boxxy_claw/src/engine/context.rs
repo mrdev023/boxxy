@@ -2,24 +2,24 @@ use crate::utils::load_prompt_fallback;
 use log::debug;
 
 /// Scans the config directory for characters to build the session context.
-pub fn load_session_context() -> String {
+pub fn load_session_context(character_id: &str) -> String {
     let mut context = String::new();
+
+    if let Ok(characters) = boxxy_claw_protocol::character_loader::load_characters() {
+        if let Some(char_info) = characters.into_iter().find(|c| c.config.id == character_id) {
+            context.push_str("\n--- CHARACTER ROLE ---\n");
+            context.push_str(&char_info.config.duties);
+            context.push('\n');
+
+            context.push_str("\n--- CHARACTER PERSONALITY ---\n");
+            context.push_str(&char_info.config.personality);
+            context.push('\n');
+        }
+    }
 
     if let Some(dirs) = directories::ProjectDirs::from("org", "boxxy", "boxxy-terminal") {
         let config_dir = dirs.config_dir();
         let boxxyclaw_dir = config_dir.join("boxxyclaw");
-
-        // 1. Load Default Character (Boxxy)
-        // For now, we just load Boxxy. Later, we'll allow selection.
-        let boxxy_md = boxxyclaw_dir
-            .join("characters")
-            .join("boxxy")
-            .join("BOXXY.md");
-        if let Ok(content) = std::fs::read_to_string(boxxy_md) {
-            context.push_str("\n--- CHARACTER ---\n");
-            context.push_str(&content);
-            context.push('\n');
-        }
 
         // 2. Load Long-term Memory (CLAW_STATE.md)
         let memory_md = boxxyclaw_dir.join("CLAW_STATE.md");

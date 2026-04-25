@@ -26,7 +26,7 @@ enumflags2 = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-petname = { workspace = true }
+notify = { workspace = true }
 boxxy-telemetry = { path = "../telemetry" }
 boxxy-db = { path = "../db" }
 boxxy-preferences = { path = "../preferences" }
@@ -34,6 +34,7 @@ boxxy-model-selection = { path = "../model_selection" }
 boxxy-ai-core = { path = "../ai_core" }
 boxxy-claw-protocol = { path = "../boxxy_claw_protocol" }
 boxxy-claw = { path = "../boxxy_claw" }
+sqlx = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

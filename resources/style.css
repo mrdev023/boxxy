@@ -97,7 +97,6 @@ tabbar tab.tab-slate:selected { background-image: linear-gradient(0deg, alpha(#6
 
 .terminal-menu > contents {
 	min-width: 230px;
-	min-height: 360px; /*otherwise it keeps scrolling */
 }
 
 /* Give the preferences source view a distinct background */
@@ -117,13 +116,31 @@ tabbar tab.tab-slate:selected { background-image: linear-gradient(0deg, alpha(#6
     background-color: transparent;
 }
 
+/* Strip all interactive states from ListView row wrappers — hover background,
+   double-click flash (active), focus ring, and selection highlight all come
+   from listview > row pseudo-classes and must be zeroed here so the inner
+   .claw-virtual-row card is the only visible surface. */
+.virtual-history > row,
+.virtual-history > row:hover,
+.virtual-history > row:focus,
+.virtual-history > row:focus-within,
+.virtual-history > row:selected,
+.virtual-history > row:active,
+.virtual-history > row:checked {
+    background: transparent;
+    background-color: transparent;
+    background-image: none;
+    box-shadow: none;
+    border: none;
+    outline: none;
+}
+
 /* ── Claw Sidebar Virtual Rows ─────────────────────────────────────────── */
 .claw-virtual-row {
     background-color: @card_bg_color;
     border-radius: 12px;
     margin: 4px 6px;
     padding: 8px;
-    border: 1px solid alpha(currentColor, 0.05);
 }
 
 .claw-virtual-row .heading {
@@ -453,7 +470,7 @@ boxxyterminalwidget {
    outside the bar with zero background. */
 .claw-drawer .boxxy-msgbar {
   background: alpha(@view_fg_color, 0.06);
-  border: 1px solid alpha(@view_fg_color, 0.10);
+  border: none;
   border-radius: 10px;
   padding: 2px 6px;
   margin: 0;
@@ -469,6 +486,7 @@ boxxyterminalwidget {
   padding: 4px 4px;
   box-shadow: none;
   outline: none;
+  font-size: 1.1em;
 }
 
 /* Toggle buttons on the left side of the bar: flat with no bg at rest. */
@@ -502,6 +520,20 @@ boxxyterminalwidget {
 
 .claw-drawer button.msgbar-send:hover image {
   opacity: 0.85;
+}
+
+.grayscale {
+    filter: grayscale(100%);
+    opacity: 0.5;
+}
+
+.avatar-icon {
+    border-radius: 4px;
+    transition: filter 0.2s ease-in-out, opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.boxxy-msgbar button:hover .avatar-icon {
+    transform: scale(1.1);
 }
 
 /* Status Indicators for MsgBar Buttons */
@@ -603,16 +635,42 @@ spinrow button.down image {
 
 /* System Message Row for Models/Config */
 .system-message {
-    background-color: rgba(200, 136, 0, 0.25);
+    background-color: rgba(200, 136, 0, 0.1);
     border-radius: 8px;
     padding: 6px;
     margin: 4px;
-    border: 1px solid rgba(200, 136, 0, 0.6);
 }
 
-@media (prefers-color-scheme: light) {
-    .system-message {
-        background-color: rgba(200, 136, 0, 0.4);
-        border: 1px solid rgba(200, 136, 0, 0.8);
-    }
+
+/* --- Character Selector --- */
+.character-btn {
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-weight: 500;
+    font-size: 0.75rem;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    box-shadow: none;
+    opacity: 0.9;
 }
+
+.character-btn label {
+    margin-right: 4px;
+}
+
+.character-btn.selected-character {
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transform: scale(1.02);
+    opacity: 1.0;
+}
+
+.character-btn:hover {
+    opacity: 1.0;
+}
+
+.character-btn.in-use {
+    filter: grayscale(100%);
+    opacity: 0.4;
+}
+

@@ -11,6 +11,8 @@ pub struct Session {
     pub history_json: Option<String>,
     pub pending_tasks_json: Option<String>,
     pub agent_name: Option<String>,
+    pub character_id: String,
+    pub character_display_name: String,
     pub last_cwd: Option<String>,
     pub title: Option<String>,
     pub model_id: Option<String>,

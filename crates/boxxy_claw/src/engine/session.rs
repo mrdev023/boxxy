@@ -15,6 +15,8 @@ pub struct SessionState {
     pub session_id: String,
     pub pane_id: String,
     pub agent_name: String,
+    pub character_id: String,
+    pub character_display_name: String,
     pub pinned: bool,
     pub web_search_enabled: bool,
     pub total_tokens: u64,
@@ -60,6 +62,7 @@ pub struct ClawSession {
     pub pane_id: String,
     pub session_id: String,
     pub name: String,
+    pub character_id: String,
     pub pinned: bool,
     pub total_tokens: u64,
     pub rx: async_channel::Receiver<ClawMessage>,
@@ -83,8 +86,8 @@ impl ClawSession {
 
         let settings = boxxy_preferences::Settings::load();
 
-        // Generate a funny name for this agent
-        let name = petname::petname(2, " ").unwrap_or_else(|| "Unknown Agent".to_string());
+        // Overwritten immediately by with_identity() in the daemon before the session is spawned.
+        let name = String::new();
         let session_id = uuid::Uuid::new_v4().to_string();
 
         // We defer loading session context and skills until the first use
@@ -92,6 +95,7 @@ impl ClawSession {
             pane_id: pane_id.clone(),
             session_id: session_id.clone(),
             name: name.clone(),
+            character_id: String::new(),
             pinned: false,
             total_tokens: 0,
             rx,
@@ -103,6 +107,8 @@ impl ClawSession {
                 session_id,
                 pane_id: pane_id.clone(),
                 agent_name: name,
+                character_id: String::new(),
+                character_display_name: String::new(),
                 pinned: false,
                 web_search_enabled: settings.enable_web_search,
                 total_tokens: 0,
@@ -139,15 +145,23 @@ impl ClawSession {
     }
 
     /// Overrides the session's auto-generated identity with values from the
-    /// daemon's persistent agent registry, so an agent's name and UUID survive
+    /// daemon's persistent agent registry, so an agent's identity survives
     /// across UI restarts. Must be called before `start()`.
-    pub fn with_identity(mut self, agent_name: String, session_id: String) -> Self {
-        self.name = agent_name.clone();
+    pub fn with_identity(
+        mut self,
+        character_id: String,
+        character_display_name: String,
+        session_id: String,
+    ) -> Self {
+        self.name = character_display_name.clone();
+        self.character_id = character_id.clone();
         self.session_id = session_id.clone();
         // Synchronise the inner state. `try_lock` is safe here: the session
         // hasn't been spawned yet, so there's no other owner of the lock.
         if let Ok(mut state) = self.state.try_lock() {
-            state.agent_name = agent_name;
+            state.agent_name = character_display_name.clone();
+            state.character_id = character_id;
+            state.character_display_name = character_display_name;
             state.session_id = session_id;
         }
         self
@@ -156,14 +170,20 @@ impl ClawSession {
     pub fn new_headless(
         parent_pane_id: String,
         parent_session_id: uuid::Uuid,
+        parent_character_name: &str,
         profile: String,
     ) -> (Self, async_channel::Sender<ClawMessage>) {
         let pane_id = format!("{}-headless-{}", parent_pane_id, uuid::Uuid::new_v4());
         let (mut session, tx, _) = Self::new(pane_id.clone());
 
         let name = format!(
-            "{} Shadow",
-            petname::petname(1, "").unwrap_or_else(|| "Ghost".to_string())
+            "{} (Worker {})",
+            parent_character_name,
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(4)
+                .collect::<String>()
         );
 
         // Mutate for headless execution
@@ -426,6 +446,7 @@ impl ClawSession {
                                 .tx_ui
                                 .send(ClawEngineEvent::Identity {
                                     agent_name: self.name.clone(),
+                                    character_id: self.character_id.clone(),
                                     pinned: self.pinned,
                                     web_search_enabled,
                                     total_tokens: self.total_tokens,
@@ -433,7 +454,7 @@ impl ClawSession {
                                 .await;
                         }
 
-                        let session_context = load_session_context();
+                        let session_context = load_session_context(&self.character_id);
                         self.session_context = session_context;
 
                         if let Ok(db) = Db::new().await {
@@ -499,7 +520,7 @@ impl ClawSession {
                             }
 
                             let event = ClawEngineEvent::SystemMessage {
-                                text: format!("Claw: {new_claw}\nDreams: {new_memory}"),
+                                text: format!("Claw: {new_claw} · Dreams: {new_memory}"),
                             };
                             crate::engine::persist_visual_event(
                                 self.db.clone(),
@@ -519,7 +540,6 @@ impl ClawSession {
                                         is_thinking: false,
                                     })
                                     .await;
-                                let _ = self.tx_ui.send(ClawEngineEvent::DismissDrawer).await;
                             }
                             backlog.clear();
 
@@ -680,15 +700,58 @@ impl ClawSession {
                                     Ok(Some(session)) => {
                                         // 3. Rehydrate state
                                         self.session_id = session_id.clone();
-                                        if let Some(agent_name) = session.agent_name {
-                                            self.name = agent_name.clone();
+                                        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
+
+                                        // Resolve character: UUID first (stable), then
+                                        // name/display_name (legacy), then first available
+                                        // (deleted character fallback). When the fallback
+                                        // fires, write the new UUID back so it only resolves
+                                        // once and the session is consistently owned.
+                                        let char_info = registry
+                                            .iter()
+                                            .find(|c| c.config.id == session.character_id)
+                                            .or_else(|| {
+                                                session.agent_name.as_deref().and_then(|n| {
+                                                    registry.iter().find(|c| {
+                                                        c.config.name == n
+                                                            || c.config.display_name == n
+                                                    })
+                                                })
+                                            })
+                                            .or_else(|| registry.first());
+
+                                        let is_fallback = char_info
+                                            .map(|c| c.config.id != session.character_id)
+                                            .unwrap_or(false);
+
+                                        if let Some(info) = char_info {
+                                            self.name = info.config.display_name.clone();
+                                            self.character_id = info.config.id.clone();
+                                            if is_fallback {
+                                                info!(
+                                                    "Character '{}' not found; reassigning session {} to '{}'",
+                                                    session.character_id, session_id, info.config.display_name
+                                                );
+                                                let _ = store
+                                                    .update_session_character(
+                                                        &session_id,
+                                                        &info.config.id,
+                                                        &info.config.display_name,
+                                                    )
+                                                    .await;
+                                            }
+                                        } else if let Some(n) = session.agent_name.as_deref() {
+                                            self.name = n.to_string();
                                         }
+
                                         self.pinned = session.pinned;
                                         self.total_tokens = session.total_tokens as u64;
 
                                         let mut state_lock = self.state.lock().await;
                                         state_lock.session_id = session_id.clone();
                                         state_lock.agent_name = self.name.clone();
+                                        state_lock.character_id = self.character_id.clone();
+                                        state_lock.character_display_name = self.name.clone();
                                         state_lock.pinned = self.pinned;
                                         state_lock.total_tokens = self.total_tokens;
 
@@ -741,6 +804,7 @@ impl ClawSession {
                                             .tx_ui
                                             .send(ClawEngineEvent::Identity {
                                                 agent_name: self.name.clone(),
+                                                character_id: self.character_id.clone(),
                                                 pinned: self.pinned,
                                                 web_search_enabled,
                                                 total_tokens: self.total_tokens,
@@ -790,10 +854,8 @@ impl ClawSession {
                         ClawMessage::Initialize => {
                             info!("Initializing NEW Claw Session for pane {}...", self.pane_id);
 
-                            // 1. Pick a new name
-                            let name =
-                                petname::petname(2, " ").unwrap_or_else(|| "Unknown Agent".to_string());
-                            self.name = name.clone();
+                            // 1. Use the character name assigned at session creation via with_identity().
+                            let name = self.name.clone();
 
                             // Check if database was reset (due to update in Preview Phase)
                             // We use swap(false) to ensure only the first agent to initialize shows the notification
@@ -848,6 +910,7 @@ impl ClawSession {
                                 .tx_ui
                                 .send(ClawEngineEvent::Identity {
                                     agent_name: name,
+                                    character_id: self.character_id.clone(),
                                     pinned: false,
                                     web_search_enabled,
                                     total_tokens: 0,
@@ -859,7 +922,7 @@ impl ClawSession {
                             let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
 
                             let event = ClawEngineEvent::SystemMessage {
-                                text: format!("Claw: {}\nDreams: {}", claw_model, memory_model),
+                                text: format!("Claw: {} · Dreams: {}", claw_model, memory_model),
                             };
                             crate::engine::persist_visual_event(
                                 self.db.clone(),
@@ -871,7 +934,7 @@ impl ClawSession {
                         }
                         ClawMessage::Reload => {
                             info!("Reloading Claw Session state...");
-                            let new_ctx = load_session_context();
+                            let new_ctx = load_session_context(&self.character_id);
                             self.session_context = new_ctx;
                             if let Ok(db) = Db::new().await {
                                 *self.db.lock().await = Some(db);
@@ -897,6 +960,8 @@ impl ClawSession {
                                 .unwrap_or_default();
 
                             let db_for_persistence = self.db.clone();
+                            let character_id_for_db = self.character_id.clone();
+                            let character_display_name_for_db = self.name.clone();
                             tokio::spawn(async move {
                                 let db_guard = db_for_persistence.lock().await;
                                 if let Some(db) = &*db_guard {
@@ -905,6 +970,8 @@ impl ClawSession {
                                         .upsert_session_state(
                                             &session_id_for_db,
                                             &agent_name_for_db,
+                                            &character_id_for_db,
+                                            &character_display_name_for_db,
                                             "", // title not updated here
                                             &history_json,
                                             &pending_tasks_json,

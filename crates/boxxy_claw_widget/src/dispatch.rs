@@ -63,25 +63,27 @@ pub fn spawn_dispatch(
                         boxxy_claw_ui::add_user_row(&overlay_store, id.clone(), content);
                     }
                 }
-                ClawEngineEvent::AgentThinking { is_thinking, .. } => {
+                ClawEngineEvent::AgentThinking {
+                    is_thinking,
+                    agent_name: event_agent_name,
+                } => {
+                    overlay.set_thinking(*is_thinking);
                     if *is_thinking {
-                        indicator.show_thinking();
-                        let aname = agent_name.borrow().clone();
-                        if overlay.is_visible() {
-                            // Drawer is already open (typical when the user
-                            // just sent a reply via the embedded msgbar);
-                            // collapse leftover proposal controls so the
-                            // drawer reads as "thinking…".
-                            overlay.enter_waiting_state();
-                        } else {
-                            overlay.show_chat_only(&aname);
+                        msg_bar.set_input_sensitive(false);
+                        indicator.show_thinking(event_agent_name);
+                        if !overlay.is_visible() {
+                            overlay.show_chat_only(event_agent_name);
                         }
+                        overlay.set_indicator_slot_visible(true);
                     } else {
+                        msg_bar.set_input_sensitive(true);
                         indicator.hide();
+                        overlay.set_indicator_slot_visible(false);
                     }
                 }
                 ClawEngineEvent::LazyErrorIndicator { .. } => {
                     indicator.show_lazy_error();
+                    overlay.set_indicator_slot_visible(true);
                 }
                 ClawEngineEvent::DismissDrawer => {
                     // Explicitly close the drawer from the backend. This happens when
@@ -111,6 +113,7 @@ pub fn spawn_dispatch(
                         );
                     }
                     indicator.hide();
+                    overlay.set_indicator_slot_visible(false);
                     overlay.show(
                         OverlayMode::Claw,
                         agent_name,
@@ -166,6 +169,7 @@ pub fn spawn_dispatch(
                         );
                     }
                     indicator.hide();
+                    overlay.set_indicator_slot_visible(false);
                     overlay.show(
                         OverlayMode::Claw,
                         agent_name,
@@ -403,16 +407,19 @@ pub fn spawn_dispatch(
                 }
                 ClawEngineEvent::Identity {
                     agent_name: name,
+                    character_id,
                     pinned,
                     web_search_enabled,
                     total_tokens: total,
                 } => {
-                    indicator.set_identity(name);
+                    overlay.set_active_agent(name);
+                    indicator.set_identity(name, character_id);
                     is_pinned.set(*pinned);
                     is_web_search.set(*web_search_enabled);
                     *agent_name.borrow_mut() = name.clone();
 
                     let status = session_status.borrow().clone();
+                    msg_bar.set_character(character_id);
                     msg_bar.update_ui(status, *pinned, *web_search_enabled);
                     total_tokens.set(*total);
                 }
@@ -429,6 +436,7 @@ pub fn spawn_dispatch(
                 ClawEngineEvent::Evicted => {
                     indicator.set_evicted(true);
                     indicator.hide();
+                    overlay.set_indicator_slot_visible(false);
                     overlay.hide();
                     boxxy_claw_ui::add_diagnosis_row(
                         &sidebar_store,

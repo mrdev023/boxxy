@@ -545,20 +545,6 @@ impl TerminalComponent {
         }
     }
 
-    pub fn set_agent_thinking(&self, thinking: bool) {
-        let inner = self.inner.borrow();
-        if let Some(pane_data) = inner.panes.get(&inner.active_pane_id) {
-            pane_data.controller.set_agent_thinking(thinking);
-        }
-    }
-
-    pub fn set_agent_thinking_for_pane(&self, pane_id: &str, thinking: bool) {
-        let inner = self.inner.borrow();
-        if let Some(pane_data) = inner.panes.get(pane_id) {
-            pane_data.controller.set_agent_thinking(thinking);
-        }
-    }
-
     pub fn reload_claw(&self) {
         let inner = self.inner.borrow();
         for pane_data in inner.panes.values() {
@@ -711,6 +697,26 @@ impl TerminalComponent {
         let inner = self.inner.borrow();
         for pane in inner.panes.values() {
             pane.controller.notify_settings_invalidated();
+        }
+    }
+
+    /// Called when the enclosing tab is being permanently closed. Ends all
+    /// Claw sessions so characters are released in the daemon registry
+    /// immediately, without waiting for Rc<RefCell<PaneInner>> to be dropped.
+    pub fn on_close(&self) {
+        let inner = self.inner.borrow();
+        for pane in inner.panes.values() {
+            pane.controller.end_session();
+        }
+    }
+
+    pub async fn on_close_sync(&self) {
+        let panes: Vec<_> = {
+            let inner = self.inner.borrow();
+            inner.panes.values().map(|p| p.controller.clone()).collect()
+        };
+        for controller in panes {
+            controller.end_session_sync().await;
         }
     }
 

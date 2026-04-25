@@ -85,6 +85,8 @@ impl<'a> Store<'a> {
         &self,
         id: &str,
         name: &str,
+        character_id: &str,
+        character_display_name: &str,
         title: &str,
         history_json: &str,
         pending_tasks_json: &str,
@@ -96,10 +98,11 @@ impl<'a> Store<'a> {
     ) -> Result<()> {
         sqlx::query(
             r"
-            INSERT INTO sessions (id, name, title, history_json, pending_tasks_json, agent_name, last_cwd, model_id, pinned, total_tokens, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO sessions (id, name, character_id, character_display_name, title, history_json, pending_tasks_json, agent_name, last_cwd, model_id, pinned, total_tokens, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
+                character_display_name = excluded.character_display_name,
                 title = CASE WHEN excluded.title != '' THEN excluded.title ELSE sessions.title END,
                 history_json = excluded.history_json,
                 pending_tasks_json = excluded.pending_tasks_json,
@@ -113,6 +116,8 @@ impl<'a> Store<'a> {
         )
         .bind(id)
         .bind(name)
+        .bind(character_id)
+        .bind(character_display_name)
         .bind(title)
         .bind(history_json)
         .bind(pending_tasks_json)
@@ -303,6 +308,24 @@ impl<'a> Store<'a> {
         );
 
         sqlx::query(&query).execute(self.pool).await?;
+        Ok(())
+    }
+
+    /// Persists a character reassignment so orphan fallbacks are only resolved once.
+    pub async fn update_session_character(
+        &self,
+        session_id: &str,
+        character_id: &str,
+        character_display_name: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE sessions SET character_id = ?, character_display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(character_id)
+        .bind(character_display_name)
+        .bind(session_id)
+        .execute(self.pool)
+        .await?;
         Ok(())
     }
 
@@ -789,6 +812,8 @@ mod tests {
             .upsert_session_state(
                 session_id,
                 session_name,
+                "00000001-0000-4000-8000-000000000001", // character_id
+                "niko una",                             // character_display_name
                 "Updated Title",
                 "[\"history\"]",
                 "[\"tasks\"]",
@@ -1065,5 +1090,46 @@ mod tests {
         let undreamed = store.get_undreamed_interactions().await.unwrap();
         assert_eq!(undreamed.len(), 1);
         assert_eq!(undreamed[0].processing_state.as_deref(), Some("seeded"));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_character() {
+        let db = Db::new_in_memory().await.unwrap();
+        let store = Store::new(db.pool());
+
+        let session_id = "sess_char_update";
+        // Use upsert directly so character_id is set on the initial INSERT.
+        store
+            .upsert_session_state(
+                session_id,
+                "Test Session",
+                "old-uuid-111",
+                "Old Character",
+                "",
+                "[]",
+                "[]",
+                "old-character",
+                "/home",
+                "",
+                false,
+                0,
+            )
+            .await
+            .unwrap();
+
+        // Verify original character
+        let before = store.get_session(session_id).await.unwrap().unwrap();
+        assert_eq!(before.character_id, "old-uuid-111");
+        assert_eq!(before.character_display_name, "Old Character");
+
+        // Reassign to new character (simulates deleted-character fallback)
+        store
+            .update_session_character(session_id, "new-uuid-222", "New Character")
+            .await
+            .unwrap();
+
+        let after = store.get_session(session_id).await.unwrap().unwrap();
+        assert_eq!(after.character_id, "new-uuid-222");
+        assert_eq!(after.character_display_name, "New Character");
     }
 }

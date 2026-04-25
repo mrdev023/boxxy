@@ -81,6 +81,20 @@
                               </object>
                             </child>
                             <child>
+                              <object class="GtkListBoxRow" id="nav_characters">
+                                <property name="child">
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">Characters</property>
+                                    <property name="xalign">0</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="margin-end">12</property>
+                                    <property name="margin-top">10</property>
+                                    <property name="margin-bottom">10</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
                               <object class="GtkListBoxRow" id="nav_agents">
                                 <property name="child">
                                   <object class="GtkLabel">
@@ -462,6 +476,16 @@
                                 </child>
                               </object>
                             </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="AdwViewStackPage">
+                        <property name="name">characters</property>
+                        <property name="child">
+                          <object class="AdwPreferencesPage" id="page_characters">
                           </object>
                         </property>
                       </object>

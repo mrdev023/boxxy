@@ -13,6 +13,11 @@ pub struct AgentManager {
     agent_proxy: AgentProxy<'static>,
     proxy: AgentPtyProxy<'static>,
     claw_proxy: AgentClawProxy<'static>,
+    /// Notification produced during init (e.g. DB reset). Stored here instead
+    /// of sent to TERMINAL_EVENT_BUS immediately, because the bus is a
+    /// broadcast channel that drops messages when there are no subscribers —
+    /// and the window hasn't subscribed yet when AgentManager is initialized.
+    startup_notification: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl AgentManager {
@@ -39,14 +44,86 @@ impl AgentManager {
             .await
             .context("Failed to create AgentClawProxy on Session Bus")?;
 
-        // Notify daemon that a client has connected
-        let _ = agent_proxy.notify_client_connected().await;
+        // Global UI watcher for Character Registry updates
+        let agent_proxy_for_watcher = agent_proxy.clone();
+        tokio::spawn(async move {
+            if let Ok(mut stream) = agent_proxy_for_watcher
+                .receive_character_registry_updated()
+                .await
+            {
+                while let Some(msg) = stream.next().await {
+                    let args = msg.args().expect("Failed to parse registry_updated args");
+                    if let Ok(registry) = serde_json::from_str::<
+                        Vec<boxxy_claw_protocol::characters::CharacterInfo>,
+                    >(&args.registry_json)
+                    {
+                        boxxy_claw_protocol::characters::CHARACTER_CACHE
+                            .store(std::sync::Arc::new(registry));
+                        boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
+            }
+        });
+
+        // Notify the daemon that a client has connected. Returns true if the DB
+        // was wiped on this startup. We store the notification rather than
+        // broadcasting it immediately — TERMINAL_EVENT_BUS is a broadcast
+        // channel that drops messages with no receivers, and the window hasn't
+        // subscribed yet at this point in the startup sequence.
+        let startup_notification = if agent_proxy.notify_client_connected().await.unwrap_or(false) {
+            Some("Database reset: Conversation history was cleared for a schema update. This only happens during the Preview.".to_string())
+        } else {
+            None
+        };
+
+        // Forward ongoing daemon-level desktop notifications (e.g. "Character in Use") as in-app toasts.
+        if let Ok(mut stream) = agent_proxy.receive_desktop_notification().await {
+            tokio::spawn(async move {
+                while let Some(msg) = stream.next().await {
+                    if let Ok(args) = msg.args() {
+                        let text = if args.title.is_empty() {
+                            args.message.to_string()
+                        } else {
+                            format!("{}: {}", args.title, args.message)
+                        };
+                        let event = crate::TerminalEvent {
+                            id: String::new(),
+                            kind: crate::TerminalEventKind::Notification(text),
+                        };
+                        let _ = crate::TERMINAL_EVENT_BUS.send(event);
+                    }
+                }
+            });
+        }
+
+        // Seed the UI character cache
+        if let Ok(registry_json) = agent_proxy.get_character_registry().await {
+            if let Ok(registry) = serde_json::from_str::<
+                Vec<boxxy_claw_protocol::characters::CharacterInfo>,
+            >(&registry_json)
+            {
+                boxxy_claw_protocol::characters::CHARACTER_CACHE
+                    .store(std::sync::Arc::new(registry));
+                boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                log::info!("Seeded UI Character Cache on startup.");
+            }
+        }
 
         Ok(Self {
             agent_proxy,
             proxy,
             claw_proxy,
+            startup_notification: std::sync::Arc::new(std::sync::Mutex::new(startup_notification)),
         })
+    }
+
+    /// Returns any notification generated during initialization (e.g. DB reset
+    /// message), consuming it so it is only shown once. Call this after the
+    /// window has subscribed to TERMINAL_EVENT_BUS.
+    pub fn take_startup_notification(&self) -> Option<String> {
+        self.startup_notification.lock().unwrap().take()
     }
 
     pub async fn disconnect(&self) {
@@ -66,13 +143,21 @@ impl AgentManager {
         Ok(())
     }
 
+    pub async fn get_character_registry(&self) -> Result<String> {
+        self.agent_proxy
+            .get_character_registry()
+            .await
+            .context("Failed to get character registry")
+    }
+
     pub async fn create_claw_session(
         &self,
         pane_id: String,
+        character_id: String,
     ) -> Result<(String, async_channel::Receiver<ClawEngineEvent>)> {
         let session_id = self
             .agent_proxy
-            .create_claw_session(pane_id)
+            .create_claw_session(pane_id, character_id)
             .await
             .context("Failed to create Claw session via Agent")?;
 
@@ -100,6 +185,13 @@ impl AgentManager {
         });
 
         Ok((session_id, rx))
+    }
+
+    pub async fn end_claw_session(&self, session_id: String) -> Result<()> {
+        self.agent_proxy
+            .end_claw_session(session_id)
+            .await
+            .context("Failed to end Claw session via Agent")
     }
 
     pub async fn post_claw_message(&self, session_id: String, message: ClawMessage) -> Result<()> {
