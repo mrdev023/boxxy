@@ -210,6 +210,24 @@ impl Updater {
         // Update .last_update file with the build date.
         fs::write(app_dir.join(".last_update"), nightly_date)?;
 
+        log::info!("Stopping agent before restart...");
+        // Use a blocking call to ensure the agent is told to stop.
+        // We don't have an async runtime here in the same way, but we can
+        // spawn a quick one or just use a shell command to kill it.
+        // Since we want to be clean, let's use the D-Bus request_stop.
+        let _ = Command::new("gdbus")
+            .args([
+                "call",
+                "--session",
+                "--dest",
+                "dev.boxxy.BoxxyAgent",
+                "--object-path",
+                "/dev/boxxy/Agent",
+                "--method",
+                "dev.boxxy.BoxxyTerminal.Agent.request_stop",
+            ])
+            .output();
+
         log::info!("Restarting app...");
         let _ = Command::new(bin_dir.join("boxxy-terminal"))
             .arg("--new-window")

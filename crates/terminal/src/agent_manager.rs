@@ -26,11 +26,29 @@ impl AgentManager {
             .await
             .context("Failed to connect to Session Bus")?;
 
-        let agent_proxy = AgentProxy::builder(&conn)
-            .destination("dev.boxxy.BoxxyAgent")?
-            .build()
-            .await
-            .context("Failed to create AgentProxy on Session Bus")?;
+        // Wait for the agent to appear on D-Bus if it's not there yet.
+        // This handles cases where the UI starts faster than the agent.
+        let mut attempts = 0;
+        let max_attempts = 30; // 3 seconds total
+        let agent_proxy = loop {
+            match AgentProxy::builder(&conn)
+                .destination("dev.boxxy.BoxxyAgent")?
+                .build()
+                .await
+            {
+                Ok(proxy) => break proxy,
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= max_attempts {
+                        return Err(anyhow::anyhow!(
+                            "Timed out waiting for AgentProxy on Session Bus: {}",
+                            e
+                        ));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        };
 
         let proxy = AgentPtyProxy::builder(&conn)
             .destination("dev.boxxy.BoxxyAgent")?

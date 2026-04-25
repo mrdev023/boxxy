@@ -19,6 +19,7 @@ pub const WELL_KNOWN_NAME: &str = "dev.boxxy.BoxxyAgent";
 )]
 trait AgentVersion {
     async fn get_version(&self) -> zbus::Result<String>;
+    async fn request_stop(&self) -> zbus::Result<()>;
 }
 
 /// Returns the path where the agent binary lives on the host.
@@ -60,7 +61,6 @@ pub async fn ensure_agent_running() -> Result<()> {
 }
 
 async fn wait_for_agent_ready() -> Result<()> {
-    let conn = Connection::session().await?;
     let mut attempts = 0;
     let max_attempts = 10;
 
@@ -162,9 +162,24 @@ async fn deploy_agent_binary(dest: &PathBuf) -> Result<()> {
 }
 
 async fn spawn_agent(host_path: &PathBuf) -> Result<()> {
-    // Check if it's already running to avoid redundant logs
-    if query_ghost_version().await.is_ok() {
-        return Ok(());
+    // Check if it's already running.
+    match query_ghost_version().await {
+        Ok(ver) if ver == AGENT_VERSION => {
+            info!("Agent v{} is already running.", ver);
+            return Ok(());
+        }
+        Ok(ver) => {
+            warn!(
+                "Ghost version {} != app version {} — stopping old agent",
+                ver, AGENT_VERSION
+            );
+            let _ = stop_ghost().await;
+            // Give it a moment to exit
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        Err(_) => {
+            info!("Agent is not running; will spawn.");
+        }
     }
 
     if is_flatpak() {
@@ -186,5 +201,12 @@ async fn spawn_agent(host_path: &PathBuf) -> Result<()> {
             .spawn()
             .context("Failed to spawn native agent")?;
     }
+    Ok(())
+}
+
+async fn stop_ghost() -> Result<()> {
+    let conn = Connection::session().await?;
+    let _proxy = AgentVersionProxy::new(&conn).await?;
+    let _ = _proxy.request_stop().await;
     Ok(())
 }
