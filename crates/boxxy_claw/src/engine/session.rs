@@ -518,12 +518,12 @@ impl ClawSession {
                                 drop(state_lock);
                                 continue;
                             }
-                            
+
                             // Update the session's memory model tracker
                             state_lock.current_memory_model = after.memory_model.clone();
 
                             let event = ClawEngineEvent::SystemMessage {
-                                text: format!("Claw: {new_claw} · Dreams: {new_memory}"),
+                                text: format!("Claw: {new_claw} . Dreams: {new_memory}"),
                             };
                             crate::engine::persist_visual_event(
                                 self.db.clone(),
@@ -831,7 +831,7 @@ impl ClawSession {
                                         let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
 
                                         self.send_ui(ClawEngineEvent::SystemMessage {
-                                                text: format!("Claw: {}\nDreams: {}", claw_model, memory_model),
+                                                text: format!("Claw: {} ● Dreams: {}", claw_model, memory_model),
                                             })
                                             .await;
 
@@ -927,7 +927,7 @@ impl ClawSession {
                             let memory_model = settings.memory_model.as_ref().map(|m| m.format_label()).unwrap_or_else(|| "Default".to_string());
 
                             let event = ClawEngineEvent::SystemMessage {
-                                text: format!("Claw: {} · Dreams: {}", claw_model, memory_model),
+                                text: format!("Claw: {} ● Dreams: {}", claw_model, memory_model),
                             };
                             crate::engine::persist_visual_event(
                                 self.db.clone(),
