@@ -191,7 +191,7 @@ impl Default for Settings {
             enable_os_context: true,
             enable_progress_bar: true,
             colored_tabs: false,
-            maintain_overlay_history: false,
+            maintain_overlay_history: true,
             claw_msgbar_shortcut: "<Ctrl>slash".to_string(),
             enable_telemetry: true, // ON by default during Preview
             install_id: None,
