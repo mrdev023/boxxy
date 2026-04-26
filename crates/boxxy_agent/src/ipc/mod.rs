@@ -141,6 +141,14 @@ impl AgentInterface {
         api_keys: std::collections::HashMap<String, String>,
         ollama_url: String,
     ) {
+        {
+            let keys_guard = self.core.state.api_keys.read().await;
+            let url_guard = self.core.state.ollama_url.read().await;
+            if *keys_guard == api_keys && *url_guard == ollama_url {
+                return;
+            }
+        }
+
         log::info!("Updating credentials for {} providers", api_keys.len());
 
         let mut keys_guard = self.core.state.api_keys.write().await;

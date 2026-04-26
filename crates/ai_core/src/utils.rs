@@ -31,19 +31,13 @@ pub fn is_flatpak() -> bool {
 /// Returns true if the internal self-updater is allowed to run.
 /// This is disabled in Flatpak or if the `disable-self-update` feature is enabled.
 pub fn can_self_update() -> bool {
-    #[cfg(feature = "disable-self-update")]
-    {
-        return false;
-    }
-
-    #[cfg(feature = "self-update")]
-    {
-        return !is_flatpak();
-    }
-
-    #[cfg(not(feature = "self-update"))]
+    #[cfg(any(feature = "disable-self-update", not(feature = "self-update")))]
     {
         false
+    }
+    #[cfg(all(feature = "self-update", not(feature = "disable-self-update")))]
+    {
+        !is_flatpak()
     }
 }
 
