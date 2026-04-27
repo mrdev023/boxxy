@@ -311,6 +311,15 @@ impl<'a> Store<'a> {
         Ok(())
     }
 
+    pub async fn update_session_title(&self, session_id: &str, title: &str) -> Result<()> {
+        sqlx::query("UPDATE sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(title)
+            .bind(session_id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Persists a character reassignment so orphan fallbacks are only resolved once.
     pub async fn update_session_character(
         &self,

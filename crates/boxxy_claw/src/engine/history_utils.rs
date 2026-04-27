@@ -30,3 +30,49 @@ pub fn maybe_sanitize_history<'a>(
         Cow::Borrowed(history)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use boxxy_model_selection::{ModelProvider, GeminiModel, AnthropicModel};
+
+    fn gemini_config() -> AgentConfig {
+        AgentConfig {
+            model: Some(ModelProvider::Gemini(
+                GeminiModel::Flash,
+                None,
+            )),
+            ..Default::default()
+        }
+    }
+
+    fn anthropic_config() -> AgentConfig {
+        AgentConfig {
+            model: Some(ModelProvider::Anthropic(
+                AnthropicModel::ClaudeSonnet,
+            )),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn same_provider_family_borrows() {
+        let history = vec![rig::message::Message::user("hi")];
+        let result = maybe_sanitize_history(&history, Some(&gemini_config()), &gemini_config());
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn different_provider_family_returns_owned() {
+        let history = vec![rig::message::Message::user("hi")];
+        let result = maybe_sanitize_history(&history, Some(&gemini_config()), &anthropic_config());
+        assert!(matches!(result, std::borrow::Cow::Owned(_)));
+    }
+
+    #[test]
+    fn no_old_config_borrows() {
+        let history = vec![rig::message::Message::user("hi")];
+        let result = maybe_sanitize_history(&history, None, &anthropic_config());
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+    }
+}

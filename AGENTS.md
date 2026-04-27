@@ -60,6 +60,14 @@ Host-privileged daemon that sits between the sandboxed UI and the operating syst
 ### 5. `boxxy-claw` (Library Crate)
 Agentic Reasoning Engine using an **Actor Model**. Spawns isolated `ClawSession` actors per terminal pane. Features the **"Red Pony Protocol"**: each pane is assigned a unique mnemonic name (e.g., "Red Pony") mapped to its UUID.
 
+The per-turn reasoning pipeline lives in `engine/turn/` and is split across four focused sub-modules (per the 700-line file limit):
+- `turn/history.rs` — `prepare_query_history`: strips stale dynamic context from old messages, pops the current user message to avoid duplication, and injects a synthetic `[Previous task was interrupted by the user]` assistant placeholder when consecutive user messages are detected (required for Anthropic API alternation compliance).
+- `turn/skills.rs` — semantic + keyword skill injection into the turn context.
+- `turn/snapshot.rs` — hash-based snapshot deduplication (emits `[TERMINAL_SNAPSHOT: NO_CHANGE]` when the terminal hasn't changed, saving tokens).
+- `turn/persistence.rs` — DB upsert, background title generation, turn summarization, and memory extraction after a successful turn.
+
+**Interrupt Continuity ("Amnesia Fix"):** User messages are pushed to `SessionState.history` atomically — inside the synchronous, lock-held section of `spawn_turn` — *before* `agent.chat().await` is called. If the turn is cancelled (tokio task abort on a new `UserMessage`), the original intent is already recorded. The `prepare_query_history` function then repairs the history on the next turn by detecting and bridging any consecutive user messages with a synthetic assistant acknowledgment.
+
 Agents function as a **Collaborative Swarm**:
 - **Event-Driven Pub/Sub**: Upgraded with a central **EventBus** in the Workspace Radar. Agents can use `subscribe_to_pane` to passively monitor peers for process exits or terminal output matches (regex) without consuming tokens.
 - **Async Promises (Map-Reduce)**: Supports complex fanned-out workflows via `delegate_task_async` and `await_tasks`. A "Leader" agent can suspend its execution (0 tokens) until all child tasks return a result.
@@ -95,8 +103,8 @@ Unified AI interface layer. Abstracts multiple providers (Gemini, Anthropic, Oll
 Provides a structured library of high-level tools for Boxxy agents, completely decoupled from the reasoning engine. Includes:
 - **Host Operations:** File management (with line-range limits), process inspection, system info (structured JSON), and clipboard access.
 - **Web/Network:** HTTP fetching with built-in timeouts and 1MB size limits.
-- **Web Search:** A modular `SearchProvider` trait allowing real-time web queries (currently implemented via Tavily).
-- **Approval Protocol:** Uses the `ApprovalHandler` trait to ensure dangerous actions (like `rm` or `kill`) always prompt the user via the GTK UI before execution.
+- **Web Search:** A modular `SearchProvider` trait allowing real-time web queries (currently implemented via Tavily). Both `http_fetch` and `web_search` call `ApprovalHandler::report_tool_result` on completion so their results appear as structured rows in the Claw sidebar log.
+- **Approval Protocol:** Uses the `ApprovalHandler` trait to ensure dangerous actions (like `rm` or `kill`) always prompt the user via the GTK UI before execution. Every tool must call both `report_tool_started` (shows the tool name in the real-time indicator) and `report_tool_result` (emits the `ToolResult` sidebar row) to be fully visible in the UI.
 
 ### 9. `boxxy-preferences` (Library Crate)
 Settings management using an `AdwNavigationSplitView` architecture. UI is defined in `resources/ui/preferences.ui` and supports real-time search filtering. Implements the **"Master Switch vs Local Toggle"** design pattern (e.g., for Web Search), separating global capability authorization from per-pane activation.

@@ -10,7 +10,7 @@ pub async fn summarize_wake_delta(
 ) {
     let db_guard = db_cell.lock().await;
     if let Some(db) = db_guard.as_ref() {
-        let ts = sleep_timestamp.unwrap_or(0);
+        let _ts = sleep_timestamp.unwrap_or(0);
         let mut summary_result = Err("No events found or DB error.".to_string());
 
         if let Ok(events) = boxxy_db::store::Store::new(db.pool())

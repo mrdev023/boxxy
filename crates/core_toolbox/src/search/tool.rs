@@ -78,19 +78,28 @@ impl Tool for WebSearchTool {
         };
 
         match self.provider.search(&args.query, options).await {
-            Ok(response) => Ok(WebSearchOutput {
-                query: response.query,
-                answer: response.answer,
-                results: response
-                    .results
-                    .into_iter()
-                    .map(|r| WebSearchResult {
-                        title: r.title,
-                        url: r.url,
-                        content: r.content,
-                    })
-                    .collect(),
-            }),
+            Ok(response) => {
+                let out = WebSearchOutput {
+                    query: response.query,
+                    answer: response.answer,
+                    results: response
+                        .results
+                        .into_iter()
+                        .map(|r| WebSearchResult {
+                            title: r.title,
+                            url: r.url,
+                            content: r.content,
+                        })
+                        .collect(),
+                };
+                self.approval
+                    .report_tool_result(
+                        Self::NAME.to_string(),
+                        serde_json::to_string(&out).unwrap_or_default(),
+                    )
+                    .await;
+                Ok(out)
+            }
             Err(e) => Err(std::io::Error::other(format!("Search Error: {e}"))),
         }
     }

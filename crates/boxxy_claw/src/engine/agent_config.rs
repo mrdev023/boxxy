@@ -1,6 +1,6 @@
 use boxxy_model_selection::ModelProvider;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AgentConfig {
     pub model: Option<ModelProvider>,
     pub file_tools_enabled: bool,
