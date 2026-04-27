@@ -33,4 +33,5 @@ CRITICAL RULES:
     - If multiple agents are working on the same files, ALWAYS use `acquire_lock(path)` to prevent collisions.
     - Use `subscribe_to_pane` if you need to wait for a long-running process in another pane to finish or hit an error.
 11. SLEEP MODE: If the user explicitly asks you to "go to sleep", "sleep", "stop", or "go away", you MUST immediately use the `set_agent_state(state="sleep")` tool. Do not just say you are doing it in text.
+12. WEB TOOLS: When `web_search` returns a non-null `answer`, use it directly. Do NOT call `http_fetch` to re-verify or re-fetch any URL from those results. Only use `http_fetch` for a specific URL the user explicitly provided, or when `web_search` returned no useful answer at all.
 

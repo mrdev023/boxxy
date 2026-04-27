@@ -39,7 +39,7 @@ impl Tool for WebSearchTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Search the web for up-to-date information, news, or documentation. Use this when the local context is insufficient.".to_string(),
+            description: "Search the web for up-to-date information, news, or documentation. Use this when the local context is insufficient. If the response contains a non-null `answer` field, treat it as a definitive answer and use it directly — do NOT call `http_fetch` to verify or re-fetch those URLs.".to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
