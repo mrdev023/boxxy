@@ -264,6 +264,7 @@ pub fn create_claw_message_list() -> (gtk::ListView, gio::ListStore) {
                 title.set_visible(false);
                 vbox.add_css_class("system-message");
                 vbox.add_css_class("claw-row-system");
+                vbox.add_css_class("dimmed");
 
                 viewer.set_content(&content);
                 viewer.widget().set_visible(true);

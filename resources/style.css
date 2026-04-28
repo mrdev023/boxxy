@@ -639,10 +639,14 @@ spinrow button.down image {
 
 /* System Message Row for Models/Config */
 .system-message {
-    background-color: rgba(200, 136, 0, 0.1);
+	/* background-color: rgba(200, 136, 0, 0.1);
     border-radius: 8px;
     padding: 6px;
-    margin: 4px;
+    margin: 4px; */
+    background: none;
+    font-size: 0.9em;
+    padding:0px;
+    margin:0px 8px;
 }
 
 
@@ -677,4 +681,3 @@ spinrow button.down image {
     filter: grayscale(100%);
     opacity: 0.4;
 }
-

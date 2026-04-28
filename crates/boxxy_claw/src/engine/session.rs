@@ -1011,7 +1011,15 @@ impl ClawSession {
                                 self.pane_id.clone(),
                                 &event
                             );
-                            let _ = self.tx_ui.send(event).await;
+                            
+                            // A brief delay ensures the UI has fully processed the `Identity` event
+                            // and created the overlay/sidebar structures before we append the SystemMessage.
+                            // Without this, the listview virtualization might race against the history clearing.
+                            let tx_ui = self.tx_ui.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                let _ = tx_ui.send(event).await;
+                            });
                         }
                         ClawMessage::Reload => {
                             info!("Reloading Claw Session state...");
