@@ -24,8 +24,6 @@ pub struct TerminalOverlay {
     history_scroll: gtk::ScrolledWindow,
     history_list: gtk::ListView,
     history_store: gio::ListStore,
-    history_container: gtk::Box,
-    diagnosis_container: gtk::Box,
     diagnosis_viewer: StructuredViewer,
     command_view: gtk::TextView,
     template_entry: gtk::Entry,
@@ -33,7 +31,6 @@ pub struct TerminalOverlay {
     accept_btn: gtk::Button,
     reject_btn: gtk::Button,
     ok_btn: gtk::Button,
-    reject_file_btn: gtk::Button,
     approve_file_btn: gtk::Button,
     inspect_btn: gtk::Button,
     command_frame: gtk::Frame,
@@ -45,7 +42,8 @@ pub struct TerminalOverlay {
     is_thinking: Rc<Cell<bool>>,
     active_agent: Rc<RefCell<String>>,
     history_enabled: Rc<Cell<bool>>,
-    history_sticky: Rc<Cell<u32>>,
+    history_sticky: Rc<Cell<bool>>,
+    is_auto_scrolling: Rc<Cell<bool>>,
     /// Character name pre-selected in the picker before any session starts.
     selected_character: Rc<RefCell<String>>,
     /// True while the 500 ms polling timer for registry changes is active.
@@ -71,7 +69,6 @@ impl TerminalOverlay {
         indicator_slot.append(indicator_widget);
         let single_scroll: gtk::ScrolledWindow = builder.object("single_scroll").unwrap();
         let history_scroll: gtk::ScrolledWindow = builder.object("history_scroll").unwrap();
-        let history_container: gtk::Box = builder.object("history_container").unwrap();
 
         let command_view: gtk::TextView = builder.object("command_view").unwrap();
         let template_entry: gtk::Entry = builder.object("template_entry").unwrap();
@@ -108,73 +105,102 @@ impl TerminalOverlay {
         // Build the virtualized history list (Claude-Code-style scrollable log).
         // Uses the same factory + backing store as the sidebar so a huge
         // conversation stays O(visible_rows) in memory.
-        let (history_list, history_store) = boxxy_claw_ui::create_claw_message_list();
-        history_container.append(&history_list);
-
-        // Auto-scroll to the newest row on every change. Chat-style UX
-        // (Claude Code, Slack, Discord) always lands on the latest message
-        // rather than preserving the scroll — so we drop the "only if the
-        // user is at the bottom" gate the sidebar uses.
         //
-        // Layout timing is the tricky part: when `items_changed` fires,
-        // the new ClawRow has been appended to the store but the ListView
-        // hasn't measured it yet, so `adj.upper()` is stale. Markdown
-        // rendering inside rows also re-measures across several frames.
-        // We handle this by arming a "sticky to bottom" counter on
-        // items_changed and re-snapping the adjustment each time the
-        // upper bound changes, for up to N follow-up frames.
-        // GTK4 ListView has a known virtualization bug (GNOME/gtk#2971)
-        // where scrolling to a newly-appended row lands on the bottom of
-        // the *realized* portion, not the true bottom — rows below the
-        // current viewport haven't been measured yet, so `adj.upper()` is
-        // underestimated and `scroll_to(FOCUS)` returns before the layout
-        // has settled. The GNOME Discourse thread on this recommends
-        // switching to ColumnView entirely; the pragmatic workaround in
-        // chat apps is to repeatedly re-pin the bottom for ~10 frames
-        // while the ListView realizes rows + markdown re-measures its
-        // content. We drive that retry loop via a `Cell<u32>` counter.
-        let history_sticky = Rc::new(Cell::new(0u32));
+        // We set the list as the direct child of the ScrolledWindow so that
+        // they share a single Adjustment. This ensures scroll_to(FOCUS) correctly
+        // drives the visible viewport.
+        let (history_list, history_store) = boxxy_claw_ui::create_claw_message_list();
+        history_scroll.set_child(Some(&history_list));
 
-        let sticky_items = history_sticky.clone();
-        let adj_sched = history_scroll.vadjustment();
-        let list_sched = history_list.clone();
+        // Improved auto-scroll logic (Fractal-style).
+        // 1. On items_changed: arm a "sticky to bottom" flag for 1200ms.
+        // 2. On value_changed: if the user scrolls up manually, clear the sticky flag.
+        // 3. On notify::upper: if sticky and we were at the bottom, snap to latest.
+        let history_sticky = Rc::new(Cell::new(false));
+        let is_auto_scrolling = Rc::new(Cell::new(false));
+        let prev_upper = Rc::new(Cell::new(0.0));
+
+        let sticky = history_sticky.clone();
+        let list_items = history_list.clone();
+        let is_auto_items = is_auto_scrolling.clone();
         history_store.connect_items_changed(move |s, _, _, _| {
             let n = s.n_items();
             if n == 0 {
                 return;
             }
-            // Arm the retry loop — 10 frames @ ~16ms each covers the
-            // worst case (tall markdown row, remote image fetches, font
-            // fallback, etc.).
-            let first_arm = sticky_items.get() == 0;
-            sticky_items.set(10);
-            if !first_arm {
-                // A retry loop is already running; let it keep pinning.
+            let was_idle = !sticky.get();
+            sticky.set(true);
+            
+            let lv = list_items.clone();
+            let is_auto = is_auto_items.clone();
+            gtk::glib::idle_add_local_once(move || {
+                is_auto.set(true);
+                lv.scroll_to(n - 1, gtk::ListScrollFlags::FOCUS, None);
+                gtk::glib::idle_add_local_once(move || {
+                    is_auto.set(false);
+                });
+            });
+            
+            if was_idle {
+                let sticky_timer = sticky.clone();
+                gtk::glib::timeout_add_local(std::time::Duration::from_millis(1200), move || {
+                    sticky_timer.set(false);
+                    gtk::glib::ControlFlow::Break
+                });
+            }
+        });
+
+        let adj = history_scroll.vadjustment();
+        let sticky_val = history_sticky.clone();
+        let is_auto = is_auto_scrolling.clone();
+        let prev_val = Rc::new(Cell::new(adj.value()));
+        adj.connect_value_changed(move |a| {
+            let current_val = a.value();
+            let old_val = prev_val.replace(current_val);
+            if is_auto.get() {
                 return;
             }
-            let adj = adj_sched.clone();
-            let list = list_sched.clone();
-            let sticky = sticky_items.clone();
-            gtk::glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-                let n_now = list.model().map(|m| m.n_items()).unwrap_or(0);
-                if n_now > 0 {
-                    // Ask the ListView to bring the last row into view —
-                    // this forces row realization which the adjustment
-                    // snap alone cannot trigger.
-                    list.scroll_to(n_now - 1, gtk::ListScrollFlags::FOCUS, None);
-                    // Then pin the adjustment; on frames where scroll_to
-                    // already settled, this is a no-op.
-                    adj.set_value(adj.upper() - adj.page_size());
+            
+            let at_bottom = (current_val + a.page_size() - a.upper()).abs() < 60.0;
+            
+            // If the user scrolls up away from the bottom, clear the sticky flag
+            // so we don't yank them back down.
+            if current_val < old_val - 1.0 {
+                if !at_bottom {
+                    sticky_val.set(false);
                 }
-                let remaining = sticky.get();
-                if remaining <= 1 {
-                    sticky.set(0);
-                    gtk::glib::ControlFlow::Break
-                } else {
-                    sticky.set(remaining - 1);
-                    gtk::glib::ControlFlow::Continue
+            } else if at_bottom {
+                // If they scroll back down to the true bottom, re-arm auto-scroll.
+                sticky_val.set(true);
+            }
+        });
+
+        let sticky_upper = history_sticky.clone();
+        let prev_u = prev_upper.clone();
+        let is_auto_upper = is_auto_scrolling.clone();
+        let list_upper = history_list.clone();
+        adj.connect_notify_local(Some("upper"), move |a, _| {
+            let new_upper = a.upper();
+            let old_upper = prev_u.replace(new_upper);
+
+            if !sticky_upper.get() || new_upper <= old_upper {
+                return;
+            }
+
+            // Generous tolerance (60px) to account for padding/margins.
+            let at_bottom = a.value() + a.page_size() >= old_upper - 60.0;
+            if at_bottom {
+                is_auto_upper.set(true);
+                let n = list_upper.model().map(|m| m.n_items()).unwrap_or(0);
+                if n > 0 {
+                    list_upper.scroll_to(n - 1, gtk::ListScrollFlags::FOCUS, None);
                 }
-            });
+                a.set_value(new_upper - a.page_size());
+                let is_auto_idle = is_auto_upper.clone();
+                gtk::glib::idle_add_local_once(move || {
+                    is_auto_idle.set(false);
+                });
+            }
         });
 
         // Host adapter owns all pane-side interactions: focus grab, byte
@@ -373,8 +399,6 @@ impl TerminalOverlay {
             character_selector_box,
             single_scroll,
             history_scroll,
-            history_container,
-            diagnosis_container,
             diagnosis_viewer,
             command_view,
             template_entry,
@@ -382,7 +406,6 @@ impl TerminalOverlay {
             accept_btn,
             reject_btn,
             ok_btn,
-            reject_file_btn,
             approve_file_btn,
             inspect_btn,
             command_frame,
@@ -395,6 +418,7 @@ impl TerminalOverlay {
             active_agent,
             history_enabled,
             history_sticky,
+            is_auto_scrolling,
             selected_character: pending_character,
             selector_polling: Rc::new(Cell::new(false)),
             last_registry_version: Rc::new(Cell::new(0)),
@@ -628,7 +652,7 @@ impl TerminalOverlay {
         &self,
         mode: OverlayMode,
         title: &str,
-        action: Option<&str>,
+        _action: Option<&str>,
         diagnosis: &str,
         proposal: Proposal,
     ) {
@@ -740,31 +764,30 @@ impl TerminalOverlay {
             if n == 0 {
                 return;
             }
-            // Arm the same retry loop used on items_changed — opening an
-            // already-populated drawer exercises the same virtualization
-            // bug (rows aren't realized until they enter the viewport).
-            let first_arm = self.history_sticky.get() == 0;
-            self.history_sticky.set(10);
-            if first_arm {
-                let adj = self.history_scroll.vadjustment();
-                let list = self.history_list.clone();
-                let sticky = self.history_sticky.clone();
-                gtk::glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-                    let n_now = list.model().map(|m| m.n_items()).unwrap_or(0);
-                    if n_now > 0 {
-                        list.scroll_to(n_now - 1, gtk::ListScrollFlags::FOCUS, None);
-                        adj.set_value(adj.upper() - adj.page_size());
-                    }
-                    let remaining = sticky.get();
-                    if remaining <= 1 {
-                        sticky.set(0);
-                        gtk::glib::ControlFlow::Break
-                    } else {
-                        sticky.set(remaining - 1);
-                        gtk::glib::ControlFlow::Continue
-                    }
+            // Arm the same 1200ms sticky window used on items_changed.
+            let was_idle = !self.history_sticky.get();
+            self.history_sticky.set(true);
+            if was_idle {
+                let sticky_timer = self.history_sticky.clone();
+                gtk::glib::timeout_add_local(std::time::Duration::from_millis(1200), move || {
+                    sticky_timer.set(false);
+                    gtk::glib::ControlFlow::Break
                 });
             }
+
+            let adj = self.history_scroll.vadjustment();
+            let list = self.history_list.clone();
+            let is_auto = self.is_auto_scrolling.clone();
+            gtk::glib::idle_add_local_once(move || {
+                is_auto.set(true);
+                list.scroll_to(n - 1, gtk::ListScrollFlags::FOCUS, None);
+                // Also snap the adjustment directly; for realized rows this
+                // is redundant but for unrealized rows it helps the initial jump.
+                adj.set_value(adj.upper() - adj.page_size());
+                gtk::glib::idle_add_local_once(move || {
+                    is_auto.set(false);
+                });
+            });
         } else {
             let adj = self.single_scroll.vadjustment();
             gtk::glib::idle_add_local_once(move || {

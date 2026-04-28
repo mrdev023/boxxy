@@ -116,6 +116,10 @@ tabbar tab.tab-slate:selected { background-image: linear-gradient(0deg, alpha(#6
     background-color: transparent;
 }
 
+.claw-drawer .virtual-history {
+    margin: 12px;
+}
+
 /* Strip all interactive states from ListView row wrappers — hover background,
    double-click flash (active), focus ring, and selection highlight all come
    from listview > row pseudo-classes and must be zeroed here so the inner
