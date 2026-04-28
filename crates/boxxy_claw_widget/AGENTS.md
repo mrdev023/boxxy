@@ -34,6 +34,8 @@ Defines `TerminalOverlay` and `OverlayMode { Claw, Bookmark }`. Constructed via 
 - `enter_waiting_state()` — collapses proposal controls so the drawer reads as "thinking…" after the user sends a reply.
 - `set_history_mode(enabled)` — toggles between the single-message view and a full scrollable conversation log (user preference `maintain_overlay_history`).
 
+The character selector renders from `CHARACTER_CACHE` and `CLAIMS_CACHE`; it is refreshed via `RegistrySnapshot` push signals, not polling.
+
 ### History list + the GTK4 `ListView` virtualization gotcha
 The drawer's scrollable history is a `gtk::ListView` over a `gio::ListStore`. Virtualization means `adj.upper()` reflects only the *realized* portion of the list — so snapping to "bottom" via `set_value(upper - page_size)` lands on a false bottom (scrollbar looks at bottom, but unmeasured rows are still below). This is [GNOME/gtk#2971](https://gitlab.gnome.org/GNOME/gtk/-/issues/2971), partially fixed, partially live.
 
@@ -44,13 +46,13 @@ Formerly the `boxxy-msgbar` crate — folded in during phase 2. The `MsgBarCompo
 
 - **Embedded flag**: `msg_bar.set_embedded(true)` suppresses the bar's self-hide on Enter / Escape. The drawer owns visibility; the bar stays visible as long as the drawer is revealed. `is_active` stays latched while embedded.
 - **Attachments**: `AttachmentManager` intercepts Ctrl+V to convert long text / images into chips above the input. `build_payload(base_text)` merges everything into `(text, Vec<base64_image>)` for the agent.
-- **Autocomplete**: three providers sorted by trigger-length descending — `AgentCompletionProvider` (@agent, fetched from `boxxy_claw::registry::workspace`), `CommandCompletionProvider` (/resume etc.), `ResumeCompletionProvider` (lists recent sessions from the DB with LLM-generated titles + relative timestamps + agent colors).
+- **Autocomplete**: three providers sorted by trigger-length descending — `AgentCompletionProvider` (@agent, reads from `CLAIMS_CACHE` for live availability + `boxxy_claw::registry::workspace` for peer names), `CommandCompletionProvider` (/resume etc.), `ResumeCompletionProvider` (lists recent sessions from the DB with LLM-generated titles + relative timestamps + agent colors).
 - **History**: `MsgHistory` — lazily loaded from `boxxy-db` on the first up/down key. Capped at ~100 entries in memory, images pruned after 20, to keep RAM flat even after thousands of sessions.
 
 ### The `ClawIndicator` (`claw_indicator.rs`)
 Two widgets in one: a small floating badge (over the terminal, shows the agent's name + color) and a detailed pill (inside the drawer header, shows "Thinking…" / "Diagnosis Ready" / "Error Detected" with action buttons). It dynamically updates to reflect the active tool during execution using a curated list of pretty names and matching icons, keeping the user informed of the agent's real-time actions.
 
-**Quiet-by-default policy**: the badge starts with its revealer retracted. It only appears once `set_identity(name)` arrives with a non-empty name. `set_mode(AgentStatus)` only drives status icons + color tint; it never writes placeholder labels like "CLAW" / "WORKING". Dormant panes show nothing.
+**Quiet-by-default policy**: the badge starts with its revealer retracted. It only appears once `set_identity(name)` arrives with a non-empty name. `set_mode(AgentStatus)` only drives status icons + color tint; it never writes placeholder labels like "CLAW" / "WORKING". Dormant panes show nothing. Character lookup on `set_identity` reads `CHARACTER_CACHE` by UUID; orphan character migration (deleted UUID) is handled daemon-side via the `Migrated` claim error, not locally.
 
 ### The dispatch loop (`dispatch.rs`)
 `spawn_dispatch(rx, host, overlay, indicator, msg_bar, sidebar_store, id, session_status, is_pinned, is_web_search, agent_name, total_tokens)` — a single `while let Ok(event) = rx.recv().await` that matches every `ClawEngineEvent` variant. Each branch either mutates widget UI, appends rows to both the sidebar store and the overlay's history store (when `history_mode()` is on), or delegates to the host. Crucially, it acts as a dual-store router: it maintains the full unfiltered history in the `sidebar_store` for debugging, while applying a `is_overlay_visible()` filter to keep noisy `ToolResult` blocks and raw process lists out of the `overlay_store`, ensuring the user's primary view remains clean and focused. Every event, including ones with no widget reaction (`RequestSpawnAgent`, `InjectKeystrokes`), is forwarded via `host.forward_event(event)` at the tail so non-UI consumers (tab badges, swarm router) see the full stream.

@@ -1,7 +1,6 @@
 use crate::core::state::AgentState;
 use boxxy_claw_protocol::ClawEnvironment;
 use std::process::Stdio;
-use std::sync::Arc;
 use tokio::process::Command;
 use zbus::fdo;
 use zbus::interface;
@@ -9,7 +8,7 @@ use zbus::interface;
 pub mod notifier;
 pub mod registry;
 
-pub use registry::{CharacterAssignment, CharacterRegistry};
+pub use registry::CharacterRegistry;
 
 pub struct ClawSubsystem {
     state: AgentState,

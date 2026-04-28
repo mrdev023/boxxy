@@ -9,6 +9,7 @@ pub fn setup_characters_page(builder: &gtk::Builder) -> Box<dyn Fn(&str) -> bool
 
     let chars_dir = boxxy_claw_protocol::character_loader::get_characters_dir().ok();
     let characters = boxxy_claw_protocol::character_loader::load_characters().unwrap_or_default();
+    let mut rows = Vec::new();
 
     // === Characters list group ===
     let chars_group = adw::PreferencesGroup::new();
@@ -54,10 +55,43 @@ pub fn setup_characters_page(builder: &gtk::Builder) -> Box<dyn Fn(&str) -> bool
             row.add_suffix(&swatch);
 
             chars_group.add(&row);
+            rows.push((character.config.id.clone(), character.config.duties.clone(), row));
         }
     }
 
     page.add(&chars_group);
+
+    // Setup reactivity: poll the CLAIMS_CACHE to show which agents are busy
+    let rows_clone = rows.clone();
+    glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+        let claims = boxxy_claw_protocol::characters::CLAIMS_CACHE.load();
+        
+        for (char_id, duties, row) in &rows_clone {
+            let active_claim = claims.iter().find(|c| c.character_id == *char_id);
+            
+            if let Some(claim) = active_claim {
+                let status_text = match claim.holder_kind {
+                    boxxy_claw_protocol::characters::HolderKind::Pane => {
+                        let petname = if claim.petname.is_empty() {
+                             String::new()
+                        } else {
+                             format!(" ({})", claim.petname)
+                        };
+                        format!("Active in pane {}{}", claim.holder_id, petname)
+                    }
+                };
+                row.set_subtitle(&format!("<b>{}</b>", glib::markup_escape_text(&status_text)));
+                row.set_use_markup(true);
+                row.add_css_class("success");
+            } else {
+                row.set_subtitle(&glib::markup_escape_text(duties));
+                row.set_use_markup(false);
+                row.remove_css_class("success");
+            }
+        }
+        
+        glib::ControlFlow::Continue
+    });
 
     // === Management group ===
     let manage_group = adw::PreferencesGroup::new();
@@ -73,12 +107,20 @@ pub fn setup_characters_page(builder: &gtk::Builder) -> Box<dyn Fn(&str) -> bool
     open_row.add_suffix(&arrow);
 
     let chars_dir_open = chars_dir.clone();
-    open_row.connect_activated(move |_| {
+    open_row.connect_activated(move |row| {
         let Some(dir) = &chars_dir_open else { return };
         let _ = std::fs::create_dir_all(dir);
         let uri = format!("file://{}", dir.display());
         let _ =
             gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>);
+        
+        // Show restart notice
+        if let Some(window) = row.root().and_then(|r| r.downcast::<adw::PreferencesWindow>().ok()) {
+            let toast = adw::Toast::new("Restart Boxxy to apply character changes.");
+            // Slight delay since the file manager takes focus away immediately
+            toast.set_timeout(3);
+            window.add_toast(toast);
+        }
     });
     manage_group.add(&open_row);
 
@@ -152,10 +194,16 @@ fn show_final_confirmation(parent: &gtk::Button) {
     dialog.set_default_response(Some("cancel"));
     dialog.set_close_response("cancel");
 
+    let parent_clone = parent.clone();
     dialog.connect_response(None, move |_, r| {
         if r == "confirm" {
             if let Err(e) = boxxy_claw_protocol::character_loader::reset_to_defaults() {
                 log::error!("Failed to reset characters to defaults: {}", e);
+            } else {
+                if let Some(window) = parent_clone.root().and_then(|r| r.downcast::<adw::PreferencesWindow>().ok()) {
+                    let toast = adw::Toast::new("Restart Boxxy to apply character changes.");
+                    window.add_toast(toast);
+                }
             }
         }
     });

@@ -1,4 +1,5 @@
 pub mod claw;
+pub mod client_tracker;
 pub mod maintenance;
 pub mod pty;
 
@@ -47,6 +48,25 @@ pub async fn start_services(
         .build()
         .await?;
 
+    // Spawn a background task to broadcast registry changes to all D-Bus clients.
+    // This centralizes emission so that API calls (try_claim), background cleanup
+    // (owner_tracker), and startup seeding all use the same path.
+    let mut rx_registry = core.registry.subscribe();
+    let conn_for_signals = conn.clone();
+    tokio::spawn(async move {
+        while let Ok(snapshot) = rx_registry.recv().await {
+            if let Ok(snapshot_json) = serde_json::to_string(&snapshot) {
+                let _ = conn_for_signals.emit_signal(
+                    Option::<zbus::names::BusName>::None,
+                    "/dev/boxxy/Agent",
+                    "dev.boxxy.BoxxyTerminal.Agent",
+                    "ClaimsChanged",
+                    &(snapshot_json,),
+                ).await;
+            }
+        }
+    });
+
     Ok(conn)
 }
 
@@ -91,34 +111,34 @@ pub trait Agent {
         api_keys: std::collections::HashMap<String, String>,
         ollama_url: String,
     ) -> zbus::Result<()>;
-    async fn notify_client_connected(&self) -> zbus::Result<bool>;
-    async fn notify_client_disconnected(&self) -> zbus::Result<()>;
     async fn notify_settings_invalidated(&self) -> zbus::Result<()>;
     async fn request_reload(&self) -> zbus::Result<()>;
     async fn request_stop(&self) -> zbus::Result<()>;
 
     // Claw Session Management (Using JSON for complex types)
-    async fn get_character_registry(&self) -> zbus::Result<String>;
-    async fn create_claw_session(
+    async fn claim_startup_token(&self) -> zbus::Result<String>;
+    async fn get_registry_snapshot(&self) -> zbus::Result<String>;
+    async fn try_claim_character(
         &self,
-        pane_id: String,
+        holder_id: String,
+        holder_kind: u8,
         character_id: String,
     ) -> zbus::Result<String>;
+    async fn release_holder(&self, holder_id: String) -> zbus::Result<()>;
+    async fn resolve_peer(&self, query_json: String) -> zbus::Result<String>;
+
     async fn post_claw_message(&self, session_id: String, message_json: String)
     -> zbus::Result<()>;
     /// Returns `[(session_id, pane_id, agent_name), ...]` for every session
     /// the daemon is currently hosting. Used by a freshly launched UI to
     /// discover sessions it can reattach to.
     async fn list_claw_sessions(&self) -> zbus::Result<Vec<(String, String, String)>>;
-    /// Tears down a session actor and forgets its identity in the registry.
-    /// Called when a pane is permanently closed (not just detached).
-    async fn end_claw_session(&self, session_id: String) -> zbus::Result<()>;
 
     #[zbus(signal)]
     async fn claw_event(&self, session_id: String, event_json: String) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    async fn character_registry_updated(&self, registry_json: String) -> zbus::Result<()>;
+    async fn claims_changed(&self, snapshot_json: String) -> zbus::Result<()>;
 
     #[zbus(signal)]
     async fn desktop_notification(&self, title: String, message: String) -> zbus::Result<()>;
@@ -170,30 +190,116 @@ impl AgentInterface {
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    pub async fn character_registry_updated(
-        emitter: &SignalEmitter<'_>,
-        registry_json: String,
+    pub async fn claims_changed(
+        emitter: &zbus::object_server::SignalEmitter<'_>,
+        snapshot_json: String,
     ) -> zbus::Result<()>;
 
-    async fn get_character_registry(&self) -> String {
-        let registry = self.core.registry.get_full_registry().await;
-        serde_json::to_string(&registry).unwrap_or_default()
-    }
+    async fn claim_startup_token(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> String {
+        let owner_bus_name = header.sender().map(|s| s.as_str().to_string()).unwrap_or_default();
+        crate::ipc::client_tracker::register_client(owner_bus_name).await;
 
-    async fn notify_client_connected(&self) -> bool {
         let current = *self.client_count_tx.borrow();
         let _ = self.client_count_tx.send(current + 1);
         log::info!("Client connected. Total clients: {}", current + 1);
 
-        // Return whether the DB was reset — the client shows the toast directly.
-        boxxy_db::DATABASE_WAS_RESET.swap(false, std::sync::atomic::Ordering::SeqCst)
+        let db_was_reset = boxxy_db::DATABASE_WAS_RESET.swap(false, std::sync::atomic::Ordering::SeqCst);
+        let snapshot = self.core.registry.snapshot().await;
+
+        let token = boxxy_claw_protocol::characters::StartupToken {
+            daemon_version: env!("CARGO_PKG_VERSION").to_string(),
+            db_was_reset,
+            initial_revision: snapshot.revision,
+        };
+        serde_json::to_string(&token).unwrap_or_default()
     }
 
-    async fn notify_client_disconnected(&self) {
-        let current = *self.client_count_tx.borrow();
-        let new_count = current.saturating_sub(1);
-        let _ = self.client_count_tx.send(new_count);
-        log::info!("Client disconnected. Total clients: {}", new_count);
+    async fn get_registry_snapshot(&self) -> String {
+        let snapshot = self.core.registry.snapshot().await;
+        serde_json::to_string(&snapshot).unwrap_or_default()
+    }
+
+    async fn try_claim_character(
+        &self,
+        #[zbus(signal_emitter)] emitter: zbus::object_server::SignalEmitter<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        holder_id: String,
+        holder_kind: u8,
+        character_id: String,
+    ) -> String {
+        let kind = match boxxy_claw_protocol::characters::HolderKind::try_from(holder_kind) {
+            Ok(k) => k,
+            Err(_) => return serde_json::to_string(&Result::<boxxy_claw_protocol::characters::ClaimedSession, boxxy_claw_protocol::characters::ClaimError>::Err(boxxy_claw_protocol::characters::ClaimError::UnknownCharacter { character_id })).unwrap_or_default(),
+        };
+
+        let owner_bus_name = header.sender().map(|s| s.as_str().to_string()).unwrap_or_default();
+        let result = self.do_claim(emitter, conn, holder_id, kind, character_id, owner_bus_name).await;
+        serde_json::to_string(&result).unwrap_or_default()
+    }
+
+    async fn release_holder(
+        &self,
+        holder_id: String,
+    ) {
+        if let Some(claim) = self.core.registry.release_holder(&holder_id).await {
+            log::info!("Released holder {} (kind {:?})", holder_id, claim.holder_kind);
+            
+            if claim.holder_kind == boxxy_claw_protocol::characters::HolderKind::Pane {
+                let workspace = boxxy_claw::registry::workspace::global_workspace().await;
+                workspace.release_all_locks(&claim.holder_id).await;
+                workspace.unregister_pane(claim.holder_id).await;
+            }
+        }
+    }
+
+    async fn resolve_peer(&self, query_json: String) -> String {
+        if let Ok(query) = serde_json::from_str::<boxxy_claw_protocol::characters::PeerQuery>(&query_json) {
+            let snapshot = self.core.registry.snapshot().await;
+            let match_opt = match query {
+                boxxy_claw_protocol::characters::PeerQuery::ByCharacterId(id) => {
+                    snapshot.claims.into_iter().find(|c| c.character_id == id)
+                }
+                boxxy_claw_protocol::characters::PeerQuery::ByCharacterDisplayName(name) => {
+                    let mut found_id = None;
+                    if let Some(info) = snapshot.catalog.iter().find(|c| c.config.display_name.eq_ignore_ascii_case(&name)) {
+                        found_id = Some(info.config.id.clone());
+                    }
+                    if let Some(id) = found_id {
+                        snapshot.claims.into_iter().find(|c| c.character_id == id)
+                    } else {
+                        None
+                    }
+                }
+                boxxy_claw_protocol::characters::PeerQuery::ByPetname(petname) => {
+                    snapshot.claims.into_iter().find(|c| c.petname.eq_ignore_ascii_case(&petname))
+                }
+                boxxy_claw_protocol::characters::PeerQuery::ByHolderId(id) => {
+                    snapshot.claims.into_iter().find(|c| c.holder_id == id)
+                }
+            };
+
+            if let Some(claim) = match_opt {
+                let display_name = snapshot.catalog.iter()
+                    .find(|c| c.config.id == claim.character_id)
+                    .map(|c| c.config.display_name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                
+                let info = boxxy_claw_protocol::characters::PeerInfo {
+                    holder_id: claim.holder_id,
+                    holder_kind: claim.holder_kind,
+                    session_id: claim.session_id,
+                    character_id: claim.character_id,
+                    character_display_name: display_name,
+                    petname: claim.petname,
+                };
+                return serde_json::to_string(&Some(info)).unwrap_or_default();
+            }
+        }
+        serde_json::to_string(&Option::<boxxy_claw_protocol::characters::PeerInfo>::None).unwrap_or_default()
     }
 
     async fn request_reload(&self) {
@@ -218,176 +324,6 @@ impl AgentInterface {
         std::process::exit(0);
     }
 
-    async fn create_claw_session(
-        &self,
-        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-        #[zbus(connection)] conn: &Connection,
-        pane_id: String,
-        character_id: String,
-    ) -> String {
-        // Look up the character in the catalog by UUID.
-        let registry = self.core.registry.get_full_registry().await;
-        let char_info = registry
-            .iter()
-            .find(|c| c.config.id == character_id)
-            .cloned();
-        let Some(char_info) = char_info else {
-            log::warn!(
-                "create_claw_session: no character with id '{}' found in catalog",
-                character_id
-            );
-            return String::new();
-        };
-        let character_display_name = char_info.config.display_name.clone();
-
-        // Enforce exclusivity: if this character is active in another pane, reject it.
-        if let Some(active_pane) = self
-            .core
-            .registry
-            .get_active_pane_for_character(&character_id, &pane_id)
-            .await
-        {
-            let is_alive = {
-                let manager = self.session_manager.lock().await;
-                manager.sessions.values().any(|s| s.pane_id == active_pane)
-            };
-
-            if is_alive {
-                log::warn!(
-                    "Rejected session creation: Character '{}' is already active in pane '{}'",
-                    character_display_name,
-                    active_pane
-                );
-                let _ = Self::desktop_notification(
-                    &emitter,
-                    "Character in Use".to_string(),
-                    format!(
-                        "{} is already active in another pane.",
-                        character_display_name
-                    ),
-                )
-                .await;
-                return String::new();
-            } else {
-                log::info!(
-                    "Reclaiming character '{}' from dead pane '{}'",
-                    character_display_name,
-                    active_pane
-                );
-                self.core
-                    .registry
-                    .remove_assignment(&self.core.db, &active_pane)
-                    .await;
-            }
-        }
-
-        log::info!(
-            "Creating Claw session for pane {} as '{}' ({})",
-            pane_id,
-            character_display_name,
-            character_id
-        );
-
-        // If this pane already had a session, end it first to prevent orphans.
-        {
-            let mut to_remove = None;
-            let manager = self.session_manager.lock().await;
-            for (sid, s) in manager.sessions.iter() {
-                if s.pane_id == pane_id {
-                    to_remove = Some(sid.clone());
-                    break;
-                }
-            }
-            drop(manager);
-            if let Some(sid) = to_remove {
-                log::info!(
-                    "Pane {} is swapping characters; ending old session {}",
-                    pane_id,
-                    sid
-                );
-                let mut manager = self.session_manager.lock().await;
-                manager.sessions.remove(&sid);
-            }
-        }
-
-        let (session, tx, rx_ui) = boxxy_claw::engine::ClawSession::new(pane_id.clone());
-        let fresh_session_id = session.session_id.clone();
-        let session = session.with_identity(
-            character_id.clone(),
-            character_display_name.clone(),
-            fresh_session_id.clone(),
-        );
-        let session_id = fresh_session_id;
-
-        // Persist the assignment so the next call resolves to the same agent.
-        self.core
-            .registry
-            .set_assignment(
-                &self.core.db,
-                pane_id.clone(),
-                crate::claw::CharacterAssignment {
-                    character_id: character_id.clone(),
-                    session_id: session_id.clone(),
-                },
-            )
-            .await;
-
-        // Broadcast the updated registry to all clients
-        let registry_json = self.get_character_registry().await;
-        let _ = Self::character_registry_updated(&emitter, registry_json).await;
-
-        {
-            // Initialize session with core state
-            let mut state_lock = session.state.lock().await;
-            state_lock.tracked_pids = self.core.state.tracked_pids.clone();
-            state_lock.api_keys = self.core.state.api_keys.clone();
-            state_lock.ollama_url = self.core.state.ollama_url.clone();
-            state_lock.tx_self = tx.clone();
-        }
-
-        {
-            let mut manager = self.session_manager.lock().await;
-            manager.prune_dead();
-            manager.sessions.insert(
-                session_id.clone(),
-                HostedSession {
-                    pane_id: pane_id.clone(),
-                    agent_name: character_display_name.clone(),
-                    tx,
-                },
-            );
-        }
-
-        // Spawn the session worker with the agent's subsystem (which implements ClawEnvironment)
-        let env = {
-            let manager = self.session_manager.lock().await;
-            manager.env.clone()
-        };
-        session.start(env);
-
-        // Forward UI events from the session to the D-Bus signal. Certain
-        // events (task completion, global notifications) also trigger a
-        // host-level desktop toast via the freedesktop notifications portal
-        // so the user hears about work that finishes while the UI is
-        // detached.
-        let session_id_clone = session_id.clone();
-        let emitter = emitter.to_owned();
-        let conn_clone = conn.clone();
-        let character_display_name_clone = character_display_name.clone();
-        tokio::spawn(async move {
-            while let Ok(event) = rx_ui.recv().await {
-                maybe_send_desktop_notification(&conn_clone, &character_display_name_clone, &event)
-                    .await;
-
-                if let Ok(event_json) = serde_json::to_string(&event) {
-                    let _ = Self::claw_event(&emitter, session_id_clone.clone(), event_json).await;
-                }
-            }
-        });
-
-        session_id
-    }
-
     async fn post_claw_message(&self, session_id: String, message_json: String) {
         if let Ok(message) = serde_json::from_str::<ClawMessage>(&message_json) {
             let manager = self.session_manager.lock().await;
@@ -405,34 +341,6 @@ impl AgentInterface {
             .iter()
             .map(|(sid, s)| (sid.clone(), s.pane_id.clone(), s.agent_name.clone()))
             .collect()
-    }
-
-    async fn end_claw_session(
-        &self,
-        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
-        session_id: String,
-    ) {
-        let pane_id = {
-            let mut manager = self.session_manager.lock().await;
-            manager.sessions.remove(&session_id).map(|s| s.pane_id)
-        };
-        if let Some(pane_id) = pane_id {
-            // Forget the agent's identity too — this pane is being disposed.
-            self.core
-                .registry
-                .remove_assignment(&self.core.db, &pane_id)
-                .await;
-
-            // Broadcast the updated registry to all clients
-            let registry_json = self.get_character_registry().await;
-            let _ = Self::character_registry_updated(&emitter, registry_json).await;
-
-            log::info!(
-                "Ended Claw session {} (pane {} removed from registry)",
-                session_id,
-                pane_id
-            );
-        }
     }
 
     #[zbus(signal)]
@@ -472,5 +380,90 @@ async fn maybe_send_desktop_notification(
             .await;
         }
         _ => {}
+    }
+}
+
+impl AgentInterface {
+    async fn do_claim(
+        &self,
+        emitter: zbus::object_server::SignalEmitter<'_>,
+        conn: &zbus::Connection,
+        holder_id: String,
+        holder_kind: boxxy_claw_protocol::characters::HolderKind,
+        character_id: String,
+        owner_bus_name: String,
+    ) -> Result<boxxy_claw_protocol::characters::ClaimedSession, boxxy_claw_protocol::characters::ClaimError> {
+        let claim_res = self.core.registry.try_claim(holder_id.clone(), holder_kind, character_id.clone(), owner_bus_name.clone()).await;
+
+        match claim_res {
+            Ok(claimed_session) => {
+                let session_id = claimed_session.session_id.clone();
+                let character_display_name = {
+                    let snapshot = self.core.registry.snapshot().await;
+                    snapshot.catalog.iter()
+                        .find(|c| c.config.id == character_id)
+                        .map(|c| c.config.display_name.clone())
+                        .unwrap_or_else(|| "Unknown".to_string())
+                };
+
+                let (session, tx, rx_ui) = boxxy_claw::engine::ClawSession::new(holder_id.clone());
+                let session = session.with_identity(
+                    character_id.clone(),
+                    character_display_name.clone(),
+                    session_id.clone(),
+                );
+
+                // Register with workspace before emitting signal
+                if holder_kind == boxxy_claw_protocol::characters::HolderKind::Pane {
+                    let workspace = boxxy_claw::registry::workspace::global_workspace().await;
+                    workspace.register_pane_tx(holder_id.clone(), tx.clone()).await;
+                }
+
+                {
+                    // Initialize session with core state
+                    let mut state_lock = session.state.lock().await;
+                    state_lock.tracked_pids = self.core.state.tracked_pids.clone();
+                    state_lock.api_keys = self.core.state.api_keys.clone();
+                    state_lock.ollama_url = self.core.state.ollama_url.clone();
+                    state_lock.tx_self = tx.clone();
+                }
+
+                {
+                    let mut manager = self.session_manager.lock().await;
+                    manager.prune_dead();
+                    manager.sessions.insert(
+                        session_id.clone(),
+                        HostedSession {
+                            pane_id: holder_id.clone(),
+                            agent_name: character_display_name.clone(),
+                            tx,
+                        },
+                    );
+                }
+
+                let env = {
+                    let manager = self.session_manager.lock().await;
+                    manager.env.clone()
+                };
+                session.start(env);
+
+                let session_id_clone = session_id.clone();
+                let emitter = emitter.to_owned();
+                let conn_clone = conn.clone();
+                let character_display_name_clone = character_display_name.clone();
+                tokio::spawn(async move {
+                    while let Ok(event) = rx_ui.recv().await {
+                        maybe_send_desktop_notification(&conn_clone, &character_display_name_clone, &event).await;
+
+                        if let Ok(event_json) = serde_json::to_string(&event) {
+                            let _ = Self::claw_event(&emitter, session_id_clone.clone(), event_json).await;
+                        }
+                    }
+                });
+
+                Ok(claimed_session)
+            }
+            Err(e) => Err(e),
+        }
     }
 }

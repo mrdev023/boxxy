@@ -489,12 +489,10 @@ impl ClawIndicator {
 
         let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
 
-        // Lookup strategy: 1. ID, 2. Internal Name, 3. Display Name
+        // Exact match only: daemon owns migration.
         let info = registry
             .iter()
-            .find(|c| c.config.id == character_id)
-            .or_else(|| registry.iter().find(|c| c.config.name == name))
-            .or_else(|| registry.iter().find(|c| c.config.display_name == name));
+            .find(|c| c.config.id == character_id);
 
         if let Some(info) = info {
             self.badge_label.set_text(&info.config.display_name);

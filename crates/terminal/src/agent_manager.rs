@@ -62,23 +62,19 @@ impl AgentManager {
             .await
             .context("Failed to create AgentClawProxy on Session Bus")?;
 
-        // Global UI watcher for Character Registry updates
-        let agent_proxy_for_watcher = agent_proxy.clone();
+        // Global UI watcher for Character Claims updates (New API)
+        let agent_proxy_for_claims = agent_proxy.clone();
         tokio::spawn(async move {
-            if let Ok(mut stream) = agent_proxy_for_watcher
-                .receive_character_registry_updated()
-                .await
-            {
+            if let Ok(mut stream) = agent_proxy_for_claims.receive_claims_changed().await {
+                let mut last_seen_revision = 0;
                 while let Some(msg) = stream.next().await {
-                    let args = msg.args().expect("Failed to parse registry_updated args");
-                    if let Ok(registry) = serde_json::from_str::<
-                        Vec<boxxy_claw_protocol::characters::CharacterInfo>,
-                    >(&args.registry_json)
-                    {
-                        boxxy_claw_protocol::characters::CHARACTER_CACHE
-                            .store(std::sync::Arc::new(registry));
-                        boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
-                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let args = msg.args().expect("Failed to parse claims_changed args");
+                    if let Ok(snapshot) = serde_json::from_str::<boxxy_claw_protocol::characters::RegistrySnapshot>(&args.snapshot_json) {
+                        if snapshot.revision > last_seen_revision {
+                            last_seen_revision = snapshot.revision;
+                            boxxy_claw_protocol::characters::CLAIMS_CACHE.store(std::sync::Arc::new(snapshot.claims));
+                            boxxy_claw_protocol::characters::CHARACTER_CACHE.store(std::sync::Arc::new(snapshot.catalog));
+                        }
                     }
                 }
             }
@@ -89,8 +85,14 @@ impl AgentManager {
         // broadcasting it immediately — TERMINAL_EVENT_BUS is a broadcast
         // channel that drops messages with no receivers, and the window hasn't
         // subscribed yet at this point in the startup sequence.
-        let startup_notification = if agent_proxy.notify_client_connected().await.unwrap_or(false) {
-            Some("Database reset: Conversation history was cleared for a schema update. This only happens during the Preview.".to_string())
+        
+        let startup_token_json = agent_proxy.claim_startup_token().await.unwrap_or_default();
+        let startup_notification = if let Ok(token) = serde_json::from_str::<boxxy_claw_protocol::characters::StartupToken>(&startup_token_json) {
+            if token.db_was_reset {
+                Some("Database reset: Conversation history was cleared for a schema update. This only happens during the Preview.".to_string())
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -116,16 +118,16 @@ impl AgentManager {
         }
 
         // Seed the UI character cache
-        if let Ok(registry_json) = agent_proxy.get_character_registry().await {
-            if let Ok(registry) = serde_json::from_str::<
-                Vec<boxxy_claw_protocol::characters::CharacterInfo>,
-            >(&registry_json)
+        if let Ok(snapshot_json) = agent_proxy.get_registry_snapshot().await {
+            if let Ok(snapshot) = serde_json::from_str::<
+                boxxy_claw_protocol::characters::RegistrySnapshot,
+            >(&snapshot_json)
             {
+                boxxy_claw_protocol::characters::CLAIMS_CACHE
+                    .store(std::sync::Arc::new(snapshot.claims));
                 boxxy_claw_protocol::characters::CHARACTER_CACHE
-                    .store(std::sync::Arc::new(registry));
-                boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                log::info!("Seeded UI Character Cache on startup.");
+                    .store(std::sync::Arc::new(snapshot.catalog));
+                log::info!("Seeded UI Character and Claims Cache on startup.");
             }
         }
 
@@ -145,7 +147,7 @@ impl AgentManager {
     }
 
     pub async fn disconnect(&self) {
-        let _ = self.agent_proxy.notify_client_disconnected().await;
+        // notify_client_disconnected removed in Phase 2
     }
 
     pub async fn notify_settings_invalidated(&self) -> Result<()> {
@@ -168,23 +170,35 @@ impl AgentManager {
         Ok(())
     }
 
-    pub async fn get_character_registry(&self) -> Result<String> {
-        self.agent_proxy
-            .get_character_registry()
-            .await
-            .context("Failed to get character registry")
+    pub async fn claim_startup_token(&self) -> Result<boxxy_claw_protocol::characters::StartupToken> {
+        let token_json = self.agent_proxy.claim_startup_token().await.context("Failed to get startup token")?;
+        let token = serde_json::from_str(&token_json).context("Failed to parse StartupToken")?;
+        Ok(token)
     }
 
-    pub async fn create_claw_session(
+    pub async fn get_registry_snapshot(&self) -> Result<boxxy_claw_protocol::characters::RegistrySnapshot> {
+        let snapshot_json = self.agent_proxy.get_registry_snapshot().await.context("Failed to get registry snapshot")?;
+        let snapshot = serde_json::from_str(&snapshot_json).context("Failed to parse RegistrySnapshot")?;
+        Ok(snapshot)
+    }
+
+    pub async fn try_claim_character(
         &self,
         pane_id: String,
+        holder_kind: u8,
         character_id: String,
     ) -> Result<(String, async_channel::Receiver<ClawEngineEvent>)> {
-        let session_id = self
+        let result_json = self
             .agent_proxy
-            .create_claw_session(pane_id, character_id)
+            .try_claim_character(pane_id, holder_kind, character_id)
             .await
-            .context("Failed to create Claw session via Agent")?;
+            .context("Failed to try claim character via Agent")?;
+
+        let result: Result<boxxy_claw_protocol::characters::ClaimedSession, boxxy_claw_protocol::characters::ClaimError> = 
+            serde_json::from_str(&result_json).context("Failed to parse claim result")?;
+            
+        let claimed_session = result.map_err(|e| anyhow::anyhow!("Claim failed: {:?}", e))?;
+        let session_id = claimed_session.session_id;
 
         let (tx, rx) = async_channel::unbounded();
 
@@ -212,11 +226,27 @@ impl AgentManager {
         Ok((session_id, rx))
     }
 
-    pub async fn end_claw_session(&self, session_id: String) -> Result<()> {
+    pub async fn release_holder(&self, holder_id: String) -> Result<()> {
         self.agent_proxy
-            .end_claw_session(session_id)
+            .release_holder(holder_id)
             .await
-            .context("Failed to end Claw session via Agent")
+            .context("Failed to release holder via Agent")
+    }
+
+    pub async fn resolve_peer(&self, query: boxxy_claw_protocol::characters::PeerQuery) -> Result<Option<boxxy_claw_protocol::characters::PeerInfo>> {
+        let query_json = serde_json::to_string(&query).context("Failed to serialize PeerQuery")?;
+        let result_json = self.agent_proxy.resolve_peer(query_json).await.context("Failed to resolve peer")?;
+        let info = serde_json::from_str(&result_json).context("Failed to parse PeerInfo")?;
+        Ok(info)
+    }
+
+    pub async fn create_claw_session(
+        &self,
+        pane_id: String,
+        character_id: String,
+    ) -> Result<(String, async_channel::Receiver<ClawEngineEvent>)> {
+        // Shim mapping old UI code to new try_claim API
+        self.try_claim_character(pane_id, 0, character_id).await
     }
 
     pub async fn post_claw_message(&self, session_id: String, message: ClawMessage) -> Result<()> {

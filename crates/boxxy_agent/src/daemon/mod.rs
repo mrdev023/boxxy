@@ -5,8 +5,7 @@ pub mod priority;
 pub mod singleton;
 
 use anyhow::Result;
-use log::{info, warn};
-use notify::{EventKind, RecursiveMode, Watcher};
+use log::info;
 use std::sync::Arc;
 use tokio::sync::watch;
 
@@ -38,18 +37,10 @@ impl DaemonCore {
             panic!("Fatal error: failed to initialize database: {}", e);
         });
 
-        // The daemon is the single source of truth. When it starts from scratch,
-        // there are no UI panes connected yet, which means no panes are alive in memory.
-        // Therefore, ALL assignments currently in the database are from a previous
-        // session/crash and are stale. We must clear them so characters become Available.
-        let _ = sqlx::query("DELETE FROM active_pane_assignments")
-            .execute(db.pool())
-            .await;
-
-        let registry = Arc::new(CharacterRegistry::load_or_default());
-        if let Err(e) = registry.load_assignments_from_db(&db).await {
-            log::warn!("Failed to load character assignments from DB: {}", e);
-        }
+        // The daemon is the single source of truth. Character assignments are
+        // now purely in-memory and restart-safe by virtue of the client-tracking
+        // logic. We no longer persist them to SQLite.
+        let registry = Arc::new(CharacterRegistry::load_or_default(&db).await);
 
         // Build the watchers up front so every subsystem that later
         // clones them sees live updates as soon as the owning task
@@ -69,64 +60,13 @@ impl DaemonCore {
         });
 
         // Start D-Bus services on a fresh session-bus connection.
-        let conn = crate::ipc::start_services(core.clone(), client_tx).await?;
+        let conn = crate::ipc::start_services(core.clone(), client_tx.clone()).await?;
         info!("D-Bus services registered");
 
-        // Watch the characters directory for changes
-        let registry_for_watcher = registry.clone();
-        let conn_for_watcher = conn.clone();
-        tokio::spawn(async move {
-            let (tx_notify, mut rx_notify) = tokio::sync::mpsc::channel(10);
-
-            let watcher_res =
-                notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                    if let Ok(event) = res {
-                        // Filter out access events to avoid thrashing
-                        if !matches!(event.kind, EventKind::Access(_)) {
-                            let _ = tx_notify.try_send(());
-                        }
-                    }
-                });
-
-            if let Ok(mut watcher) = watcher_res {
-                if let Ok(char_dir) = boxxy_claw_protocol::character_loader::get_characters_dir() {
-                    let _ = std::fs::create_dir_all(&char_dir);
-                    if let Err(e) = watcher.watch(&char_dir, RecursiveMode::Recursive) {
-                        warn!("character watcher: failed to watch {:?}: {}", char_dir, e);
-                    } else {
-                        info!("character watcher: watching {:?}", char_dir);
-
-                        // We debounce slightly to handle bulk edits or git pull
-                        while rx_notify.recv().await.is_some() {
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            // Drain any queued events
-                            while rx_notify.try_recv().is_ok() {}
-
-                            info!("character watcher: changes detected, reloading catalog...");
-                            registry_for_watcher.reload_catalog().await;
-
-                            // Broadcast the update
-                            let updated_registry = registry_for_watcher.get_full_registry().await;
-                            if let Ok(registry_json) = serde_json::to_string(&updated_registry) {
-                                if let Ok(emitter) = zbus::object_server::SignalEmitter::new(
-                                    &conn_for_watcher,
-                                    "/dev/boxxy/Agent",
-                                ) {
-                                    // Use the generated macro method from the Agent trait
-                                    let _ = crate::ipc::AgentInterface::character_registry_updated(
-                                        &emitter,
-                                        registry_json,
-                                    )
-                                    .await;
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                warn!("character watcher: failed to initialize notify");
-            }
-        });
+        // Spawn the client owner tracker. This handles automatic cleanup of
+        // character assignments and swarm locks when a UI process disconnects.
+        let workspace = boxxy_claw::registry::workspace::global_workspace().await;
+        crate::ipc::client_tracker::spawn_owner_tracker(&conn, registry.clone(), workspace, client_tx.clone()).await?;
 
         // Wire up UPower now that we have a connection. Failures are
         // logged and non-fatal — `power` stays at the AC default.
@@ -136,7 +76,7 @@ impl DaemonCore {
 
         // Dream cycle: niceness-19, battery-gated, ghost-gated,
         // setting-gated. Owns its own status cell; we hand it ours so
-        // `MaintenanceSubsystem` reads the same state.
+        // `MaintenanceSubsystem::get_maintenance_status()` reads the same state.
         dreaming::spawn_with_status(power.clone(), ghost.clone(), dream_status.clone());
 
         // Telemetry subsystem: Initialize and periodically flush in the background

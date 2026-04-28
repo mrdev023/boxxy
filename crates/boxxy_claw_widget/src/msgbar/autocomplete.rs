@@ -13,6 +13,8 @@ impl CompletionProvider for AgentCompletionProvider {
 
         let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
 
+        let claims = boxxy_claw_protocol::characters::CLAIMS_CACHE.load();
+
         for info in registry.iter() {
             if info.config.name.to_lowercase().contains(&query_lower)
                 || info
@@ -23,13 +25,12 @@ impl CompletionProvider for AgentCompletionProvider {
             {
                 let badge_color = Some(info.config.color.clone());
 
-                let (secondary_text, icon_name) = match &info.status {
-                    boxxy_claw_protocol::characters::CharacterStatus::Available => {
-                        ("Available".to_string(), "boxxy-chat-symbolic".to_string())
-                    }
-                    boxxy_claw_protocol::characters::CharacterStatus::Active { .. } => {
-                        ("In Use".to_string(), "boxxy-chat-symbolic".to_string())
-                    }
+                let is_taken = claims.iter().any(|claim| claim.character_id == info.config.id);
+
+                let (secondary_text, icon_name) = if is_taken {
+                    ("In Use".to_string(), "boxxy-chat-symbolic".to_string())
+                } else {
+                    ("Available".to_string(), "boxxy-chat-symbolic".to_string())
                 };
 
                 let avatar_path = boxxy_claw_protocol::character_loader::get_characters_dir()
@@ -194,7 +195,9 @@ impl CompletionProvider for ResumeCompletionProvider {
                 let mut display_age = age;
 
                 if let Some(info) = char_info {
-                    if matches!(info.status, boxxy_claw_protocol::characters::CharacterStatus::Active { .. }) {
+                    let claims = boxxy_claw_protocol::characters::CLAIMS_CACHE.load();
+                    let is_taken = claims.iter().any(|claim| claim.character_id == info.config.id);
+                    if is_taken {
                         is_disabled = true;
                         display_age = "In Use".to_string();
                     }

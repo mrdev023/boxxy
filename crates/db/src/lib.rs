@@ -14,7 +14,7 @@ pub mod store;
 static DB: OnceCell<Db> = OnceCell::const_new();
 pub static DATABASE_WAS_RESET: AtomicBool = AtomicBool::new(false);
 
-const CURRENT_SCHEMA_VERSION: i32 = 13;
+const CURRENT_SCHEMA_VERSION: i32 = 14;
 
 #[derive(Clone)]
 pub struct Db {
@@ -123,13 +123,6 @@ impl Db {
                 total_tokens BIGINT DEFAULT 0,
                 last_dream_at DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS active_pane_assignments (
-                pane_id TEXT PRIMARY KEY,
-                character_id TEXT NOT NULL DEFAULT '',
-                session_id TEXT NOT NULL,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 

@@ -1,153 +1,260 @@
 //! Persistent pane-to-character assignment mapping and character catalog.
 //!
 //! The daemon is the single source of truth for character assignments. Each
-//! pane gets a stable `(character_name, session_id)` that is saved to
-//! disk so it survives UI restarts and daemon reloads.
-//!
-//! Storage: `{XDG_DATA_HOME}/boxxy-terminal/character-assignments.json`,
-//! rewritten atomically on every mutation via a tempfile rename.
+//! holder gets a stable `(character_id, session_id, petname)` that is stored
+//! in memory for the daemon's lifetime. Assignments are NOT persisted to DB;
+//! they are owned by the D-Bus unique name of the client UI process.
 
 use anyhow::Result;
-use boxxy_claw_protocol::characters::{CharacterInfo, CharacterStatus};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use boxxy_claw_protocol::characters::{
+    CharacterInfo, CharacterStatus, ClaimError, ClaimedSession, CharacterClaim, RegistrySnapshot, HolderKind
+};
+use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CharacterAssignment {
-    pub character_id: String,
-    pub session_id: String,
+pub struct CharacterRegistry {
+    inner: RwLock<RegistryInner>,
+    /// Notifier for snapshot subscribers.
+    on_change: tokio::sync::broadcast::Sender<RegistrySnapshot>,
 }
 
-pub struct CharacterRegistry {
-    assignments: RwLock<HashMap<String, CharacterAssignment>>,
-    catalog: RwLock<Vec<CharacterInfo>>,
+struct RegistryInner {
+    catalog: Vec<CharacterInfo>, // immutable after load
+    claims: HashMap<String /* holder_id */, OwnedClaim>,
+    migrations: HashMap<String /* old_id */, String /* new_id */>,
+    revision: u64,
+    /// Reverse index (owner_bus_name → holder_ids) — built and maintained
+    /// alongside `claims`. Used by `release_owner` to avoid scanning.
+    by_owner: HashMap<String, HashSet<String>>,
+}
+
+#[derive(Debug, Clone)]
+struct OwnedClaim {
+    holder_kind: HolderKind,
+    character_id: String,
+    session_id: String,
+    petname: String,
+    owner_bus_name: String,
 }
 
 impl CharacterRegistry {
-    pub fn load_or_default() -> Self {
-        // Assignments will be loaded lazily or on demand if we shift fully to DB.
-        // For now, we'll keep the in-memory map backed by the database.
+    pub async fn load_or_default(db: &boxxy_db::Db) -> Self {
         let catalog = boxxy_claw_protocol::character_loader::load_characters().unwrap_or_default();
-        Self {
-            assignments: RwLock::new(HashMap::new()),
-            catalog: RwLock::new(catalog),
-        }
-    }
+        let (on_change, _) = tokio::sync::broadcast::channel(16);
 
-    pub async fn load_assignments_from_db(&self, db: &boxxy_db::Db) -> Result<()> {
-        let records =
-            sqlx::query("SELECT pane_id, character_id, session_id FROM active_pane_assignments")
+        // Orphan character migration:
+        // Find all sessions that reference a character_id not in the catalog.
+        // Map them to the first available character in the catalog.
+        let mut migrations = HashMap::new();
+        if let Some(first_char) = catalog.first() {
+            let catalog_ids: HashSet<String> = catalog.iter().map(|c| c.config.id.clone()).collect();
+            
+            let query = "SELECT DISTINCT character_id FROM sessions";
+            let res = sqlx::query_as::<sqlx::Sqlite, (String,)> (query)
                 .fetch_all(db.pool())
-                .await?;
+                .await;
 
-        let mut guard = self.assignments.write().await;
-        guard.clear();
-        for r in records {
-            use sqlx::Row;
-            guard.insert(
-                r.get("pane_id"),
-                CharacterAssignment {
-                    character_id: r.get("character_id"),
-                    session_id: r.get("session_id"),
-                },
-            );
-        }
-        Ok(())
-    }
-
-    pub async fn get_assignment(&self, pane_id: &str) -> Option<CharacterAssignment> {
-        self.assignments.read().await.get(pane_id).cloned()
-    }
-
-    pub async fn get_active_pane_for_character(
-        &self,
-        character_id: &str,
-        exclude_pane_id: &str,
-    ) -> Option<String> {
-        let guard = self.assignments.read().await;
-        for (pane_id, assignment) in guard.iter() {
-            if pane_id != exclude_pane_id && assignment.character_id == character_id {
-                return Some(pane_id.clone());
+            if let Ok(session_char_ids) = res {
+                for (char_id,) in session_char_ids {
+                    if !char_id.is_empty() && !catalog_ids.contains(&char_id) {
+                        log::info!("Migrating orphan character ID {} -> {}", char_id, first_char.config.id);
+                        migrations.insert(char_id, first_char.config.id.clone());
+                    }
+                }
             }
+        }
+
+        Self {
+            inner: RwLock::new(RegistryInner {
+                catalog,
+                claims: HashMap::new(),
+                migrations,
+                revision: 0,
+                by_owner: HashMap::new(),
+            }),
+            on_change,
+        }
+    }
+
+    pub async fn snapshot(&self) -> RegistrySnapshot {
+        let inner = self.inner.read().await;
+        inner.snapshot()
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<RegistrySnapshot> {
+        self.on_change.subscribe()
+    }
+
+    pub async fn try_claim(
+        &self,
+        holder_id: String,
+        holder_kind: HolderKind,
+        character_id: String,
+        owner_bus_name: String,
+    ) -> Result<ClaimedSession, ClaimError> {
+        let mut inner = self.inner.write().await;
+
+        // 1. Check for migrations
+        if let Some(to_id) = inner.migrations.get(&character_id) {
+            return Err(ClaimError::Migrated { from_id: character_id, to_id: to_id.clone() });
+        }
+
+        // 2. Validate character exists
+        if !inner
+            .catalog
+            .iter()
+            .any(|c| c.config.id == character_id) {
+            return Err(ClaimError::UnknownCharacter { character_id });
+        }
+
+        // 3. Validate character is not already taken by another holder
+        for (other_holder_id, claim) in &inner.claims {
+            if other_holder_id != &holder_id && claim.character_id == character_id {
+                let holder_display_name = inner
+                    .catalog
+                    .iter()
+                    .find(|c| c.config.id == character_id)
+                    .map(|c| c.config.display_name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                return Err(ClaimError::AlreadyTaken {
+                    holder_id: other_holder_id.clone(),
+                    holder_kind: claim.holder_kind,
+                    holder_display_name,
+                });
+            }
+        }
+
+        // 4. Mint or reuse identity
+        let petname = if let Some(existing) = inner.claims.get(&holder_id) {
+            existing.petname.clone()
+        } else {
+            // New holder! Mint a petname.
+            petname::petname(2, "-").unwrap_or_else(|| "red-pony".to_string())
+        };
+
+        let session_id = uuid::Uuid::new_v4().to_string();
+
+        let new_claim = OwnedClaim {
+            holder_kind,
+            character_id: character_id.clone(),
+            session_id: session_id.clone(),
+            petname: petname.clone(),
+            owner_bus_name: owner_bus_name.clone(),
+        };
+
+        // 5. Record claim
+        inner.claims.insert(holder_id.clone(), new_claim.clone());
+        inner
+            .by_owner
+            .entry(owner_bus_name.clone())
+            .or_default()
+            .insert(holder_id.clone());
+
+        inner.revision += 1;
+        let _ = self.on_change.send(inner.snapshot());
+
+        Ok(ClaimedSession {
+            session_id: session_id.clone(),
+            claim: CharacterClaim {
+                holder_id,
+                holder_kind,
+                character_id,
+                session_id,
+                petname,
+                owner_bus_name,
+            },
+        })
+    }
+
+    pub async fn release_holder(&self, holder_id: &str) -> Option<CharacterClaim> {
+        let mut inner = self.inner.write().await;
+        if let Some(claim) = inner.claims.remove(holder_id) {
+            if let Some(holders) = inner.by_owner.get_mut(&claim.owner_bus_name) {
+                holders.remove(holder_id);
+                if holders.is_empty() {
+                    inner.by_owner.remove(&claim.owner_bus_name);
+                }
+            }
+            inner.revision += 1;
+            let _ = self.on_change.send(inner.snapshot());
+            
+            return Some(CharacterClaim {
+                holder_id: holder_id.to_string(),
+                holder_kind: claim.holder_kind,
+                character_id: claim.character_id,
+                session_id: claim.session_id,
+                petname: claim.petname,
+                owner_bus_name: claim.owner_bus_name,
+            });
         }
         None
     }
 
-    pub async fn set_assignment(
-        &self,
-        db: &boxxy_db::Db,
-        pane_id: String,
-        assignment: CharacterAssignment,
-    ) {
-        {
-            let mut guard = self.assignments.write().await;
-            guard.insert(pane_id.clone(), assignment.clone());
-        }
+    pub async fn release_owner(&self, owner_bus_name: &str) -> Vec<CharacterClaim> {
+        let mut inner = self.inner.write().await;
+        let Some(holder_ids) = inner.by_owner.remove(owner_bus_name) else {
+            return Vec::new();
+        };
 
-        let pool = db.pool().clone();
-        tokio::spawn(async move {
-            let res = sqlx::query(
-                "INSERT INTO active_pane_assignments (pane_id, character_id, session_id, updated_at)
-                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                 ON CONFLICT(pane_id) DO UPDATE SET
-                 character_id=excluded.character_id,
-                 session_id=excluded.session_id,
-                 updated_at=CURRENT_TIMESTAMP"
-            )
-            .bind(pane_id)
-            .bind(assignment.character_id)
-            .bind(assignment.session_id)
-            .execute(&pool).await;
-
-            if let Err(e) = res {
-                log::error!("Failed to persist character assignment to db: {}", e);
+        let holder_ids_vec: Vec<String> = holder_ids.into_iter().collect();
+        let mut released_claims = Vec::new();
+        for holder_id in &holder_ids_vec {
+            if let Some(claim) = inner.claims.remove(holder_id) {
+                released_claims.push(CharacterClaim {
+                    holder_id: holder_id.clone(),
+                    holder_kind: claim.holder_kind,
+                    character_id: claim.character_id,
+                    session_id: claim.session_id,
+                    petname: claim.petname,
+                    owner_bus_name: claim.owner_bus_name,
+                });
             }
-        });
-    }
-
-    pub async fn remove_assignment(&self, db: &boxxy_db::Db, pane_id: &str) {
-        {
-            let mut guard = self.assignments.write().await;
-            guard.remove(pane_id);
         }
 
-        let pool = db.pool().clone();
-        let pane_id = pane_id.to_string();
-        tokio::spawn(async move {
-            let _ = sqlx::query("DELETE FROM active_pane_assignments WHERE pane_id = ?")
-                .bind(pane_id)
-                .execute(&pool)
-                .await;
-        });
+        if !released_claims.is_empty() {
+            inner.revision += 1;
+            let _ = self.on_change.send(inner.snapshot());
+        }
+
+        released_claims
     }
 
-    pub async fn reload_catalog(&self) {
-        let catalog = boxxy_claw_protocol::character_loader::load_characters().unwrap_or_default();
-        let mut guard = self.catalog.write().await;
-        *guard = catalog;
+    pub async fn has_owner(&self, owner_bus_name: &str) -> bool {
+        let inner = self.inner.read().await;
+        inner.by_owner.contains_key(owner_bus_name)
     }
+}
 
-    pub async fn get_full_registry(&self) -> Vec<CharacterInfo> {
-        let catalog_guard = self.catalog.read().await;
-        let assignments_guard = self.assignments.read().await;
+impl RegistryInner {
+    fn snapshot(&self) -> RegistrySnapshot {
+        let mut catalog = self.catalog.clone();
+        let mut claims = Vec::new();
 
-        let mut result = catalog_guard.clone();
-        for info in &mut result {
-            let mut active_pane = None;
-            for (pane_id, assignment) in assignments_guard.iter() {
-                if assignment.character_id == info.config.id {
-                    active_pane = Some(pane_id.clone());
-                    break;
+        for (holder_id, owned) in &self.claims {
+            claims.push(CharacterClaim {
+                holder_id: holder_id.clone(),
+                holder_kind: owned.holder_kind,
+                character_id: owned.character_id.clone(),
+                session_id: owned.session_id.clone(),
+                petname: owned.petname.clone(),
+                owner_bus_name: owned.owner_bus_name.clone(),
+            });
+
+            // Update status in the catalog snapshot
+            if let Some(info) = catalog.iter_mut().find(|c| c.config.id == owned.character_id) {
+                if owned.holder_kind == HolderKind::Pane {
+                    info.status = CharacterStatus::Active {
+                        pane_id: holder_id.clone(),
+                    };
                 }
             }
-
-            if let Some(pane_id) = active_pane {
-                info.status = CharacterStatus::Active { pane_id };
-            } else {
-                info.status = CharacterStatus::Available;
-            }
         }
-        result
+
+        RegistrySnapshot {
+            catalog,
+            claims,
+            revision: self.revision,
+        }
     }
 }

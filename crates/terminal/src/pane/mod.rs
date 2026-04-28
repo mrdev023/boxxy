@@ -108,11 +108,12 @@ impl Drop for PaneInner {
         // (skip end_claw_session) so the conversation can be resumed after the
         // UI restarts, the same way the shell process survives detach.
         let session_arc = self.session_id.clone();
+        let pane_id = self.id.clone();
         glib::spawn_future_local(async move {
             let sid = session_arc.lock().await.clone();
-            if let Some(session_id) = sid {
+            if sid.is_some() {
                 let agent = crate::get_agent().await;
-                let _ = agent.end_claw_session(session_id).await;
+                let _ = agent.release_holder(pane_id).await;
             }
         });
 
@@ -194,20 +195,22 @@ impl TerminalPaneComponent {
     /// Rc clones of inner, so drop may fire very late or not at all.
     pub fn end_session(&self) {
         let session_arc = self.inner.borrow().session_id.clone();
+        let pane_id = self.inner.borrow().id.clone();
         glib::spawn_future_local(async move {
             let sid = session_arc.lock().await.clone();
-            if let Some(session_id) = sid {
+            if sid.is_some() {
                 let agent = crate::get_agent().await;
-                let _ = agent.end_claw_session(session_id).await;
+                let _ = agent.release_holder(pane_id).await;
             }
         });
     }
 
     pub async fn end_session_sync(&self) {
         let sid = self.inner.borrow().session_id.lock().await.clone();
-        if let Some(session_id) = sid {
+        let pane_id = self.inner.borrow().id.clone();
+        if sid.is_some() {
             let agent = crate::get_agent().await;
-            let _ = agent.end_claw_session(session_id).await;
+            let _ = agent.release_holder(pane_id).await;
         }
     }
 
@@ -259,7 +262,7 @@ impl TerminalPaneComponent {
             let agent = crate::get_agent().await;
 
             // Forward messages from UI to agent. Wait until session_id is populated.
-            let mut rx_from_ui = rx_from_ui;
+            let rx_from_ui = rx_from_ui;
             let session_id_ref = session_id_for_init.clone();
 
             tokio::spawn(async move {
@@ -324,12 +327,10 @@ impl TerminalPaneComponent {
             let is_pinned_for_sleep = is_pinned.clone();
             let is_web_search_for_sleep = is_web_search.clone();
 
-            let is_claw_active_for_pin = is_claw_active.clone();
             let session_status_for_pin = session_status.clone();
             let is_pinned_for_pin = is_pinned.clone();
             let is_web_search_for_pin = is_web_search.clone();
 
-            let is_claw_active_for_web_search = is_claw_active.clone();
             let session_status_for_web_search = session_status.clone();
             let is_pinned_for_web_search = is_pinned.clone();
             let is_web_search_for_web_search = is_web_search.clone();

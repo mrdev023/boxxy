@@ -46,10 +46,6 @@ pub struct TerminalOverlay {
     is_auto_scrolling: Rc<Cell<bool>>,
     /// Character name pre-selected in the picker before any session starts.
     selected_character: Rc<RefCell<String>>,
-    /// True while the 500 ms polling timer for registry changes is active.
-    selector_polling: Rc<Cell<bool>>,
-    /// The CHARACTER_CACHE_VERSION value that was current when we last built the picker.
-    last_registry_version: Rc<Cell<u64>>,
     host: Rc<dyn ClawHost>,
 }
 
@@ -420,8 +416,6 @@ impl TerminalOverlay {
             history_sticky,
             is_auto_scrolling,
             selected_character: pending_character,
-            selector_polling: Rc::new(Cell::new(false)),
-            last_registry_version: Rc::new(Cell::new(0)),
             history_list,
             history_store,
             host,
@@ -472,36 +466,6 @@ impl TerminalOverlay {
         self.sync_action_state();
     }
 
-    /// Start a 500 ms polling timer that rebuilds the character picker whenever
-    /// CHARACTER_CACHE_VERSION changes. Safe to call multiple times — a second
-    /// call is a no-op if the timer is already running.
-    fn start_selector_poll(&self) {
-        if self.selector_polling.get() {
-            return;
-        }
-        self.selector_polling.set(true);
-        let version_cell = self.last_registry_version.clone();
-        let overlay = self.clone();
-        let running = self.selector_polling.clone();
-        gtk::glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
-            if !running.get() {
-                return gtk::glib::ControlFlow::Break;
-            }
-            let current = boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
-                .load(std::sync::atomic::Ordering::Relaxed);
-            if current != version_cell.get() {
-                version_cell.set(current);
-                overlay.refresh_character_selector("");
-            }
-            gtk::glib::ControlFlow::Continue
-        });
-    }
-
-    /// Cancel the polling timer started by `start_selector_poll`.
-    fn stop_selector_poll(&self) {
-        self.selector_polling.set(false);
-    }
-
     pub fn refresh_character_selector(&self, current_agent: &str) {
         if !current_agent.is_empty() {
             *self.active_agent.borrow_mut() = current_agent.to_string();
@@ -518,26 +482,17 @@ impl TerminalOverlay {
             self.character_selector_box.remove(&child);
         }
 
-        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
+        let claims = boxxy_claw_protocol::characters::CLAIMS_CACHE.load();
         let host_id = self.host.host_id();
 
-        // Returns true if the character with the given UUID is Active in a pane other than ours.
+        // Returns true if the character with the given UUID is Active in another holder.
         let is_taken = |id: &str| -> bool {
-            registry.iter().any(|info| {
-                info.config.id == id
-                    && matches!(
-                        &info.status,
-                        boxxy_claw_protocol::characters::CharacterStatus::Active { pane_id }
-                            if pane_id != &host_id
-                    )
-            })
+            claims.iter().any(|claim| claim.character_id == id && claim.holder_id != host_id)
         };
 
         // Auto-default (or auto-correct): ensure `pending` always points to a
-        // character UUID that isn't Active in another pane.  This runs both when
-        // the picker is first shown (pending = "") and whenever the polling timer
-        // detects that the previously-selected character has since been claimed
-        // by another tab.
+        // character UUID that isn't claimed by another holder.
+        let registry = boxxy_claw_protocol::characters::CHARACTER_CACHE.load();
         {
             let mut pending = self.selected_character.borrow_mut();
             if pending.is_empty() || is_taken(&pending) {
@@ -639,13 +594,6 @@ impl TerminalOverlay {
 
             self.character_selector_box.append(&btn);
         }
-
-        // Snapshot the version we just rendered and start polling for changes
-        // so that when another tab releases a character the picker updates.
-        let current_version = boxxy_claw_protocol::characters::CHARACTER_CACHE_VERSION
-            .load(std::sync::atomic::Ordering::Relaxed);
-        self.last_registry_version.set(current_version);
-        self.start_selector_poll();
     }
 
     pub fn show(
@@ -804,7 +752,6 @@ impl TerminalOverlay {
         *self.current_proposal.borrow_mut() = Proposal::None;
         self.is_thinking.set(false);
         self.sync_action_state();
-        self.stop_selector_poll();
     }
 
     pub fn grab_input_focus(&self) {
@@ -849,7 +796,6 @@ impl TerminalOverlay {
 
         // If the picker shouldn't be shown, we don't need to poll the registry.
         if !show_picker {
-            self.stop_selector_poll();
         }
 
         // 4. If the agent is actively thinking, we show no actions.

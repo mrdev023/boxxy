@@ -18,8 +18,11 @@ Provides a persistent SQLite database for Boxxy-Terminal, serving as the Long-Te
 - **Session Persistence (Schema v9)**:
   - **Pinned Sessions**: The `sessions` table includes a `pinned` column. Pinned sessions are excluded from the "last 10" limit and sorted to the top.
   - **Total Tokens**: Tracks the cumulative context cost of a session across different model providers and application restarts.
-  - **Dream History**: Includes `last_dream_at` to orchestrate when a session's history was last consolidated.  - **Soft Clear**: A `cleared_at` timestamp allows users to hide past history visuals without losing the underlying message context.
+  - **Character Identity**: The `sessions` table stores `character_id` and `character_display_name` recorded at session-creation time so `/resume` can display the original character even if the live catalog changes.
+  - **Dream History**: Includes `last_dream_at` to orchestrate when a session's history was last consolidated.
+  - **Soft Clear**: A `cleared_at` timestamp allows users to hide past history visuals without losing the underlying message context.
   - **Interaction Logs**: The `claw_events` table stores serialized UI events (diagnoses, proposals). It is indexed by `session_id` for fast restoration during session resumption.
+  - Note: there is no `active_pane_assignments` table. Character claim state is volatile in-memory only (owned by `boxxy-agent`).
 - **Session-Scoped Task Persistence**: Scheduled tasks are serialized atomically on every turn and saved alongside the conversation history. These tasks are only re-hydrated and executed when the specific session is actively resumed in a pane.
 
 ## Key Modules

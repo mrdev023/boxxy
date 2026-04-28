@@ -15,6 +15,15 @@ The crate is the only place where a definition appears in *both* the UI process 
 - **`ScheduledTask` + `TaskType` + `TaskStatus`**: the scheduled-reminders payload, including the cross-agent task registry shape.
 - **`UsageWrapper`**: serde-safe wrapper for `rig::completion::Usage`. `{input_tokens, output_tokens}` only — no `total_tokens` field, sum at the call site.
 - **`ClawEnvironment` trait**: the async interface the reasoning engine calls for privileged operations (`exec_shell`, `read_file`, `list_processes`, `get_clipboard`, …). Implemented in-process on the daemon (`boxxy_agent::claw::ClawSubsystem`) and forwarded over D-Bus by `boxxy_terminal::agent_manager::DbusClawEnvironment`.
+- **Character claim types** (`characters.rs`):
+  - `HolderKind { Pane }` — what kind of entity holds a character claim. Single variant today; the enum exists so future non-pane holders (headless, voice) can be added without a protocol break.
+  - `CharacterClaim { holder_id, holder_kind, character_id, session_id, petname, owner_bus_name }` — one live claim. `petname` (e.g. "red-pony") is the stable two-word swarm address for this holder; `owner_bus_name` is the D-Bus unique name (`:1.42`) used by the daemon for crash-safe cleanup.
+  - `RegistrySnapshot { catalog: Vec<CharacterInfo>, claims: Vec<CharacterClaim>, revision: u64 }` — full consistent view; revision is monotonic so stale out-of-order signal deliveries can be dropped.
+  - `ClaimedSession { session_id, claim }` — returned by a successful `try_claim_character`.
+  - `ClaimError { AlreadyTaken { holder_id, holder_kind, holder_display_name }, UnknownCharacter { character_id }, Migrated { from_id, to_id } }` — typed error so the UI can recover (re-issue with `to_id` on `Migrated`) rather than just log.
+  - `StartupToken { daemon_version, db_was_reset, initial_revision }` — returned by `claim_startup_token()`; lets a reconnecting UI detect DB resets and seed its initial revision.
+  - `PeerQuery { ByCharacterId, ByCharacterDisplayName, ByPetname, ByHolderId }` / `PeerInfo` — used by swarm tools to locate peers via `resolve_peer`.
+  - `CHARACTER_CACHE: ArcSwap<Vec<CharacterInfo>>` and `CLAIMS_CACHE: ArcSwap<Vec<CharacterClaim>>` — global lock-free caches kept in sync by `agent_manager` via push signals. Read synchronously by UI components (autocomplete, indicator) without D-Bus round-trips.
 
 ## Design Rules
 

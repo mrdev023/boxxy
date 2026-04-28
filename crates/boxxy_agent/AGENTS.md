@@ -37,13 +37,27 @@ Latency-critical terminal I/O. Exposes:
 
 Host-side implementation of `ClawEnvironment`: shell execution, file I/O with path blacklisting, list/kill processes, clipboard access, sysinfo. Path blacklist seeds from `~/.config/boxxy-terminal/boxxyclaw/BLACKLIST.md` (falling back to a built-in list that blocks `/etc/shadow`, `.ssh/id_rsa`, etc.).
 
-**`claw::registry::AgentRegistry`** is the persistent `pane_id → AgentIdentity { agent_name, session_id }` map saved to `$XDG_DATA_HOME/boxxy-terminal/agent-registry.json` via atomic tempfile rename. It's what makes a pane's agent keep the same petname across UI restarts. `AgentInterface::create_claw_session` reuses a stored identity if one exists for the pane, otherwise mints a fresh petname and persists it.
+**`claw::CharacterRegistry`** is the volatile in-memory registry of all live character claims, keyed by `holder_id`. It is the daemon's single source of truth for who holds which character. Claims are never written to disk; they live only for the duration of the daemon process. Key methods: `try_claim(holder_id, holder_kind, character_id, owner_bus_name)` (atomic check-then-set under write lock), `release_holder(holder_id)`, `release_owner(owner_bus_name) -> Vec<CharacterClaim>` (bulk release on client disconnect), `snapshot()`, `subscribe()` (broadcast channel for push updates). The registry also handles orphan character migration at load time: sessions referencing a deleted character UUID are silently mapped to the first catalog entry.
 
 **`claw::notifier`** wraps `org.freedesktop.Notifications` with a tiny zbus proxy so `ClawEngineEvent::PushGlobalNotification` and `TaskCompleted` turn into real desktop toasts — so background AI work that finishes while the UI is detached still reaches the user.
 
 ### `ipc/` — `dev.boxxy.BoxxyTerminal.Agent`
 
-Top-level orchestration interface. Hosts `ClawSession` actors: `create_claw_session(pane_id)` spawns the reasoning engine with the agent's own `ClawSubsystem` as its `ClawEnvironment`, forwards session events as `claw_event(session_id, event_json)` D-Bus signals, and prunes dead sessions on every map touch. Additional methods: `list_claw_sessions`, `end_claw_session`, `update_credentials` (UI → daemon API-key sync), `notify_client_connected` / `notify_client_disconnected` (drives ghost mode), `request_reload` / `request_stop`.
+Top-level orchestration interface. Hosts `ClawSession` actors and owns the character claim lifecycle.
+
+**Character claim RPC** (all results serialized as JSON strings over D-Bus):
+- `claim_startup_token()` — increments the ghost-mode client counter and returns a `StartupToken` with daemon version, whether the DB was reset, and the current registry revision.
+- `get_registry_snapshot()` — returns the full `RegistrySnapshot` (catalog + all claims + revision).
+- `try_claim_character(holder_id, holder_kind: u8, character_id)` → `Result<ClaimedSession, ClaimError>`.
+- `release_holder(holder_id)` — releases a single claim and cascades swarm lock cleanup for Pane holders.
+- `resolve_peer(query_json: PeerQuery)` → `Option<PeerInfo>` — character-aware peer lookup for swarm tools.
+- Signal `claims_changed(snapshot_json)` — broadcast after every registry mutation; UI mirrors update `CHARACTER_CACHE` and `CLAIMS_CACHE` from this.
+
+**Session management**: `post_claw_message(session_id, message_json)` routes a `ClawMessage` to the named session; `list_claw_sessions()` returns `[(session_id, pane_id, agent_name)]` for active sessions. Session events flow back as `claw_event(session_id, event_json)` signals. Dead sessions are pruned on every map touch.
+
+**Other**: `update_credentials` (UI → daemon API-key sync), `notify_settings_invalidated` (daemon reloads `settings.json`), `request_reload` / `request_stop`.
+
+**`ipc/client_tracker.rs`** — `spawn_owner_tracker` subscribes to `org.freedesktop.DBus.NameOwnerChanged`, filters for unique bus names (`:…`) being released (`new_owner` is empty), fast-path `has_owner` check before acquiring the registry lock, then calls `release_owner` and cascades `WorkspaceRegistry::release_all_locks` + `unregister_pane` for each released Pane claim.
 
 ### `maintenance/` — `dev.boxxy.BoxxyTerminal.Agent.Maintenance`
 
@@ -52,7 +66,7 @@ Background-work status surface. `get_maintenance_status()` returns one of `idle`
 ### `daemon/` — lifecycle + scheduling primitives
 
 - **`daemon::power::PowerMonitor`**: subscribes to `org.freedesktop.UPower.OnBattery` and streams `PropertiesChanged` events into a `watch::Receiver<bool>`. Graceful fallback to permanent-AC when UPower isn't reachable (VMs, minimal desktops) so unrelated work isn't accidentally blocked.
-- **`daemon::lifecycle::GhostMode`**: derives a `client_count == 0` bool from the tracker that `notify_client_{connected,disconnected}` drives. Subsystems clone it cheaply to gate their own work.
+- **`daemon::lifecycle::GhostMode`**: derives a `client_count == 0` bool from a `watch::Sender<usize>` incremented by `claim_startup_token()` (each UI process calls this once on connect) and decremented via the `NameOwnerChanged` owner tracker on disconnect. Subsystems clone the receiver cheaply to gate their own work.
 - **`daemon::priority`**: `set_current_thread_nice(19)` wrapper around `setpriority(PRIO_PROCESS, 0, ...)`. Called at the entry of the dreaming task and the zombie sweeper.
 - **`daemon::dreaming`**: daemon-owned driver for the three-phase Dream Cycle. After a 10 s warm-up it sets `niceness 19`, then polls every minute: runs a cycle only when `enable_auto_dreaming` AND `!on_battery` AND `ghost_mode`. 15-minute cooldown between cycles. Publishes its current state into a shared `DreamStatusCell` read by `MaintenanceSubsystem`.
 - **`daemon::singleton`**: implements the name-claim handshake so two agent processes never coexist. The second process either hands off (same version) or upgrades (newer binary).
@@ -73,4 +87,4 @@ Background-work status surface. `get_maintenance_status()` returns one of `idle`
 
 ## Testing
 
-The crate has unit tests for the pieces that can be exercised without the full daemon loop: the agent registry round-trips + on-disk persistence, the PTY registry's ring buffer + detach/reattach semantics (including a real-PTY end-to-end test), the priority wrapper, power-monitor fallback, and ghost-mode transitions driven by the client-count watch channel. Run with `cargo test -p boxxy-agent --lib`.
+The crate has unit tests for the pieces that can be exercised without the full daemon loop: the PTY registry's ring buffer + detach/reattach semantics (including a real-PTY end-to-end test), the priority wrapper, power-monitor fallback, and ghost-mode transitions driven by the client-count watch channel. Run with `cargo test -p boxxy-agent --lib`.

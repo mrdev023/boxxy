@@ -108,7 +108,7 @@ pub(super) fn setup_claw(
     let popover_clone = claw_popover.clone();
     let host_lazy = host.clone();
     let host_cancel = host.clone();
-    let popover_cancel = claw_popover.clone();
+    let _popover_cancel = claw_popover.clone();
     claw_indicator.set_callbacks(
         move || {
             host_cancel.send_claw(ClawMessage::Abort);
